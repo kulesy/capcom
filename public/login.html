@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Capcom</title>
+<script>if (!location.pathname.endsWith('/') && !location.pathname.endsWith('/login')) location.replace(location.pathname + '/' + location.search + location.hash)</script>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="gate">
+<form class="gate-card" method="post" action="login">
+  <h1>Capcom</h1>
+  <p class="quiet">Sign in to talk to your sessions on this Mac.</p>
+  <label class="field">Password
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  </label>
+  <p class="notice" role="alert">{{message}}</p>
+  <button class="button send" type="submit">Sign in</button>
+</form>
+</body>
+</html>

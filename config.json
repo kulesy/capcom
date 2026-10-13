@@ -1,0 +1,12 @@
+{
+  "port": 4310,
+  "claude": "claude",
+  "desktopDir": "~/Library/Application Support/Claude",
+  "projectsDir": "~/.claude/projects",
+  "stateDir": "~/.config/capcom",
+  "defaultMode": "manual",
+  "idleMinutes": 30,
+  "otherDays": 30,
+  "chunkBytes": 2000000,
+  "outputChars": 8000
+}

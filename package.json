@@ -1,0 +1,16 @@
+{
+  "name": "capcom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A browser chat client for every Claude Code session on this Mac, organised the way Claude Desktop organises them.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "set-password": "node bin/set-password.mjs",
+    "install-agent": "node bin/install-agent.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

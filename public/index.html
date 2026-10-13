@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Capcom</title>
+<script>if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search + location.hash)</script>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-title" content="Capcom">
+<meta name="theme-color" content="#eaeff3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f151a" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app" id="app" data-view="list" data-home="{{home}}">
+  <nav class="list" aria-label="Sessions">
+    <header class="list-head">
+      <div class="brand"><span class="station">{{station}}</span><h1>Capcom</h1></div>
+      <a class="button new" href="#/new">New</a>
+    </header>
+    <div class="search"><input id="q" type="search" placeholder="Search sessions" autocomplete="off" aria-label="Search sessions"></div>
+    <p class="problem" id="problem" hidden></p>
+    <div class="sections" id="sections"><p class="quiet pad">Loading sessions</p></div>
+    <footer class="list-foot">
+      <label><input id="archived" type="checkbox"> Show archived</label>
+      <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
+    </footer>
+  </nav>
+
+  <main class="chat" id="chat">
+    <section class="empty" id="empty">
+      <p>Pick a session, or start a new one.</p>
+    </section>
+
+    <section class="session" id="session" hidden>
+      <header class="chat-head">
+        <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
+        <div class="chat-title">
+          <h2 id="title"></h2>
+          <p class="chat-meta" id="meta"></p>
+        </div>
+        <span class="lamp" id="chatLamp" aria-hidden="true"></span>
+        <button class="toggle" id="chrome" type="button" aria-pressed="false" title="Let this chat use Claude in Chrome. Every Chrome action asks first.">Chrome</button>
+        <label class="mode"><span class="sr">Permission mode</span>
+          <select id="mode">
+            <option value="manual">Ask before tools</option>
+            <option value="acceptEdits">Accept edits</option>
+            <option value="plan">Plan only</option>
+            <option value="auto">Auto</option>
+            <option value="bypassPermissions">Bypass</option>
+          </select>
+        </label>
+      </header>
+      <div class="transcript" id="transcript">
+        <button class="button earlier" id="earlier" type="button" hidden>Load earlier</button>
+        <ol class="items" id="items"></ol>
+        <div class="msg claude live" id="live" hidden></div>
+        <p class="working" id="working" hidden><span class="lamp" data-state="working"></span><span id="workingText">Working</span></p>
+      </div>
+      <div class="dock">
+        <div class="approvals" id="approvals"></div>
+        <p class="notice" id="notice" hidden></p>
+        <form class="composer" id="composer">
+          <textarea id="text" rows="1" placeholder="Reply" aria-label="Message"></textarea>
+          <button class="button stop" id="stop" type="button" hidden>Stop</button>
+          <button class="button send" id="send" type="submit" disabled>Send</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="start" id="start" hidden>
+      <header class="chat-head">
+        <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
+        <div class="chat-title"><h2>New session</h2><p class="chat-meta">Starts Claude Code in the folder you pick</p></div>
+      </header>
+      <form class="start-form" id="startForm">
+        <fieldset>
+          <legend>Folder</legend>
+          <input id="folder" type="text" autocomplete="off" spellcheck="false" aria-label="Folder path">
+          <details class="recent"><summary>Recent folders</summary><div class="folders" id="folders"></div></details>
+        </fieldset>
+        <label class="field">Permission mode
+          <select id="startMode">
+            <option value="manual">Ask before tools</option>
+            <option value="acceptEdits">Accept edits</option>
+            <option value="plan">Plan only</option>
+            <option value="auto">Auto</option>
+            <option value="bypassPermissions">Bypass</option>
+          </select>
+        </label>
+        <p class="quiet settings-line" id="startSettings"></p>
+        <label class="check"><input id="startChrome" type="checkbox"> Use Claude in Chrome <span class="quiet">(needs a mode that asks first)</span></label>
+        <label class="field">First message
+          <textarea id="firstText" rows="4" placeholder="What should Claude do?"></textarea>
+        </label>
+        <p class="notice" id="startNotice" hidden></p>
+        <button class="button send" id="startBtn" type="submit">Start</button>
+      </form>
+    </section>
+  </main>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
