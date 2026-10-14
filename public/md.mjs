@@ -23,20 +23,33 @@ function inline(src) {
 const isTableRow = l => /^\s*\|.*\|\s*$/.test(l);
 const cells = l => l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
 
+const ITEM = /^(\s*)([-*+]|(\d+)[.)])\s+(.*)$/;
+
 function list(lines, i) {
-  const ordered = /^\s*\d+[.)]\s/.test(lines[i]);
-  const indent = lines[i].match(/^\s*/)[0].length;
+  const first = lines[i].match(ITEM);
+  const indent = first[1].length;
+  const ordered = !!first[3];
+  // An item of this list at this depth, or one nested under it. A bullet after a number starts a new list.
+  const belongs = m => m && (m[1].length > indent || (m[1].length === indent && !!m[3] === ordered));
   const items = [];
   while (i < lines.length) {
     const l = lines[i];
-    const m = l.match(/^(\s*)([-*+]|\d+[.)])\s+(.*)$/);
-    if (m && m[1].length === indent) { items.push([m[3]]); i++; continue; }
+    // Blank lines between items keep the list going, so "1." then a gap then "2." stays one list.
+    if (!l.trim()) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && belongs(lines[j].match(ITEM))) { i = j; continue; }
+      break;
+    }
+    const m = l.match(ITEM);
+    if (m && m[1].length === indent && !!m[3] === ordered) { items.push([m[4]]); i++; continue; }
     if (m && m[1].length > indent) { const sub = list(lines, i); items[items.length - 1].push(sub.html); i = sub.i; continue; }
-    if (l.trim() && /^\s+/.test(l) && items.length) { items[items.length - 1][0] += ' ' + l.trim(); i++; continue; }
+    if (!m && /^\s+/.test(l) && items.length) { items[items.length - 1][0] += ' ' + l.trim(); i++; continue; }
     break;
   }
   const tag = ordered ? 'ol' : 'ul';
-  return { html: `<${tag}>${items.map(([t, ...rest]) => `<li>${inline(t)}${rest.join('')}</li>`).join('')}</${tag}>`, i };
+  const start = ordered && Number(first[3]) !== 1 ? ` start="${Number(first[3])}"` : '';
+  return { html: `<${tag}${start}>${items.map(([t, ...rest]) => `<li>${inline(t)}${rest.join('')}</li>`).join('')}</${tag}>`, i };
 }
 
 export function md(src) {
