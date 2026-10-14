@@ -17,7 +17,7 @@
   <nav class="list" aria-label="Sessions">
     <header class="list-head">
       <div class="brand"><span class="station">{{station}}</span><h1>Capcom</h1></div>
-      <a class="button new" href="#/new">New</a>
+      <a class="button new" href="#/new">+ New session</a>
     </header>
     <div class="search"><input id="q" type="search" placeholder="Search sessions" autocomplete="off" aria-label="Search sessions"></div>
     <p class="problem" id="problem" hidden></p>
@@ -41,18 +41,13 @@
           <p class="chat-meta" id="meta"></p>
         </div>
         <span class="lamp" id="chatLamp" aria-hidden="true"></span>
-        <button class="toggle" id="chrome" type="button" aria-pressed="false" title="Let this chat use Claude in Chrome. Every Chrome action asks first.">Chrome</button>
-        <label class="mode"><span class="sr">Permission mode</span>
-          <select id="mode">
-            <option value="manual">Ask before tools</option>
-            <option value="acceptEdits">Accept edits</option>
-            <option value="plan">Plan only</option>
-            <option value="auto">Auto</option>
-            <option value="bypassPermissions">Bypass</option>
-          </select>
-        </label>
+        <div class="seg" id="view" role="group" aria-label="Tool calls">
+          <button type="button" data-tools="normal" aria-pressed="true">Normal</button>
+          <button type="button" data-tools="verbose" aria-pressed="false">Verbose</button>
+        </div>
       </header>
       <div class="transcript" id="transcript">
+        <p class="quiet pad" id="newHint" hidden>Pick a folder, then say what Claude should do. The session starts there.</p>
         <button class="button earlier" id="earlier" type="button" hidden>Load earlier</button>
         <ol class="items" id="items"></ol>
         <div class="msg claude live" id="live" hidden></div>
@@ -61,42 +56,59 @@
       <div class="dock">
         <div class="approvals" id="approvals"></div>
         <p class="notice" id="notice" hidden></p>
+        <div class="folderbar" id="folderBar" hidden>
+          <label class="folder-field">Folder <input id="folder" type="text" autocomplete="off" spellcheck="false"></label>
+          <details class="recent"><summary>Recent folders</summary><div class="folders" id="folders"></div></details>
+        </div>
         <form class="composer" id="composer">
           <textarea id="text" rows="1" placeholder="Reply" aria-label="Message"></textarea>
-          <button class="button stop" id="stop" type="button" hidden>Stop</button>
-          <button class="button send" id="send" type="submit" disabled>Send</button>
+          <div class="composer-bar">
+            <div class="composer-left">
+              <div class="plus">
+                <button class="plus-btn" id="plus" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="plusMenu" aria-label="More options">+</button>
+                <div class="menu" id="plusMenu" role="menu" hidden>
+                  <button class="menu-item" id="chrome" type="button" role="menuitemcheckbox" aria-checked="false">
+                    <strong>Claude in Chrome</strong><span id="chromeHint">Every Chrome action asks first</span>
+                  </button>
+                </div>
+              </div>
+              <button class="tag" id="chromeTag" type="button" aria-label="Claude in Chrome is on. Turn it off." hidden>Chrome</button>
+              <label class="pick"><span class="sr">Permission mode</span>
+                <select id="mode">
+                  <option value="manual">Manual</option>
+                  <option value="acceptEdits">Accept edits</option>
+                  <option value="plan">Plan</option>
+                  <option value="auto">Auto</option>
+                  <option value="bypassPermissions">Bypass permissions</option>
+                </select>
+              </label>
+            </div>
+            <div class="composer-right">
+              <label class="pick"><span class="sr">Model</span>
+                <select id="model">
+                  <option value="" hidden>Model</option>
+                  <option value="claude-opus-5-5">Opus 5.5</option>
+                  <option value="claude-opus-5-5[1m]">Opus 5.5 (1M)</option>
+                  <option value="claude-fable-5-1">Fable 5.1</option>
+                  <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+                  <option value="claude-haiku-5-5">Haiku 5.5</option>
+                </select>
+              </label>
+              <label class="pick"><span class="sr">Effort</span>
+                <select id="effort">
+                  <option value="" hidden>Effort</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="xhigh">Extra high</option>
+                  <option value="max">Max</option>
+                </select>
+              </label>
+              <button class="button send" id="send" type="submit" data-act="send" disabled>Send</button>
+            </div>
+          </div>
         </form>
       </div>
-    </section>
-
-    <section class="start" id="start" hidden>
-      <header class="chat-head">
-        <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
-        <div class="chat-title"><h2>New session</h2><p class="chat-meta">Starts Claude Code in the folder you pick</p></div>
-      </header>
-      <form class="start-form" id="startForm">
-        <fieldset>
-          <legend>Folder</legend>
-          <input id="folder" type="text" autocomplete="off" spellcheck="false" aria-label="Folder path">
-          <details class="recent"><summary>Recent folders</summary><div class="folders" id="folders"></div></details>
-        </fieldset>
-        <label class="field">Permission mode
-          <select id="startMode">
-            <option value="manual">Ask before tools</option>
-            <option value="acceptEdits">Accept edits</option>
-            <option value="plan">Plan only</option>
-            <option value="auto">Auto</option>
-            <option value="bypassPermissions">Bypass</option>
-          </select>
-        </label>
-        <p class="quiet settings-line" id="startSettings"></p>
-        <label class="check"><input id="startChrome" type="checkbox"> Use Claude in Chrome <span class="quiet">(needs a mode that asks first)</span></label>
-        <label class="field">First message
-          <textarea id="firstText" rows="4" placeholder="What should Claude do?"></textarea>
-        </label>
-        <p class="notice" id="startNotice" hidden></p>
-        <button class="button send" id="startBtn" type="submit">Start</button>
-      </form>
     </section>
   </main>
 </div>

@@ -7,7 +7,9 @@ const store = {
   set(k, v) { try { localStorage.setItem(`capcom.${k}`, JSON.stringify(v)); } catch {} },
 };
 
-const ui = { index: null, query: '', archived: store.get('archived', false), collapsed: store.get('collapsed', {}), openRoutines: new Set() };
+const ui = { index: null, query: '', archived: store.get('archived', false), collapsed: store.get('collapsed', {}), openRoutines: new Set(), verbose: store.get('verbose', false), first: null };
+// In these modes the CLI waves Chrome actions through without asking, so Chrome is never on alongside them.
+const UNWATCHED = ['auto', 'bypassPermissions'];
 let chat = null;
 
 async function api(path, body) {
@@ -50,10 +52,11 @@ function when(ms) {
 const STATE_LABEL = { working: 'working', waiting: 'needs you', active: 'active', idle: '' };
 
 function modelLabel(m = '') {
-  const named = m.match(/(opus|sonnet|haiku|fable)-(\d+)-(\d+)/i);
-  if (named) return `${named[1][0].toUpperCase()}${named[1].slice(1)} ${named[2]}.${named[3]}`;
+  const long = /\[1m\]$/i.test(m) ? ' (1M)' : '';
+  const named = m.match(/(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?!\d))?/i);
+  if (named) return `${named[1][0].toUpperCase()}${named[1].slice(1)} ${named[2]}${named[3] ? `.${named[3]}` : ''}${long}`;
   const alias = m.match(/^(opus|sonnet|haiku|fable)(\[1m\])?$/i);
-  if (alias) return `${alias[1][0].toUpperCase()}${alias[1].slice(1)}${alias[2] ? ' (1M)' : ''}`;
+  if (alias) return `${alias[1][0].toUpperCase()}${alias[1].slice(1)}${long}`;
   return m;
 }
 
@@ -175,8 +178,91 @@ const clip = (text, lines = 40) => {
 function toolHtml(t) {
   const label = { pending: 'running', ok: 'ok', failed: 'failed', denied: 'denied' }[t.status] || t.status;
   const input = t.name === 'Bash' ? t.input?.command || '' : JSON.stringify(t.input ?? {}, null, 2);
-  return `<li class="tool" data-status="${t.status}"><details><summary><span class="tool-name">${esc(toolLabel(t.name))}</span><span class="tool-sum">${esc(t.summary || '')}</span><span class="tool-status">${label}</span></summary>
+  return `<li class="tool" data-status="${t.status}"><details data-k="${esc(t.id)}"><summary><span class="tool-name">${esc(toolLabel(t.name))}</span><span class="tool-sum">${esc(t.summary || '')}</span><span class="tool-status">${label}</span></summary>
     <pre class="tool-io">${esc(input)}</pre>${t.output ? `<pre class="tool-io">${esc(t.output)}</pre>` : ''}</details></li>`;
+}
+
+// ---- grouped tool calls: Desktop's Normal view says what a run did instead of listing each call ---------
+
+const EDITS = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit'];
+const KIND_OF = { Read: 'read', NotebookRead: 'read', Grep: 'search', Glob: 'search', Bash: 'run', WebSearch: 'web', WebFetch: 'fetch', Agent: 'agent', Task: 'agent', Skill: 'skill', TodoWrite: 'todo' };
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const KINDS = {
+  read: n => `read ${plural(n, 'file')}`,
+  search: n => `searched ${plural(n, 'time')}`,
+  run: n => `ran ${plural(n, 'command')}`,
+  edit: n => `edited ${plural(n, 'file')}`,
+  web: n => `searched the web ${plural(n, 'time')}`,
+  fetch: n => `fetched ${plural(n, 'page')}`,
+  agent: n => `started ${plural(n, 'agent')}`,
+  skill: n => `used ${plural(n, 'skill')}`,
+  todo: () => 'updated the to-do list',
+  chrome: n => `used Chrome ${plural(n, 'time')}`,
+  other: n => `used ${plural(n, 'tool')}`,
+};
+const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || (name.startsWith(CHROME) ? 'chrome' : 'other'));
+
+const splitLines = text => (text ? text.replace(/\n$/, '').split('\n') : []);
+
+// The unchanged head and tail are trimmed, so changing one line inside a long block counts as one line.
+function lineDelta(before, after) {
+  const a = splitLines(before);
+  const b = splitLines(after);
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return [b.length - head - tail, a.length - head - tail];
+}
+
+// Write and NotebookEdit carry no old text, so they count as added lines only.
+function linesChanged(t) {
+  const i = t.input || {};
+  if (t.name === 'Edit') return lineDelta(i.old_string, i.new_string);
+  if (t.name === 'MultiEdit') return (i.edits || []).reduce(([add, del], e) => { const [a, d] = lineDelta(e.old_string, e.new_string); return [add + a, del + d]; }, [0, 0]);
+  return [splitLines(t.name === 'Write' ? i.content : i.new_source).length, 0];
+}
+
+function groupHtml(g) {
+  const kinds = new Map();
+  let added = 0;
+  let removed = 0;
+  let edited = false;
+  const tally = { pending: 0, failed: 0, denied: 0 };
+  for (const t of g.tools) {
+    const kind = toolKind(t.name);
+    if (!kinds.has(kind)) kinds.set(kind, new Set());
+    kinds.get(kind).add(kind === 'read' || kind === 'edit' ? t.input?.file_path || t.input?.notebook_path || t.id : t.id);
+    if (t.status in tally) tally[t.status]++;
+    if (kind === 'edit') {
+      edited = true;
+      if (t.status === 'pending' || t.status === 'ok') { const [a, d] = linesChanged(t); added += a; removed += d; }
+    }
+  }
+  const phrase = [...kinds].map(([kind, set]) => KINDS[kind](set.size)).join(', ');
+  const note = tally.pending ? 'running' : [tally.failed && `${tally.failed} failed`, tally.denied && `${tally.denied} denied`].filter(Boolean).join(', ');
+  const status = tally.pending ? 'pending' : tally.failed || tally.denied ? 'failed' : 'ok';
+  return `<li class="tool-group" data-status="${status}"><details data-k="g:${esc(g.tools[0].id)}"><summary><span class="group-sum">${esc(phrase[0].toUpperCase() + phrase.slice(1))}</span>
+    <span class="group-meta">${edited ? `<span class="add">+${added}</span> <span class="del">-${removed}</span>` : ''}<span class="tool-status">${note}</span></span></summary>
+    <ul class="group-tools">${g.tools.map(toolHtml).join('')}</ul></details></li>`;
+}
+
+// Chips, chapters, widgets and questions render as themselves and end a run; every other tool call joins it.
+function groupable(i) {
+  if (i.kind !== 'tool' || i.name === 'AskUserQuestion' || /__(spawn_task|dismiss_task|mark_chapter)$/.test(i.name)) return false;
+  return !(/__show_widget$/.test(i.name) && i.input?.widget_code);
+}
+
+function display(items) {
+  if (ui.verbose) return items;
+  const out = [];
+  for (const i of items) {
+    const last = out[out.length - 1];
+    if (!groupable(i)) out.push(i);
+    else if (last?.kind === 'group') last.tools.push(i);
+    else out.push({ kind: 'group', tools: [i] });
+  }
+  return out;
 }
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
@@ -218,6 +304,8 @@ function itemHtml(i) {
   if (i.kind === 'tool' && /__show_widget$/.test(i.name) && i.input?.widget_code) return widgetHtml(i);
   if (i.kind === 'tool' && /__dismiss_task$/.test(i.name)) return '<li hidden></li>';
   if (i.kind === 'tool') return toolHtml(i);
+  if (i.kind === 'group') return groupHtml(i);
+  if (i.kind === 'model') return `<li class="divider">Model set to ${esc(modelLabel(i.model))}</li>`;
   if (i.kind === 'routine') return `<li class="divider">Started by the ${esc(i.name)} routine</li>`;
   if (i.kind === 'divider') return `<li class="divider">${esc(i.text)}</li>`;
   return '<li hidden></li>';
@@ -225,20 +313,23 @@ function itemHtml(i) {
 
 const atBottom = el => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
-// Only changed rows are replaced, so a running widget is not reloaded and an expanded tool row stays open.
+// Only changed rows are replaced, so a running widget is not reloaded and expanded tool rows and groups stay open.
 function renderItems({ keepBottom = true, rebuild = false } = {}) {
   const box = $('transcript');
   const stick = keepBottom && atBottom(box);
   const list = $('items');
   if (rebuild) { list.textContent = ''; chat.rendered = []; }
-  const html = [...chat.items, ...chat.sending.map(text => ({ kind: 'user', text, sending: true }))].map(itemHtml);
+  const html = [...display(chat.items), ...chat.sending.map(text => ({ kind: 'user', text, sending: true }))].map(itemHtml);
   for (let i = 0; i < html.length; i++) {
     const old = list.children[i];
     if (old && chat.rendered[i] === html[i]) continue;
     const tpl = document.createElement('template');
     tpl.innerHTML = html[i].trim();
     const el = tpl.content.firstElementChild;
-    if (old?.querySelector('details')?.open) el.querySelector('details')?.setAttribute('open', '');
+    if (old) {
+      const open = new Set([...old.querySelectorAll('details[open]')].map(d => d.dataset.k));
+      for (const d of el.querySelectorAll('details')) if (d.dataset.k && open.has(d.dataset.k)) d.setAttribute('open', '');
+    }
     if (old) list.replaceChild(el, old); else list.appendChild(el);
   }
   while (list.children.length > html.length) list.lastElementChild.remove();
@@ -362,18 +453,47 @@ function renderApprovals() {
   if (again) { again.focus(); again.setSelectionRange(where.at, where.at); }
 }
 
+const isBusy = s => s?.state === 'working' || s?.state === 'waiting';
+
+// A model or effort the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
+function syncPick(select, value, label) {
+  for (const o of [...select.options]) if (o.dataset.extra && o.value !== value) o.remove();
+  if (value && ![...select.options].some(o => o.value === value)) {
+    const extra = new Option(label(value), value);
+    extra.dataset.extra = '1';
+    select.add(extra);
+  }
+  if (select.value !== (value || '')) select.value = value || '';
+}
+
 function renderStatus() {
   const s = chat.status || { state: 'idle', pending: [], mode: 'manual', chrome: false };
-  const busy = s.state === 'working' || s.state === 'waiting';
+  const busy = isBusy(s);
+  const unwatched = UNWATCHED.includes(s.mode);
   $('chatLamp').dataset.state = s.state;
-  $('stop').hidden = !busy;
+  for (const id of ['mode', 'model', 'effort']) $(id).disabled = !chat.status;
   $('mode').value = s.mode || 'manual';
-  for (const o of $('mode').options) o.disabled = !!s.chrome && ['auto', 'bypassPermissions'].includes(o.value);
-  $('chrome').setAttribute('aria-pressed', String(!!s.chrome));
-  $('chrome').disabled = busy;
+  for (const o of $('mode').options) o.disabled = !!s.chrome && UNWATCHED.includes(o.value);
+  syncPick($('model'), s.shownModel || s.model, modelLabel);
+  syncPick($('effort'), s.effort, e => e);
+  $('chrome').setAttribute('aria-checked', String(!!s.chrome));
+  $('chrome').disabled = !chat.status || (busy && !chat.draft) || (unwatched && !s.chrome);
+  $('chromeHint').textContent = busy && !chat.draft ? 'Wait for Claude to finish this turn' : unwatched ? 'Needs Manual, Accept edits or Plan' : 'Every Chrome action asks first';
+  $('chromeTag').hidden = !s.chrome;
+  renderComposer();
   renderHead();
   renderApprovals();
   renderLive();
+}
+
+// While Claude works and the box is empty, the Send button is the Stop button. Typing turns it back into Send.
+function renderComposer() {
+  const typed = !!textBox.value.trim();
+  const stop = isBusy(chat?.status) && !chat?.draft && !typed;
+  const button = $('send');
+  button.textContent = stop ? 'Stop' : 'Send';
+  button.dataset.act = stop ? 'stop' : 'send';
+  button.disabled = !stop && (!typed || !!chat?.starting);
 }
 
 function notice(text) {
@@ -383,6 +503,12 @@ function notice(text) {
 
 function renderHead() {
   const s = chat.session;
+  if (chat.draft) {
+    $('title').textContent = 'New session';
+    $('meta').textContent = 'Starts Claude Code in the folder you pick';
+    document.title = 'New session · Capcom';
+    return;
+  }
   $('title').textContent = s?.title || 'Session';
   $('meta').textContent = s ? [folderName(s.cwd), s.branch, s.routine ? `${s.routine} routine` : '', settingsLine(chat.status)].filter(Boolean).join('  ') : '';
   document.title = s?.title ? `${s.title} · Capcom` : 'Capcom';
@@ -425,6 +551,8 @@ function connect(c) {
   on('approval', p => { c.status = { ...c.status, pending: [...(c.status?.pending || []).filter(x => x.requestId !== p.requestId), p] }; renderStatus(); });
   on('approval-resolved', d => { c.status = { ...c.status, pending: (c.status?.pending || []).filter(x => x.requestId !== d.requestId) }; renderStatus(); });
   on('mode', d => { c.status = { ...c.status, mode: d.mode }; renderStatus(); });
+  on('model', d => { c.status = { ...c.status, model: d.model, shownModel: d.model }; renderStatus(); });
+  on('effort', d => { c.status = { ...c.status, effort: d.effort }; renderStatus(); });
   on('chrome', d => { c.status = { ...c.status, chrome: d.chrome }; renderStatus(); });
   on('turn-end', d => { c.live = ''; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); loadIndex(); });
   on('error', d => notice(d.message));
@@ -443,6 +571,7 @@ async function openSession(id) {
   if (chat?.id === id) { show('session'); return; }
   chat?.es?.close();
   chat = newChat(id);
+  if (ui.first?.id === id) { chat.sending.push(ui.first.text); ui.first = null; }
   show('session');
   $('items').innerHTML = '';
   $('approvals').innerHTML = '';
@@ -450,9 +579,11 @@ async function openSession(id) {
   $('live').hidden = true;
   $('working').hidden = true;
   notice('');
+  renderComposer();
   const row = findRow(id);
   chat.session = row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine };
   renderHead();
+  renderStatus();
   renderList();
   const c = chat;
   try {
@@ -461,6 +592,7 @@ async function openSession(id) {
     c.session = r.session || c.session;
     renderHead();
     absorb(c.items, c.tools, r.items, c.orphans);
+    c.sending = c.sending.filter(t => !c.items.some(i => i.kind === 'user' && i.text.trim() === t.trim()));
     Object.assign(c, { start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true });
     await loadChips(c);
     if (chat !== c) return;
@@ -515,20 +647,25 @@ function fit(el) {
   el.style.height = `${Math.min(el.scrollHeight, max)}px`;
   el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
 }
-textBox.addEventListener('input', () => { fit(textBox); $('send').disabled = !textBox.value.trim(); });
+textBox.addEventListener('input', () => { fit(textBox); renderComposer(); });
 textBox.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) { e.preventDefault(); $('composer').requestSubmit(); }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
+    e.preventDefault();
+    if (textBox.value.trim()) $('composer').requestSubmit();
+  }
 });
 
+// Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
 $('composer').addEventListener('submit', async e => {
   e.preventDefault();
   const text = textBox.value.trim();
   if (!text || !chat) return;
   const c = chat;
+  if (c.draft) { startSession(c, text); return; }
   c.sending.push(text);
   textBox.value = '';
   fit(textBox);
-  $('send').disabled = true;
+  renderComposer();
   notice('');
   renderItems();
   $('transcript').scrollTop = $('transcript').scrollHeight;
@@ -539,10 +676,26 @@ $('composer').addEventListener('submit', async e => {
     c.sending = c.sending.filter(t => t !== text);
     textBox.value = text;
     fit(textBox);
-    $('send').disabled = false;
+    renderComposer();
     renderItems();
     notice(`Not sent: ${err.message}`);
   }
+});
+
+async function stopRun() {
+  try { await api(`api/sessions/${encodeURIComponent(chat.id)}/stop`, {}); } catch (e) { notice(e.message); }
+}
+
+$('send').addEventListener('click', e => {
+  if ($('send').dataset.act !== 'stop') return;
+  e.preventDefault();
+  stopRun();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.isComposing) return;
+  if (!$('plusMenu').hidden) closeMenu();
+  else if (chat && !chat.draft && isBusy(chat.status)) stopRun();
 });
 
 const pendingFor = id => (chat?.status?.pending || []).find(p => p.requestId === id);
@@ -606,83 +759,141 @@ $('items').addEventListener('click', async e => {
   }
 });
 
-$('chrome').addEventListener('click', async () => {
-  const on = $('chrome').getAttribute('aria-pressed') !== 'true';
+function closeMenu() {
+  $('plusMenu').hidden = true;
+  $('plus').setAttribute('aria-expanded', 'false');
+}
+
+$('plus').addEventListener('click', () => {
+  const open = $('plusMenu').hidden;
+  $('plusMenu').hidden = !open;
+  $('plus').setAttribute('aria-expanded', String(open));
+});
+
+document.addEventListener('click', e => { if (!e.target.closest('.plus')) closeMenu(); });
+
+// Until a new session starts, the box holds its settings locally; the ones left alone follow the folder's defaults.
+function setDraft(patch) {
+  for (const k of Object.keys(patch)) chat.draft.touched.add(k === 'shownModel' ? 'model' : k);
+  chat.status = { ...chat.status, ...patch };
+  renderStatus();
+}
+
+async function setChrome(on) {
+  closeMenu();
+  if (chat.draft) { setDraft({ chrome: on }); return; }
   try {
     chat.status = await api(`api/sessions/${encodeURIComponent(chat.id)}/chrome`, { on, mode: $('mode').value });
     renderStatus();
   } catch (err) { notice(err.message); }
-});
+}
 
-$('stop').addEventListener('click', async () => {
-  try { await api(`api/sessions/${encodeURIComponent(chat.id)}/stop`, {}); } catch (e) { notice(e.message); }
-});
+$('chrome').addEventListener('click', () => setChrome($('chrome').getAttribute('aria-checked') !== 'true'));
+$('chromeTag').addEventListener('click', () => setChrome(false));
 
 $('mode').addEventListener('change', async e => {
+  if (chat.draft) { setDraft({ mode: e.target.value }); return; }
   try { await api(`api/sessions/${encodeURIComponent(chat.id)}/mode`, { mode: e.target.value }); } catch (err) { notice(err.message); renderStatus(); }
 });
 
-// ---- starting a session ----------------------------------------------------------------------------
+// The change shows at once and is put back if Claude refuses it. It applies from Claude's next request, even mid-turn.
+async function pick(kind, value) {
+  const patch = kind === 'model' ? { model: value, shownModel: value } : { effort: value };
+  if (chat.draft) { setDraft(patch); return; }
+  const c = chat;
+  const before = c.status;
+  c.status = { ...before, ...patch };
+  renderStatus();
+  try {
+    c.status = await api(`api/sessions/${encodeURIComponent(c.id)}/${kind}`, { [kind]: value });
+  } catch (err) {
+    c.status = before;
+    notice(err.message);
+  }
+  if (chat === c) renderStatus();
+}
 
-async function openStart() {
+$('model').addEventListener('change', e => pick('model', e.target.value));
+$('effort').addEventListener('change', e => pick('effort', e.target.value));
+
+function renderView() {
+  for (const b of $('view').querySelectorAll('button')) b.setAttribute('aria-pressed', String((b.dataset.tools === 'verbose') === ui.verbose));
+}
+
+$('view').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  ui.verbose = b.dataset.tools === 'verbose';
+  store.set('verbose', ui.verbose);
+  renderView();
+  if (chat) renderItems();
+});
+
+// ---- starting a session ----------------------------------------------------------------------------
+// "+ New session" opens the chat pane empty, with a folder to pick above the prompt box. The first message starts it.
+
+async function openNew() {
   chat?.es?.close();
-  chat = null;
-  show('start');
-  renderList();
-  document.title = 'New session · Capcom';
+  chat = newChat(null);
+  chat.draft = { touched: new Set() };
+  chat.status = { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, chrome: false };
+  $('items').innerHTML = '';
+  $('approvals').innerHTML = '';
+  $('earlier').hidden = true;
+  $('live').hidden = true;
+  $('working').hidden = true;
   $('folder').value = HOME;
-  $('startChrome').checked = false;
-  await loadStartDefaults();
+  notice('');
+  show('session');
+  renderList();
+  renderStatus();
+  textBox.focus({ preventScroll: true });
+  loadDraftDefaults();
   try {
     const { folders } = await api('api/folders');
     $('folders').innerHTML = folders.map((f, i) => `<label class="folder"><input type="radio" name="folder" value="${esc(f)}"${i === 0 ? ' checked' : ''}> ${esc(f.replace(HOME, '~') || '~')}</label>`).join('');
   } catch (e) {
-    $('startNotice').textContent = e.message;
-    $('startNotice').hidden = false;
+    notice(e.message);
   }
 }
 
 // A new session starts the way Desktop would start one in that folder: its mode for the folder, and its effort.
-async function loadStartDefaults() {
+async function loadDraftDefaults() {
+  const c = chat;
   try {
     const d = await api(`api/defaults?cwd=${encodeURIComponent($('folder').value.trim())}`);
-    $('startMode').value = d.mode;
-    $('startSettings').textContent = `${settingsLine(d)}, as in Claude Desktop`;
-  } catch {
-    $('startSettings').textContent = '';
-  }
-  syncStartChrome();
+    if (chat !== c) return;
+    const t = c.draft.touched;
+    c.status = { ...c.status, ...(!t.has('mode') && { mode: d.mode }), ...(!t.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!t.has('effort') && { effort: d.effort }) };
+    if (UNWATCHED.includes(c.status.mode)) c.status.chrome = false;
+  } catch {}
+  if (chat === c) renderStatus();
 }
 
-function syncStartChrome() {
-  const unwatched = ['auto', 'bypassPermissions'].includes($('startMode').value);
-  $('startChrome').disabled = unwatched;
-  if (unwatched) $('startChrome').checked = false;
-}
+$('folders').addEventListener('change', e => { if (e.target.name === 'folder') { $('folder').value = e.target.value; loadDraftDefaults(); } });
+$('folder').addEventListener('change', loadDraftDefaults);
 
-$('folders').addEventListener('change', e => { if (e.target.name === 'folder') { $('folder').value = e.target.value; loadStartDefaults(); } });
-$('folder').addEventListener('change', loadStartDefaults);
-$('startMode').addEventListener('change', syncStartChrome);
-
-$('startForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const button = $('startBtn');
-  button.disabled = true;
-  button.textContent = 'Starting';
-  $('startNotice').hidden = true;
+async function startSession(c, text) {
+  const s = c.status;
+  const t = c.draft.touched;
+  c.starting = true;
+  renderComposer();
+  $('send').textContent = 'Starting';
+  notice('');
   try {
-    const { id } = await api('api/new', { cwd: $('folder').value.trim(), text: $('firstText').value, mode: $('startMode').value, chrome: $('startChrome').checked });
-    $('firstText').value = '';
+    const { id } = await api('api/new', { cwd: $('folder').value.trim(), text, mode: s.mode, chrome: !!s.chrome, ...(t.has('model') && { model: s.shownModel }), ...(t.has('effort') && { effort: s.effort }) });
+    textBox.value = '';
+    fit(textBox);
+    ui.first = { id, text };
     await loadIndex();
     location.hash = `#/s/${encodeURIComponent(id)}`;
   } catch (err) {
-    $('startNotice').textContent = err.message;
-    $('startNotice').hidden = false;
+    notice(err.message);
   } finally {
-    button.disabled = false;
-    button.textContent = 'Start';
+    c.starting = false;
+    renderComposer();
   }
-});
+}
 
 // ---- routing ---------------------------------------------------------------------------------------
 
@@ -690,13 +901,16 @@ function show(view) {
   app.dataset.view = view === 'list' ? 'list' : 'chat';
   $('empty').hidden = view !== 'list';
   $('session').hidden = view !== 'session';
-  $('start').hidden = view !== 'start';
+  $('folderBar').hidden = !chat?.draft;
+  $('newHint').hidden = !chat?.draft;
+  $('view').hidden = !!chat?.draft;
+  textBox.placeholder = chat?.draft ? 'What should Claude do?' : 'Reply';
 }
 
 function route() {
   const h = location.hash;
   if (h.startsWith('#/s/')) return openSession(decodeURIComponent(h.slice(4)));
-  if (h === '#/new') return openStart();
+  if (h === '#/new') return openNew();
   chat?.es?.close();
   chat = null;
   document.title = 'Capcom';
@@ -708,5 +922,6 @@ window.addEventListener('hashchange', route);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { loadIndex(); if (chat) fetchNew(); } });
 setInterval(() => { if (!document.hidden) loadIndex(); }, 15_000);
 
+renderView();
 await loadIndex();
 route();

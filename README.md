@@ -18,6 +18,19 @@ It listens on http://localhost:4310.
   Closing the page leaves the work running, and a waiting approval is still there when you come back.
   "Always allow" applies the rule Claude suggests, which usually lands in the folder's
   `.claude/settings.local.json`.
+- **The prompt box** follows Desktop's. The permission mode (Manual, Accept edits, Plan, Auto, Bypass
+  permissions), the model and the effort sit under the text, and the `+` menu holds the Claude in Chrome
+  switch. A model or effort change applies from Claude's next request, even mid-turn, and is remembered
+  for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
+- **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
+  too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
+  the running tool finishes and adjusts before its next step.
+- **New sessions** start from "+ New session": an empty chat with a folder picker above the prompt box
+  (the home folder, or a recent one). The first message starts the session in that folder.
+- **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
+  files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
+  call. The Normal and Verbose switch in the chat header shows the rows ungrouped, and is remembered in
+  the browser.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
   running somewhere else, in Desktop or a terminal, update as their file grows.
 
@@ -35,9 +48,10 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that blocks network requests, so model-written HTML cannot reach Capcom or its cookie.
 - **Questions** (`AskUserQuestion`) show as option buttons, plus a box for your own answer.
-- **Claude in Chrome** is off until switched on per chat. It starts the CLI with `--chrome` and an
-  ask rule for every Chrome tool, so each action reaches an approval card, even ones your settings
-  already allow. Chrome cannot be on in Bypass or Auto, and its cards have no Always allow.
+- **Claude in Chrome** is off until switched on per chat, from the `+` menu in the prompt box. It starts
+  the CLI with `--chrome` and an ask rule for every Chrome tool, so each action reaches an approval
+  card, even ones your settings already allow. Chrome cannot be on in Auto or Bypass permissions, and
+  its cards have no Always allow.
 
 Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar,
 computer use (not available to the CLI in `-p` mode) and routines.
@@ -51,8 +65,8 @@ Things to know:
 - Settings follow Claude Desktop. A session Desktop knows continues with the permission mode, model
   and effort Desktop recorded for it. Any other session, and every new one, gets Desktop's mode for
   that folder (falling back to `permissions.defaultMode` in `~/.claude/settings.json`), Desktop's
-  effort level, and the model from `~/.claude/settings.json`. New sessions start in the home folder.
-  The mode can still be changed per chat.
+  effort level, and the model from `~/.claude/settings.json`. The mode, model and effort can still be
+  changed per chat from the prompt box.
 
 ## Run it
 
