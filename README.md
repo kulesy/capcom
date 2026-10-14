@@ -58,8 +58,11 @@ computer use (not available to the CLI in `-p` mode) and routines.
 
 Things to know:
 
-- Sessions started here are not in Desktop's sidebar, because Desktop only lists sessions it started.
-  Capcom shows them under "Started here".
+- Sessions started here are handed to Desktop when their first reply finishes. Capcom stops its own
+  process for the session, adds a title to the transcript, and opens Desktop's hand-off link
+  (`claude://resume?session=<id>`). Desktop adds the session to its sidebar and switches its window to
+  it. Until then Capcom shows the session under "Started here". The next message sent from Capcom
+  starts its process again.
 - Opening a session that is also open in Desktop continues the same session. If both are used at
   once, the two can drift apart.
 - Settings follow Claude Desktop. A session Desktop knows continues with the permission mode, model

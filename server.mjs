@@ -1,6 +1,7 @@
 // Capcom. A browser chat client for every Claude Code session on this Mac, listed the way Claude Desktop
 // groups them, and driven through headless `claude -p` processes.
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -147,7 +148,42 @@ async function newSession({ cwd, text, mode, model, effort, chrome, title }) {
   const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome, claude: cfg.claude, chips });
   if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
   fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: (title || text.trim()).slice(0, 120) }]));
+  afterTurn(chat, () => handOff(chat.id));
   return chat.id;
+}
+
+// ---- handing new sessions to Desktop -------------------------------------------------------------
+// NOTE: [14 Oct 2026] EK - Desktop's own hand-off link is the only way into its sidebar, because Desktop keeps its session
+// list in memory and writes over its files. It takes the title from the transcript's custom-title entry and opens the
+// session in its window. Read from Desktop's code on 14 Oct 2026, so re-check this after a Desktop update.
+
+const markStarted = (id, patch) => fs.writeFileSync(startedFile, JSON.stringify(readStarted().map(s => (s.id === id ? { ...s, ...patch } : s))));
+const inDesktop = id => loadDesktop(cfg.desktopDir, 0).sessions.some(r => r.id === id);
+const shortTitle = text => { const t = text.replace(/\s+/g, ' ').trim(); return t.length > 60 ? `${t.slice(0, 60).replace(/\s+\S*$/, '')}…` : t; };
+
+function afterTurn(chat, fn) {
+  const once = ev => { if (ev.type === 'turn-end' || ev.type === 'exit') { chat.listeners.delete(once); fn(); } };
+  chat.listeners.add(once);
+}
+
+async function handOff(id) {
+  const s = readStarted().find(x => x.id === id);
+  if (!s || s.desktopAt) return;
+  // Capcom's process is stopped first, so the two apps never run the session at once. The next message here starts it again.
+  const chat = getChat(id);
+  if (chat && chat.state !== 'idle') return afterTurn(chat, () => handOff(id));
+  if (chat?.proc) { const exited = new Promise(done => chat.proc.once('exit', done)); chat.stop(); await exited; }
+  if (getChat(id)?.proc) return afterTurn(getChat(id), () => handOff(id));
+  const t = indexTranscripts(cfg.projectsDir, 0).get(id);
+  if (!t) return;
+  if (inDesktop(id)) return markStarted(id, { desktopAt: Date.now() });
+  if (!fs.readFileSync(t.file, 'utf8').includes('"type":"custom-title"')) {
+    fs.appendFileSync(t.file, `${JSON.stringify({ type: 'custom-title', customTitle: shortTitle(s.title || 'Capcom session'), sessionId: id })}\n`);
+  }
+  // Marked before the link opens, so a failed hand-off is logged once rather than retried into Desktop's window.
+  markStarted(id, { desktopAt: Date.now() });
+  execFile('open', ['-g', `claude://resume?session=${id}`], err => { if (err) console.error(`Hand-off of ${id} to Desktop failed: ${err.message}`); });
+  setTimeout(() => { if (!inDesktop(id)) console.error(`Desktop did not add ${id} to its sidebar.`); }, 30_000).unref();
 }
 
 // ---- http ----------------------------------------------------------------------------------------
@@ -357,3 +393,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(cfg.port, '127.0.0.1', () => console.log(`Capcom on http://localhost:${cfg.port}`));
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
+// Sessions started before the hand-off existed are handed over the first time Capcom starts with it.
+for (const s of readStarted()) if (!s.desktopAt) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
