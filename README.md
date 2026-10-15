@@ -126,6 +126,11 @@ There are no npm dependencies (Node 20 or later), and the page's libraries are v
 kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
 out. Until one is set, Capcom refuses every request.
 
+Capcom has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own
+window and Dock icon. Window managers then see it as its own app rather than as the browser. On the Mac,
+install it from http://localhost:4310, because Chrome only offers Install on a secure address, and it
+treats localhost as one.
+
 ## Configuration
 
 `config.json` holds the defaults: the port, the `claude` command, the folders Capcom reads and the
