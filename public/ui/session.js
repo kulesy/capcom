@@ -263,8 +263,11 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
+  // Where the page loads an image from, given the ref the transcript put on it.
+  const imageUrl = ref => `api/sessions/${enc(id)}/images/${enc(ref)}`;
+
   return {
     id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier,
-    send, stop, decide, chip, setMode, pick, setFolder, loadDefaults, startNew, notice,
+    send, stop, decide, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
   };
 }
