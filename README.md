@@ -4,6 +4,8 @@ A browser chat client for every Claude Code session on this Mac: the ones starte
 the routine runs, and the ones started in a terminal. The list follows Desktop's own groups and pins.
 It listens on http://localhost:4310.
 
+The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
+
 ## How it works
 
 - **Sessions** come from two places, both read only. Claude Code saves every session as a JSON lines
