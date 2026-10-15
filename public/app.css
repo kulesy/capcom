@@ -162,6 +162,22 @@ a { color: var(--focus); }
 
 .brand { display: grid; }
 
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--ink-quiet);
+  cursor: pointer;
+}
+
+.icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+
+.icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
 .station { font: 500 0.75rem/1.2 var(--mono); color: var(--ink-quiet); letter-spacing: 0.02em; }
 
 .brand h1 { margin: 0; font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.02em; }

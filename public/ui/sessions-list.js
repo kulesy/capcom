@@ -89,7 +89,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine, d
 }
 
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
-export function SessionList({ ix, error, current, archived, setArchived, place }) {
+export function SessionList({ ix, error, current, archived, setArchived, place, onFind }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
@@ -118,6 +118,7 @@ export function SessionList({ ix, error, current, archived, setArchived, place }
   return html`<nav class="list" aria-label="Sessions">
     <header class="list-head">
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
+      <button class="icon-btn find" type="button" aria-label="Find a session" title="Find a session (Ctrl+K)" onClick=${onFind}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
     <div role="status">${note ? html`<p class="problem" id="moveNote">${note}</p>` : null}</div>

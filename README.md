@@ -41,9 +41,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   press, and Esc cancels. There is no screen yet to create, rename, delete or reorder groups. Edit
   `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of the list if
   it cannot.
-- **Finding a session.** Ctrl+K (or Cmd+K) opens a spotlight over the page. It lists the newest sessions
-  first and filters as you type, by title, folder, branch or routine. The arrow keys and Enter open one,
-  and Esc closes it.
+- **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
+  spotlight over the page. It lists the newest sessions first and filters as you type, by title, folder,
+  branch or routine. The arrow keys and Enter open one, and Esc closes it.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
   call.
