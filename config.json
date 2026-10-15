@@ -5,6 +5,7 @@
   "projectsDir": "~/.claude/projects",
   "stateDir": "~/.config/capcom",
   "defaultMode": "manual",
+  "desktopHandoff": false,
   "idleMinutes": 30,
   "otherDays": 30,
   "chunkBytes": 2000000,

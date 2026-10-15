@@ -148,11 +148,12 @@ async function newSession({ cwd, text, mode, model, effort, chrome, title }) {
   const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome, claude: cfg.claude, chips });
   if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
   fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: (title || text.trim()).slice(0, 120) }]));
-  afterTurn(chat, () => handOff(chat.id));
+  if (cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
 
 // ---- handing new sessions to Desktop -------------------------------------------------------------
+// Opt-in through desktopHandoff in config.json, because a hand-off adds to Desktop's sidebar and switches its window.
 // NOTE: [14 Oct 2026] EK - Desktop's own hand-off link is the only way into its sidebar, because Desktop keeps its session
 // list in memory and writes over its files. It takes the title from the transcript's custom-title entry and opens the
 // session in its window. Read from Desktop's code on 14 Oct 2026, so re-check this after a Desktop update.
@@ -393,5 +394,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(cfg.port, '127.0.0.1', () => console.log(`Capcom on http://localhost:${cfg.port}`));
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
-// Sessions started before the hand-off existed are handed over the first time Capcom starts with it.
-for (const s of readStarted()) if (!s.desktopAt) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
+// With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
+if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

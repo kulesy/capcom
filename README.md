@@ -58,11 +58,12 @@ computer use (not available to the CLI in `-p` mode) and routines.
 
 Things to know:
 
-- Sessions started here are handed to Desktop when their first reply finishes. Capcom stops its own
-  process for the session, adds a title to the transcript, and opens Desktop's hand-off link
-  (`claude://resume?session=<id>`). Desktop adds the session to its sidebar and switches its window to
-  it. Until then Capcom shows the session under "Started here". The next message sent from Capcom
-  starts its process again.
+- Sessions started here stay in Capcom, under "Started here", and do not appear in Desktop's sidebar.
+  With `desktopHandoff` set to `true` (see Configuration), Capcom hands each new session to Desktop
+  when its first reply finishes. It stops its own process for the session, adds a title to the
+  transcript, and opens Desktop's hand-off link (`claude://resume?session=<id>`). Desktop adds the
+  session to its sidebar and switches its window to it. The next message sent from Capcom starts the
+  process again.
 - Opening a session that is also open in Desktop continues the same session. If both are used at
   once, the two can drift apart.
 - Settings follow Claude Desktop. A session Desktop knows continues with the permission mode, model
@@ -94,6 +95,9 @@ optional and git-ignored, and its values replace the ones in `config.json`.
 
 - `station` is the machine name shown in the header of the session list. It defaults to the short hostname.
 - `claude` is the CLI to run. It defaults to `claude`, found on `PATH`.
+- `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see
+  "Things to know"). Turning it on also hands over, the next time Capcom starts, every session started
+  here that Desktop does not have yet.
 
 Three environment variables win over both files. `PORT` sets the port, `CAPCOM_CLAUDE` sets the CLI,
 and `CAPCOM_STATE` points a test instance at its own login and registry.
