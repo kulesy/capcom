@@ -139,8 +139,12 @@ running when a routine is due, which is what the launchd agent under "Always on"
 - **Missed runs.** If Capcom was not running at a fire time, the latest missed fire runs once as soon as
   Capcom is up, provided it is under 12 hours late. A later one is skipped and logged. However many fires
   were missed, that is at most one run.
-- **One at a time.** A fire that comes while the routine's previous run is still working, or waiting for an
-  approval, is skipped and logged, not held over until it ends.
+- **One at a time.** A fire that comes while the routine's previous run is still working is skipped and
+  logged, not held over until it ends. A previous run that is only waiting for an answer is stopped, and
+  the new run starts in its place.
+- **Three at once.** At most three routines run at the same time, as in Desktop, so fewer of them fight
+  over one Chrome. A fourth that comes due waits for a free place, and starts as soon as one frees up. A
+  run waiting for an answer does not take a place. Run now ignores the limit.
 - **Restarts.** `routines.json` records when each routine was switched on and last ran, and the next
   fire is worked out from that. A restart does not repeat a run, and a run that came due while Capcom
   was down is caught up as above. A restart can cut a run in progress short, and Capcom does not start

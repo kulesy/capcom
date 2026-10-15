@@ -49,9 +49,9 @@ Chosen option: "Capcom's own scheduler", because it needs neither Desktop nor a 
 - ❌ A routine switched on in both apps, or two Capcoms sharing one state folder, run it twice. A test instance needs its own `CAPCOM_STATE`.
 - ❌ A run is a headless CLI session in launchd's environment, whose `PATH` is shorter than a terminal's, so the first run of each routine needs watching.
 - ❌ Restarting Capcom can cut a run in progress short, and Capcom does not start it again. A plain stop of the server let the CLI finish its turn, but launchd's own restart was not tried.
-- ❌ A run that waits for an approval keeps its routine from running again until someone answers.
+- ❌ A run that waits for an approval keeps its routine from running again until someone answers. **Amended 2026-10-16:** the owner chose to have such a run stopped and replaced when its routine is next due.
 - ❌ `routines.json` is edited by hand as well as by Capcom. A file with a routine that has no id, or an id twice, stops every routine until it is fixed. An editor that saves an old copy puts back an old record, though Capcom keeps its own note of what it started, so the same fire is not run twice.
-- ❌ Desktop's own log shows three things Capcom does not copy: it holds back a fourth concurrent scheduled run (its limit was 3), it waits while the Mac is offline, and it waits 60 seconds after a wake. A routine that fires while offline starts anyway, and may fail.
+- ❌ Desktop's own log shows three things Capcom does not copy: it holds back a fourth concurrent scheduled run (its limit was 3), it waits while the Mac is offline, and it waits 60 seconds after a wake. A routine that fires while offline starts anyway, and may fail. **Amended 2026-10-16:** the owner chose to copy the limit of 3, which Capcom now applies, with a run waiting for an answer not counted. The offline wait and the wake delay are still not copied, because a caffeinate agent keeps the Mac awake.
 
 ## Pros and Cons of the Options
 

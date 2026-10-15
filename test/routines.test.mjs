@@ -33,7 +33,7 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
   store.seed({ routines: [exported(file, state, { ...(cron && { cron }), ...(jitter !== undefined && { jitterSeconds: jitter }) })] }, T0);
   if (enabled) store.update('demo', { enabled: true, armedAt: localIso(armed) });
   if (Object.keys(patch).length) store.update('demo', patch);
-  const r = { state, file, raw, store, clock: { t: T0 }, calls: [], logs: [], warns: [], working: new Set(), onStart: null };
+  const r = { state, file, raw, store, clock: { t: T0 }, calls: [], logs: [], warns: [], working: new Set(), waiting: new Set(), stops: [], onStart: null };
   r.boot = () => {
     r.sched = makeScheduler({
       store, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l),
@@ -44,6 +44,8 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
         return id;
       },
       working: id => r.working.has(id),
+      waiting: id => r.waiting.has(id),
+      stop: id => { r.stops.push(id); r.working.delete(id); r.waiting.delete(id); },
       check: routine => (routine.cwd === '/no/such/folder' ? 'The folder does not exist.' : null),
     });
     return r.sched;
@@ -736,4 +738,79 @@ test('a routine that is off keeps no place in its schedule, and one that is on k
   r.sched.setEnabled('demo', false);
   assert.deepEqual([r.demo().enabled, r.demo().armedAt], [false, null]);
   assert.equal(r.demo().lastRunAt !== null, true, 'the record of the last run stays');
+});
+
+// ---- the limit and stuck runs ----------------------------------------------------------------------
+
+// Four routines due at the same moment, Friday 07:00, all switched on the evening before.
+function crowd(limit) {
+  const state = fs.mkdtempSync(path.join(base, 'crowd-'));
+  const file = path.join(state, 'SKILL.md');
+  fs.writeFileSync(file, '---\nname: x\n---\n\nDo it.\n');
+  const store = makeRoutines(state);
+  const ids = ['a', 'b', 'c', 'd'];
+  store.seed({ routines: ids.map(id => exported(file, state, { id, title: id, cron: '0 7 * * 5', jitterSeconds: 0 })) }, T0);
+  for (const id of ids) store.update(id, { enabled: true, armedAt: localIso(T0) });
+  const c = { store, clock: { t: T0 }, started: [], running: new Set(), logs: [] };
+  c.sched = makeScheduler({
+    store, limit, now: () => c.clock.t, log: l => c.logs.push(l), warn: () => {},
+    start: async routine => { const id = `run-${routine.id}`; c.started.push(routine.id); c.running.add(id); return id; },
+    working: id => c.running.has(id),
+  });
+  c.tickAt = async t => { c.clock.t = t; await c.sched.tick(); };
+  return c;
+}
+
+test('no more than the limit start at once, and the rest wait their turn without being skipped', async () => {
+  const c = crowd(3);
+  await c.tickAt(at(2026, 10, 16, 7, 0, 5));
+  assert.deepEqual(c.started, ['a', 'b', 'c']);
+  await c.tickAt(at(2026, 10, 16, 7, 1, 0));
+  assert.deepEqual(c.started, ['a', 'b', 'c']);
+  assert.equal(c.store.read().routines.find(r => r.id === 'd').skipped, null);
+  assert.equal(c.logs.filter(l => /waiting for a free place/.test(l)).length, 1);
+  c.running.delete('run-b');
+  await c.tickAt(at(2026, 10, 16, 7, 9, 0));
+  assert.deepEqual(c.started, ['a', 'b', 'c', 'd']);
+  await c.tickAt(at(2026, 10, 16, 7, 10, 0));
+  assert.deepEqual(c.started, ['a', 'b', 'c', 'd']);
+});
+
+test('with no limit, every routine due starts on time', async () => {
+  const c = crowd(Infinity);
+  await c.tickAt(at(2026, 10, 16, 7, 0, 5));
+  assert.deepEqual(c.started, ['a', 'b', 'c', 'd']);
+});
+
+test('a run only waiting for an answer is stopped and replaced when its routine is next due', async () => {
+  const r = rig();
+  await r.tickAt(FRIDAY + 5_000);
+  assert.equal(r.calls.length, 1);
+  r.working.add('s1');
+  r.waiting.add('s1');
+  await r.tickAt(MONDAY + 5_000);
+  assert.deepEqual(r.stops, ['s1']);
+  assert.equal(r.calls.length, 2);
+  assert.ok(r.logs.some(l => /stopped s1, which was waiting for an answer/.test(l)));
+});
+
+test('a run still working is left alone and the next fire is skipped, as before', async () => {
+  const r = rig();
+  await r.tickAt(FRIDAY + 5_000);
+  r.working.add('s1');
+  await r.tickAt(MONDAY + 5_000);
+  assert.deepEqual(r.stops, []);
+  assert.equal(r.calls.length, 1);
+  assert.match(r.demo().skipped.reason, /still working/);
+});
+
+test('run now replaces a stuck run, and refuses while the run is working', async () => {
+  const r = rig();
+  await r.tickAt(FRIDAY + 5_000);
+  r.working.add('s1');
+  await assert.rejects(r.sched.runNow('demo'), /still running/);
+  r.waiting.add('s1');
+  await r.sched.runNow('demo');
+  assert.deepEqual(r.stops, ['s1']);
+  assert.equal(r.calls.length, 2);
 });

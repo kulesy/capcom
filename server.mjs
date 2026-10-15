@@ -183,6 +183,9 @@ const routines = makeScheduler({
   check: routineProblem,
   start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
+  waiting: id => getChat(id)?.state === 'waiting',
+  stop: id => { const chat = getChat(id); if (chat) { chat.interrupt(); chat.stop(); } },
+  limit: 3,
 });
 
 // ---- handing new sessions to Desktop -------------------------------------------------------------
