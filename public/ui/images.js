@@ -1,7 +1,7 @@
 // Attaching images: scaling a file down to what the API accepts, and turning it into what the server takes.
 // The server checks the same limits in lib/images.mjs.
 export const MAX_IMAGES = 10;
-const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+export const TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_EDGE = 2000;
 // The API takes 5 MB per image. 3.75 MB of image is 5 MB as base64, so it fits however the API counts.
 const MAX_BYTES = (5 * 1024 * 1024 * 3) / 4;

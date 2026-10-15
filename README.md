@@ -21,12 +21,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Closing the page leaves the work running, and a waiting approval is still there when you come back.
   "Always allow" applies the rule Claude suggests, which usually lands in the folder's
   `.claude/settings.local.json`.
-- **The prompt box** follows Desktop's. The permission mode (Manual, Accept edits, Plan, Auto, Bypass
-  permissions), the model and the effort sit under the text. A model or effort change applies from
+- **The prompt box** follows Desktop's. A + on the left of the box attaches images and the send button sits on
+  the right. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions), the model and the
+  effort sit under the box as plain text, and each opens its list when you click it. A model or effort change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
-- **Images.** Paste a screenshot anywhere on the page, or drop image files onto it, and it attaches as a
-  thumbnail above the text, with a cross to take it off again. PNG, JPEG, GIF and WebP, up to 10 to a message,
+- **Images.** Paste a screenshot anywhere on the page, drop image files onto it, or pick them with the +, and
+  each attaches as a thumbnail above the text, with a cross to take it off again. PNG, JPEG, GIF and WebP, up to 10 to a message,
   and a message may be images alone. Before it sends, the page scales anything over 2000 pixels on its long
   edge down and keeps each image under 3.75 MB, so that even as base64 it is under the 5 MB the API takes. It
   keeps PNG and falls back to JPEG only when a PNG is too big. The CLI then re-encodes any image over about

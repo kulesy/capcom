@@ -4,6 +4,7 @@ import { HOME } from './env.js';
 import { modelLabel, tilde } from './format.js';
 import { useFields, useStore } from './hooks.js';
 import { html, useLayoutEffect, useRef, useState } from './html.js';
+import { TYPES } from './images.js';
 
 const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 const MODELS = [['claude-opus-5-5', 'Opus 5.5'], ['claude-opus-5-5[1m]', 'Opus 5.5 (1M)'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']];
@@ -21,13 +22,21 @@ function Attachments({ images, preparing }) {
   </ul>`;
 }
 
+const Plus = () => html`<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M10 4.25v11.5M4.25 10h11.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const Arrow = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 16V4.5M5 9.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const Ring = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="30 11"/></svg>`;
+const Square = () => html`<svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2.5" fill="currentColor"/></svg>`;
+
 // A model or effort the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
-function Pick({ id, label, value, options, placeholder, labelOf = v => v, disabled, onChange }) {
+// The choice shows as plain text, as in Desktop, with the native picker laid invisibly over it so a tap still opens it.
+function Pick({ id, label, value, options, placeholder, labelOf = v => v, quiet, disabled, onChange }) {
   const extra = value && !options.some(([v]) => v === value) ? [[value, labelOf(value)]] : [];
-  return html`<label class="pick"><span class="sr">${label}</span>
+  const all = [...options, ...extra];
+  const shown = all.find(([v]) => v === value)?.[1] || placeholder;
+  return html`<label class=${`pick${quiet ? ' quiet' : ''}`} data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
       ${placeholder ? html`<option value="" hidden>${placeholder}</option>` : null}
-      ${[...options, ...extra].map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
+      ${all.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
     </select></label>`;
 }
 
@@ -56,6 +65,7 @@ export function Composer({ ctrl }) {
   const draft = !!ctrl.draft;
   const area = useRef(null);
   const form = useRef(null);
+  const picker = useRef(null);
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
   // Images alone are a message too.
   const ready = !!text.trim() || images.length > 0;
@@ -136,6 +146,13 @@ export function Composer({ ctrl }) {
     if (!(await ctrl.send(t, sent, s.mode))) { setText(t); attached.set({ images: sent }); }
   };
 
+  const pickFiles = e => {
+    const files = [...e.currentTarget.files];
+    e.currentTarget.value = '';
+    if (files.length) attach(files, text => ctrl.notice(text));
+    if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
+  };
+
   // Enter sends where there is a keyboard. On a touch screen it makes a new line, as does Shift+Enter anywhere.
   const onKeyDown = e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
@@ -144,17 +161,24 @@ export function Composer({ ctrl }) {
     }
   };
 
+  const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
-    ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
-    <textarea id="text" ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
+    <div class="composer-box">
+      ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
+      <div class="composer-row">
+        <button class="icon-button attach" id="attach" type="button" aria-label="Attach images" title="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
+        <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
+        <textarea id="text" ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
+        <button class="icon-button send" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} title=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
+      </div>
+    </div>
     <div class="composer-bar">
       <div class="composer-left">
         <${Pick} id="mode" label="Permission mode" value=${s.mode || 'manual'} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
       </div>
       <div class="composer-right">
         <${Pick} id="model" label="Model" value=${s.shownModel || s.model} options=${MODELS} placeholder="Model" labelOf=${modelLabel} disabled=${!status} onChange=${v => ctrl.pick('model', v)} />
-        <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
-        <button class="button send" id="send" type=${stop ? 'button' : 'submit'} data-act=${stop ? 'stop' : 'send'} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? 'Starting' : stop ? 'Stop' : 'Send'}</button>
+        <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" quiet disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
       </div>
     </div>
   </form>`;

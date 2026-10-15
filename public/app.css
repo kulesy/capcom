@@ -8,7 +8,10 @@
   --ink: oklch(0.25 0.02 250);
   --ink-quiet: oklch(0.5 0.018 250);
   --rule: oklch(0.88 0.01 245);
+  --rule-strong: oklch(0.8 0.012 245);
   --edge: oklch(0.25 0.02 250 / 0.14);
+  --field: oklch(0.995 0.003 240);
+  --lift: 0 1px 2px oklch(0.25 0.02 250 / 0.05), 0 6px 18px -6px oklch(0.25 0.02 250 / 0.14);
   --focus: oklch(0.55 0.14 250);
   --you: oklch(0.92 0.025 245);
   --code-bg: oklch(0.93 0.008 240);
@@ -36,7 +39,10 @@
     --ink: oklch(0.94 0.008 240);
     --ink-quiet: oklch(0.72 0.014 240);
     --rule: oklch(0.3 0.016 245);
+    --rule-strong: oklch(0.4 0.018 245);
     --edge: oklch(0.94 0.008 240 / 0.08);
+    --field: oklch(0.255 0.017 245);
+    --lift: 0 1px 2px oklch(0.1 0.02 250 / 0.35), 0 8px 20px -8px oklch(0.1 0.02 250 / 0.55);
     --focus: oklch(0.74 0.13 250);
     --you: oklch(0.29 0.03 250);
     --code-bg: oklch(0.17 0.012 245);
@@ -623,9 +629,18 @@ body.dragging, body.dragging * {
 }
 
 .dock {
-  border-top: 1px solid var(--rule);
+  position: relative;
   background: var(--console);
-  padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom));
+  padding: 0.5rem 1rem calc(0.4rem + env(safe-area-inset-bottom));
+}
+
+.dock::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 100%;
+  height: 1rem;
+  background: linear-gradient(to top, var(--console), transparent);
+  pointer-events: none;
 }
 
 .dock > * { max-width: 46rem; margin-inline: auto; }
@@ -672,15 +687,17 @@ body.dragging, body.dragging * {
 
 .notice:empty { display: none; }
 
-.composer {
+.composer-box {
   border: 1px solid var(--rule);
-  border-radius: 0.9rem;
-  background: var(--console);
+  border-radius: 1rem;
+  background: var(--field);
+  box-shadow: var(--lift);
+  transition: border-color 150ms ease-out;
 }
 
-.composer:focus-within { border-color: var(--focus); }
+.composer-box:focus-within { border-color: var(--rule-strong); }
 
-.composer[data-over] {
+.composer[data-over] .composer-box {
   border-color: var(--focus);
   background: var(--selected);
   box-shadow: inset 0 0 0 2px var(--focus);
@@ -721,13 +738,19 @@ body.dragging, body.dragging * {
 
 .thumb-remove:focus-visible { outline-offset: 0; }
 
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0.4rem;
+}
+
 .composer textarea {
+  flex: 1 1 auto;
+  min-width: 0;
   display: block;
-  width: 100%;
   border: 0;
-  border-radius: 0.9rem 0.9rem 0 0;
   background: none;
-  padding: 0.7rem 0.85rem 0.3rem;
+  padding: 0.9rem 0.4rem;
   resize: none;
   max-height: 40vh;
   line-height: 1.4;
@@ -736,61 +759,79 @@ body.dragging, body.dragging * {
 
 .composer textarea:focus-visible { outline: 0; }
 
+.icon-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-block: 0.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.icon-button.attach:hover { background: var(--hover); }
+
+.icon-button.send { background: var(--ink); color: var(--field); }
+
+.icon-button.send:disabled { opacity: 0.2; cursor: default; }
+
+.icon-button.send[data-act="stop"] { background: var(--bad); color: oklch(0.99 0.005 27); }
+
+.icon-button.send[data-act="starting"] { opacity: 1; }
+
+.icon-button.send[data-act="starting"] svg { animation: spin 900ms linear infinite; }
+
+@keyframes spin { to { transform: rotate(1turn); } }
+
 .composer-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.4rem 0.5rem;
-  padding: 0.3rem 0.5rem 0.5rem;
+  gap: 0.25rem 0.5rem;
+  padding: 0.3rem 0.2rem 0;
 }
 
-.composer-left, .composer-right { display: flex; align-items: center; gap: 0.4rem; }
+.composer-left, .composer-right { display: flex; align-items: center; gap: 0.1rem; }
 
 .composer-right { margin-left: auto; }
 
-.composer .button { min-height: 2.25rem; min-width: 4.25rem; }
-
-.button.send[data-act="stop"] { background: var(--bad); border-color: var(--bad); }
-
-.pick { position: relative; display: inline-flex; align-items: center; }
-
-/* The native arrow is hidden and drawn here instead, so it follows the text colour in both themes. */
-.pick::after {
-  content: "";
-  position: absolute;
-  right: 0.6rem;
-  top: 50%;
-  width: 0.36rem;
-  height: 0.36rem;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-70%) rotate(45deg);
-  color: var(--ink-quiet);
-  pointer-events: none;
+.pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0 0.55rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--ink);
+  white-space: nowrap;
+  transition: background-color 150ms ease-out;
 }
 
+.pick.quiet { color: var(--ink-quiet); }
+
+.pick:hover:not([data-disabled]) { background: var(--hover); }
+
+.pick:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.pick[data-disabled] { opacity: 0.5; }
+
 .pick select {
-  appearance: none;
-  -webkit-appearance: none;
-  min-height: 2rem;
-  max-width: 100%;
-  border: 0;
-  border-radius: 0.5rem;
-  background: none;
-  padding: 0 1.45rem 0 0.6rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink-quiet);
-  text-overflow: ellipsis;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
   cursor: pointer;
 }
 
-.pick select:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
-
-.pick select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-
-.pick select:disabled { opacity: 0.5; cursor: default; }
+.pick select:disabled { cursor: default; }
 
 .folderbar { display: grid; gap: 0.4rem; margin-bottom: 0.65rem; }
 
@@ -832,6 +873,8 @@ body.dragging, body.dragging * {
   .pick select { font-size: 1rem; }
 
   .thumb-remove { width: 1.75rem; height: 1.75rem; }
+
+  .icon-button { width: 2.5rem; height: 2.5rem; margin-block: 0.35rem; }
 }
 
 .spotlight-backdrop {
@@ -968,6 +1011,8 @@ kbd + kbd { margin-left: 0.2rem; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+
+  .icon-button.send[data-act="starting"] svg { animation: none; }
 }
 
 .approval details { margin-top: 0.5rem; font-size: 0.8125rem; color: var(--ink-quiet); }
