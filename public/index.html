@@ -11,107 +11,33 @@
 <meta name="theme-color" content="#eaeff3" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f151a" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="app.css">
+<script type="importmap">{ "imports": { "preact": "./vendor/preact.mjs", "preact/hooks": "./vendor/hooks.mjs", "htm": "./vendor/htm.mjs" } }</script>
+<link rel="modulepreload" href="vendor/preact.mjs">
+<link rel="modulepreload" href="vendor/hooks.mjs">
+<link rel="modulepreload" href="vendor/htm.mjs">
+<link rel="modulepreload" href="md.mjs">
+<link rel="modulepreload" href="app.js">
+<link rel="modulepreload" href="ui/html.js">
+<link rel="modulepreload" href="ui/env.js">
+<link rel="modulepreload" href="ui/api.js">
+<link rel="modulepreload" href="ui/format.js">
+<link rel="modulepreload" href="ui/storage.js">
+<link rel="modulepreload" href="ui/store.js">
+<link rel="modulepreload" href="ui/hooks.js">
+<link rel="modulepreload" href="ui/thread.js">
+<link rel="modulepreload" href="ui/session.js">
+<link rel="modulepreload" href="ui/widget.js">
+<link rel="modulepreload" href="ui/rows.js">
+<link rel="modulepreload" href="ui/transcript.js">
+<link rel="modulepreload" href="ui/approvals.js">
+<link rel="modulepreload" href="ui/composer.js">
+<link rel="modulepreload" href="ui/chat.js">
+<link rel="modulepreload" href="ui/sessions-list.js">
 </head>
 <body>
-<div class="app" id="app" data-view="list" data-home="{{home}}">
-  <nav class="list" aria-label="Sessions">
-    <header class="list-head">
-      <div class="brand"><span class="station">{{station}}</span><h1>Capcom</h1></div>
-      <a class="button new" href="#/new">+ New session</a>
-    </header>
-    <div class="search"><input id="q" type="search" placeholder="Search sessions" autocomplete="off" aria-label="Search sessions"></div>
-    <p class="problem" id="problem" hidden></p>
-    <div class="sections" id="sections"><p class="quiet pad">Loading sessions</p></div>
-    <footer class="list-foot">
-      <label><input id="archived" type="checkbox"> Show archived</label>
-      <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
-    </footer>
-  </nav>
-
-  <main class="chat" id="chat">
-    <section class="empty" id="empty">
-      <p>Pick a session, or start a new one.</p>
-    </section>
-
-    <section class="session" id="session" hidden>
-      <header class="chat-head">
-        <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
-        <div class="chat-title">
-          <h2 id="title"></h2>
-          <p class="chat-meta" id="meta"></p>
-        </div>
-        <span class="lamp" id="chatLamp" aria-hidden="true"></span>
-        <div class="seg" id="view" role="group" aria-label="Tool calls">
-          <button type="button" data-tools="normal" aria-pressed="true">Normal</button>
-          <button type="button" data-tools="verbose" aria-pressed="false">Verbose</button>
-        </div>
-      </header>
-      <div class="transcript" id="transcript">
-        <p class="quiet pad" id="newHint" hidden>Pick a folder, then say what Claude should do. The session starts there.</p>
-        <button class="button earlier" id="earlier" type="button" hidden>Load earlier</button>
-        <ol class="items" id="items"></ol>
-        <div class="msg claude live" id="live" hidden></div>
-        <p class="working" id="working" hidden><span class="lamp" data-state="working"></span><span id="workingText">Working</span></p>
-      </div>
-      <div class="dock">
-        <div class="approvals" id="approvals"></div>
-        <p class="notice" id="notice" hidden></p>
-        <div class="folderbar" id="folderBar" hidden>
-          <label class="folder-field">Folder <input id="folder" type="text" autocomplete="off" spellcheck="false"></label>
-          <details class="recent"><summary>Recent folders</summary><div class="folders" id="folders"></div></details>
-        </div>
-        <form class="composer" id="composer">
-          <textarea id="text" rows="1" placeholder="Reply" aria-label="Message"></textarea>
-          <div class="composer-bar">
-            <div class="composer-left">
-              <div class="plus">
-                <button class="plus-btn" id="plus" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="plusMenu" aria-label="More options">+</button>
-                <div class="menu" id="plusMenu" role="menu" hidden>
-                  <button class="menu-item" id="chrome" type="button" role="menuitemcheckbox" aria-checked="false">
-                    <strong>Claude in Chrome</strong><span id="chromeHint">Asks before each action, except in Bypass</span>
-                  </button>
-                </div>
-              </div>
-              <button class="tag" id="chromeTag" type="button" aria-label="Claude in Chrome is on. Turn it off." hidden>Chrome</button>
-              <label class="pick"><span class="sr">Permission mode</span>
-                <select id="mode">
-                  <option value="manual">Manual</option>
-                  <option value="acceptEdits">Accept edits</option>
-                  <option value="plan">Plan</option>
-                  <option value="auto">Auto</option>
-                  <option value="bypassPermissions">Bypass permissions</option>
-                </select>
-              </label>
-            </div>
-            <div class="composer-right">
-              <label class="pick"><span class="sr">Model</span>
-                <select id="model">
-                  <option value="" hidden>Model</option>
-                  <option value="claude-opus-5-5">Opus 5.5</option>
-                  <option value="claude-opus-5-5[1m]">Opus 5.5 (1M)</option>
-                  <option value="claude-fable-5-1">Fable 5.1</option>
-                  <option value="claude-sonnet-5-5">Sonnet 5.5</option>
-                  <option value="claude-haiku-5-5">Haiku 5.5</option>
-                </select>
-              </label>
-              <label class="pick"><span class="sr">Effort</span>
-                <select id="effort">
-                  <option value="" hidden>Effort</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="xhigh">Extra high</option>
-                  <option value="max">Max</option>
-                </select>
-              </label>
-              <button class="button send" id="send" type="submit" data-act="send" disabled>Send</button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </section>
-  </main>
-</div>
+<p id="unsupported" class="quiet pad" hidden>Capcom needs a newer browser: Safari 16.4, Chrome 89 or Firefox 108 or later.</p>
+<script>if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) document.getElementById('unsupported').hidden = false</script>
+<div id="root" data-home="{{home}}" data-station="{{station}}"></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

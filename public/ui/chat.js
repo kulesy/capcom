@@ -1,0 +1,56 @@
+// The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
+import { Approvals } from './approvals.js';
+import { Composer, FolderBar } from './composer.js';
+import { HOME } from './env.js';
+import { folderName, settingsLine } from './format.js';
+import { useDocumentTitle, useFields, useStore } from './hooks.js';
+import { html, useLayoutEffect, useRef } from './html.js';
+import { createChat } from './session.js';
+import { Transcript } from './transcript.js';
+
+function ChatHead({ ctrl, verbose, setVerbose }) {
+  const { session, status } = useFields(ctrl.store, 'session', 'status');
+  const draft = !!ctrl.draft;
+  useDocumentTitle(draft ? 'New session · Capcom' : session?.title ? `${session.title} · Capcom` : 'Capcom');
+  const meta = draft
+    ? 'Starts Claude Code in the folder you pick'
+    : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : '', settingsLine(status)].filter(Boolean).join('  ') : '';
+  return html`<header class="chat-head">
+    <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
+    <div class="chat-title">
+      <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
+      <p class="chat-meta" id="meta">${meta}</p>
+    </div>
+    <span class="lamp" id="chatLamp" data-state=${status?.state || 'idle'} aria-hidden="true"></span>
+    <div class="seg" id="view" role="group" aria-label="Tool calls" hidden=${draft}>
+      <button type="button" data-tools="normal" aria-pressed=${!verbose} onClick=${() => setVerbose(false)}>Normal</button>
+      <button type="button" data-tools="verbose" aria-pressed=${verbose} onClick=${() => setVerbose(true)}>Verbose</button>
+    </div>
+  </header>`;
+}
+
+function Notice({ ctrl }) {
+  const text = useStore(ctrl.store, s => s.notice);
+  return html`<p class="notice" id="notice" hidden=${!text}>${text}</p>`;
+}
+
+// `row` is the list's entry for the session, which names it until the transcript answers.
+export function ChatPane({ id, row, verbose, setVerbose, text, setText, refreshIndex }) {
+  const held = useRef(null);
+  if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
+  const ctrl = held.current;
+  useLayoutEffect(() => {
+    ctrl.open();
+    return ctrl.close;
+  }, [ctrl]);
+  return html`<section class="session" id="session">
+    <${ChatHead} ctrl=${ctrl} verbose=${verbose} setVerbose=${setVerbose} />
+    <${Transcript} ctrl=${ctrl} verbose=${verbose} />
+    <div class="dock">
+      <${Approvals} ctrl=${ctrl} />
+      <${Notice} ctrl=${ctrl} />
+      ${ctrl.draft ? html`<${FolderBar} ctrl=${ctrl} />` : null}
+      <${Composer} ctrl=${ctrl} text=${text} setText=${setText} />
+    </div>
+  </section>`;
+}
