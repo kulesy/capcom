@@ -32,6 +32,7 @@ Chosen option: "Match Desktop", because Capcom can give the owner the same Bypas
 - Each chat starts with Chrome on. The `+` menu or the Chrome tag switches it off for one session, and Capcom saves the choice in `picks.json`.
 - Capcom injects the ask rule into each process, so Chrome asks before each action, even ones a user's settings allow.
 - In Bypass, Capcom answers Chrome's asks with allow, so no card shows. In Auto and the asking modes, a card shows. Capcom cannot run Auto's own safety check. Chrome cards have no Always allow.
+- **Amended 2026-10-15.** The owner had the per-chat switch removed the same day. Chrome is always on, and the `chrome` setting in `config.json` turns it off for all of Capcom. Capcom ignores the per-session choices already saved in `picks.json`.
 - Each process launches with `--allow-dangerously-skip-permissions`, so a chat can switch into Bypass mid-session. `setMode` waits for the CLI's reply and keeps the old mode if the CLI refuses the switch.
 
 ### Consequences

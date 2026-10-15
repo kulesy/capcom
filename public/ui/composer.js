@@ -41,11 +41,9 @@ export function Composer({ ctrl }) {
   const [text, setLocal] = useState(draftText);
   const setText = value => { setDraftText(value); setLocal(value); };
   const draft = !!ctrl.draft;
-  const [menu, setMenu] = useState(false);
   const area = useRef(null);
   const form = useRef(null);
-  const s = status || { state: 'idle', pending: [], mode: 'manual', chrome: true };
-  const busy = isBusy(s);
+  const s = status || { state: 'idle', pending: [], mode: 'manual' };
   const typed = !!text.trim();
   // While Claude works and the box is empty, the Send button is the Stop button. Typing turns it back into Send.
   const stop = isBusy(status) && !draft && !typed;
@@ -72,22 +70,16 @@ export function Composer({ ctrl }) {
   }, []);
 
   const now = useRef({});
-  now.current = { menu, busy: isBusy(status), draft, ctrl };
+  now.current = { busy: isBusy(status), draft, ctrl };
   // A layout effect, so Esc cannot reach a chat that has just closed.
   useLayoutEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape' || e.isComposing) return;
       const c = now.current;
-      if (c.menu) setMenu(false);
-      else if (!c.draft && c.busy) c.ctrl.stop();
+      if (!c.draft && c.busy) c.ctrl.stop();
     };
-    const onClick = e => { if (!e.target.closest('.plus')) setMenu(false); };
     document.addEventListener('keydown', onKey);
-    document.addEventListener('click', onClick);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('click', onClick);
-    };
+    return () => document.removeEventListener('keydown', onKey);
   }, []);
 
   const submit = async e => {
@@ -107,21 +99,10 @@ export function Composer({ ctrl }) {
     }
   };
 
-  const toggleChrome = on => { setMenu(false); ctrl.setChrome(on); };
-
   return html`<form class="composer" id="composer" ref=${form} onSubmit=${submit}>
     <textarea id="text" ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
     <div class="composer-bar">
       <div class="composer-left">
-        <div class="plus">
-          <button class="plus-btn" id="plus" type="button" aria-haspopup="menu" aria-expanded=${menu} aria-controls="plusMenu" aria-label="More options" onClick=${() => setMenu(!menu)}>+</button>
-          <div class="menu" id="plusMenu" role="menu" hidden=${!menu}>
-            <button class="menu-item" id="chrome" type="button" role="menuitemcheckbox" aria-checked=${!!s.chrome} disabled=${!status || (busy && !draft)} onClick=${() => toggleChrome(!s.chrome)}>
-              <strong>Claude in Chrome</strong><span id="chromeHint">${busy && !draft ? 'Wait for Claude to finish this turn' : 'Asks before each action, except in Bypass'}</span>
-            </button>
-          </div>
-        </div>
-        <button class="tag" id="chromeTag" type="button" aria-label="Claude in Chrome is on. Turn it off." hidden=${!s.chrome} onClick=${() => toggleChrome(false)}>Chrome</button>
         <${Pick} id="mode" label="Permission mode" value=${s.mode || 'manual'} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
       </div>
       <div class="composer-right">

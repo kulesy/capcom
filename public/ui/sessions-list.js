@@ -28,36 +28,24 @@ function Routine({ g, current, open, onOpen }) {
       : html`<li class="more"><button class="link" type="button" data-routine=${g.name} onClick=${() => onOpen(g.name)}>${earlier} earlier run${earlier > 1 ? 's' : ''}</button></li>` : null}`;
 }
 
-const everyRow = ix => [...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...ix.started, ...ix.ungrouped, ...ix.other];
+export const everyRow = ix => [...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...ix.started, ...ix.ungrouped, ...ix.other];
 
 export const findRow = (ix, id) => (ix ? everyRow(ix).find(r => r.id === id) || null : null);
 
-function matches(r, query) {
-  return `${r.title} ${r.cwd} ${r.branch} ${r.routine || ''}`.toLowerCase().includes(query.toLowerCase());
-}
-
-function Sections({ ix, query, current, collapsed, toggle, openRoutines, openRoutine }) {
-  if (query) {
-    const seen = new Set();
-    const hits = everyRow(ix).filter(r => !seen.has(r.id) && seen.add(r.id) && matches(r, query));
-    return hits.length
-      ? html`<section class="group"><ul class="rows">${hits.slice(0, 80).map(r => html`<${Row} key=${r.id} r=${r} current=${current} />`)}</ul></section>`
-      : html`<p class="quiet pad">No sessions match.</p>`;
-  }
+function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine }) {
   const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} />`);
   const parts = [];
   const add = (id, name, list, body) => { if (list.length) parts.push(html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle}>${body}<//>`); };
+  add('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} open=${openRoutines.has(g.name)} onOpen=${openRoutine} /><//>`));
   add('pinned', 'Pinned', ix.pinned, rows(ix.pinned));
   for (const g of ix.groups) add(g.id, g.name, g.sessions, rows(g.sessions));
-  add('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} open=${openRoutines.has(g.name)} onOpen=${openRoutine} /><//>`));
   add('started', 'Started here', ix.started, rows(ix.started));
   add('ungrouped', 'Ungrouped', ix.ungrouped, rows(ix.ungrouped));
   add('other', 'Terminal and other', ix.other, rows(ix.other));
   return parts.length ? parts : html`<p class="quiet pad">No sessions found.</p>`;
 }
 
-export function SessionList({ ix, error, current, archived, setArchived }) {
-  const [query, setQuery] = useState('');
+export function SessionList({ ix, error, current, archived, setArchived, onFind }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
@@ -65,13 +53,15 @@ export function SessionList({ ix, error, current, archived, setArchived }) {
   return html`<nav class="list" aria-label="Sessions">
     <header class="list-head">
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
-      <a class="button new" href="#/new">+ New session</a>
+      <div class="list-actions">
+        <button class="button find" type="button" aria-label="Find a session" onClick=${onFind}>Find</button>
+        <a class="button new" href="#/new">+ New session</a>
+      </div>
     </header>
-    <div class="search"><input id="q" type="search" placeholder="Search sessions" autocomplete="off" aria-label="Search sessions" value=${query} onInput=${e => setQuery(e.target.value)} /></div>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}. Sessions are listed without Desktop's groups.` : ''}</p>
     <div class="sections" id="sections">
       ${ix
-        ? html`<${Sections} ix=${ix} query=${query.trim()} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} openRoutine=${openRoutine} />`
+        ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} openRoutine=${openRoutine} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">

@@ -6,6 +6,7 @@
   "stateDir": "~/.config/capcom",
   "defaultMode": "manual",
   "desktopHandoff": false,
+  "chrome": true,
   "idleMinutes": 30,
   "otherDays": 30,
   "chunkBytes": 2000000,

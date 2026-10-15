@@ -21,7 +21,7 @@ const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL = /^[a-z][\w.-]*(\[1m\])?$/i;
 const startedFile = path.join(cfg.stateDir, 'started.json');
 const readStarted = () => { try { return JSON.parse(fs.readFileSync(startedFile, 'utf8')); } catch { return []; } };
-// The model, effort and Chrome choice made in Capcom for each session, kept here because Desktop's own records are read only.
+// The model and effort picked in Capcom for each session, kept here because Desktop's own records are read only.
 const picksFile = path.join(cfg.stateDir, 'picks.json');
 const readPicks = () => { try { return JSON.parse(fs.readFileSync(picksFile, 'utf8')); } catch { return {}; } };
 const savePick = (id, pick) => {
@@ -62,14 +62,10 @@ function buildIndex({ archived = false } = {}) {
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   const byRecent = (a, b) => b.lastActivityAt - a.lastActivityAt;
   const localIndex = new Map(visible.filter(r => r.localId).map(r => [r.localId, r]));
-  const pinned = desk.pinned.map(l => localIndex.get(l)).filter(Boolean);
+  // Every section lists its newest session first, so Desktop's own hand-made order within a group is not used.
+  const pinned = desk.pinned.map(l => localIndex.get(l)).filter(Boolean).sort(byRecent);
   const pinnedIds = new Set(pinned.map(r => r.id));
-  const groups = desk.groups.map(g => {
-    const ordered = (desk.order[g.id] || []).map(l => localIndex.get(l)).filter(r => r && r.group === g.id && !pinnedIds.has(r.id));
-    const placed = new Set(ordered.map(r => r.id));
-    const rest = visible.filter(r => r.group === g.id && !placed.has(r.id) && !pinnedIds.has(r.id)).sort(byRecent);
-    return { id: g.id, name: g.name, sessions: [...ordered, ...rest] };
-  });
+  const groups = desk.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !pinnedIds.has(r.id)).sort(byRecent) }));
   const routines = new Map();
   for (const r of visible.filter(r => r.routine && !r.group && !pinnedIds.has(r.id)).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
@@ -135,16 +131,16 @@ function desktopSettings(row) {
   return { mode, model: row?.model || null, shownModel: row?.model || user.model || null, effort: row?.effort || desk.effort || null };
 }
 
-// What Desktop would use, with whatever model, effort and Chrome choice was made here laid over it. Chrome is on unless switched off.
+// What Desktop would use, with whatever model and effort was picked here laid over it.
 function settingsFor(id, row) {
-  const { model, effort, chrome } = readPicks()[id] || {};
-  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: chrome !== false };
+  const { model, effort } = readPicks()[id] || {};
+  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, mode, model, effort, chrome, title }) {
+async function newSession({ cwd, text, mode, model, effort, title }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome: chrome !== false, claude: cfg.claude, chips });
-  if (model || effort || chrome !== undefined) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chrome !== undefined && { chrome }) });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome: cfg.chrome, claude: cfg.claude, chips });
+  if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
   fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: (title || text.trim()).slice(0, 120) }]));
   if (cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
@@ -282,14 +278,13 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, chrome } = JSON.parse(await readBody(req) || '{}');
+    const { cwd, text, mode, model, effort } = JSON.parse(await readBody(req) || '{}');
     if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
     if (!text?.trim()) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
-    if (chrome !== undefined && typeof chrome !== 'boolean') return send(res, 400, { error: 'Chrome is on or off.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text, mode: chosen, model, effort, chrome });
+    const id = await newSession({ cwd, text, mode: chosen, model, effort });
     return send(res, 200, { id });
   }
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
@@ -350,15 +345,6 @@ async function api(req, res, u) {
       return send(res, 400, { error: e.message });
     }
     savePick(id, { [action]: value });
-    return send(res, 200, target.status());
-  }
-  if (action === 'chrome') {
-    const row = findRow(id);
-    if (!chat && !row) return send(res, 404, { error: 'No session with that id on this Mac.' });
-    const target = chat || ensureChat(id, row, { mode: body.mode });
-    if (target.state !== 'idle') return send(res, 409, { error: 'Wait for Claude to finish this turn first.' });
-    target.setChrome(!!body.on);
-    savePick(id, { chrome: !!body.on });
     return send(res, 200, target.status());
   }
   if (!chat) return send(res, 409, { error: 'That session is not running here.' });

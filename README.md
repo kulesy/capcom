@@ -21,18 +21,23 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   "Always allow" applies the rule Claude suggests, which usually lands in the folder's
   `.claude/settings.local.json`.
 - **The prompt box** follows Desktop's. The permission mode (Manual, Accept edits, Plan, Auto, Bypass
-  permissions), the model and the effort sit under the text, and the `+` menu holds the Claude in Chrome
-  switch. A model or effort change applies from Claude's next request, even mid-turn, and is remembered
+  permissions), the model and the effort sit under the text. A model or effort change applies from
+  Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
-- **New sessions** start from "+ New session": an empty chat with a folder picker above the prompt box
-  (the home folder, or a recent one). The first message starts the session in that folder.
+- **New sessions** start with Ctrl+N, or "+ New session" on a touch screen: an empty chat with a folder
+  picker above the prompt box (the home folder, or a recent one). The first message starts the session in
+  that folder.
+- **The list** shows routines first, then pinned sessions and Desktop's groups. Every section lists its
+  newest session first.
+- **Finding a session.** Ctrl+K (or Cmd+K) opens a spotlight over the page. It lists the newest sessions
+  first and filters as you type, by title, folder, branch or routine. The arrow keys and Enter open one,
+  and Esc closes it. On a touch screen, the Find button opens it.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
-  call. The Normal and Verbose switch in the chat header shows the rows ungrouped, and is remembered in
-  the browser.
+  call.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
   running somewhere else, in Desktop or a terminal, update as their file grows.
 
@@ -50,9 +55,8 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that blocks network requests, so model-written HTML cannot reach Capcom or its cookie.
 - **Questions** (`AskUserQuestion`) show as option buttons, plus a box for your own answer.
-- **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. Switch it
-  off for one session from the `+` menu in the prompt box, or from the Chrome tag beside it. Capcom
-  remembers the choice for that session in `picks.json`, next to the model and effort. It starts the CLI
+- **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. The
+  `chrome` setting turns it off for all of Capcom (see Configuration). Capcom starts the CLI
   with `--chrome` and an ask rule for every Chrome tool, so Chrome asks before each action, even ones
   your settings already allow, and the question shows as an approval card. Bypass permissions is the
   exception: Capcom allows Chrome there without a card, as Desktop does, and a switch to a stricter mode
@@ -116,6 +120,7 @@ optional and git-ignored, and its values replace the ones in `config.json`.
 
 - `station` is the machine name shown in the header of the session list. It defaults to the short hostname.
 - `claude` is the CLI to run. It defaults to `claude`, found on `PATH`.
+- `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome.
 - `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see
   "Things to know"). Turning it on also hands over, the next time Capcom starts, every session started
   here that Desktop does not have yet.

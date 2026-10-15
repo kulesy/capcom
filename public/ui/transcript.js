@@ -13,13 +13,13 @@ function Live({ ctrl, box }) {
     <p class="working" id="working" hidden=${!(state === 'working' && !live)}><span class="lamp" data-state="working"></span><span id="workingText">Working</span></p>`;
 }
 
-export function Transcript({ ctrl, verbose }) {
+export function Transcript({ ctrl }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
   const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session } = useFields(
     ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session',
   );
-  const rows = useMemo(() => display(items, verbose), [items, verbose]);
+  const rows = useMemo(() => display(items), [items]);
   useStick(box);
   // Opening a session and sending a message both end at the bottom; loading earlier keeps what you were looking at.
   useLayoutEffect(() => { if (loaded || jump) box.current.scrollTop = box.current.scrollHeight; }, [loaded, jump]);

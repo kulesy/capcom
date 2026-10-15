@@ -132,8 +132,7 @@ export function groupable(i) {
   return !(/__show_widget$/.test(i.name) && i.input?.widget_code);
 }
 
-export function display(items, verbose) {
-  if (verbose) return items;
+export function display(items) {
   const out = [];
   for (const i of items) {
     const last = out[out.length - 1];

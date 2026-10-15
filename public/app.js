@@ -3,6 +3,7 @@ import { ChatPane } from './ui/chat.js';
 import { useLocal } from './ui/hooks.js';
 import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { findRow, SessionList } from './ui/sessions-list.js';
+import { Spotlight } from './ui/spotlight.js';
 
 // #/ is the list, #/s/<id> a session and #/new an empty chat for a session not started yet.
 function parseRoute(hash) {
@@ -15,10 +16,10 @@ function parseRoute(hash) {
 function App() {
   const [hash, setHash] = useState(location.hash);
   const [archived, setArchived] = useLocal('archived', false);
-  const [verbose, setVerbose] = useLocal('verbose', false);
   const [ix, setIx] = useState(null);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
+  const [finding, setFinding] = useState(false);
   const now = useRef({});
   now.current = { archived, ix };
   const latest = useRef(0);
@@ -50,19 +51,32 @@ function App() {
     };
   }, []);
 
+  // Ctrl+N starts a session and Ctrl+K finds one. Browsers keep Cmd+N for a new window, so N has no Cmd form.
+  useEffect(() => {
+    const onKey = e => {
+      if (e.altKey || e.shiftKey || e.isComposing) return;
+      const key = e.key.toLowerCase();
+      if (key === 'n' && e.ctrlKey && !e.metaKey) { e.preventDefault(); setFinding(false); location.hash = '#/new'; }
+      else if (key === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setFinding(open => !open); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   const route = useMemo(() => parseRoute(hash), [hash]);
   const view = ready && route.name !== 'list' ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} />
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} onFind=${() => setFinding(true)} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
-        <p>Pick a session, or start a new one.</p>
+        <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>
       </section>
-      ${view === 'chat' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} verbose=${verbose} setVerbose=${setVerbose} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
     </main>
+    ${finding ? html`<${Spotlight} ix=${ix} onClose=${() => setFinding(false)} />` : null}
   </div>`;
 }
 

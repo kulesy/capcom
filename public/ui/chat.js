@@ -8,7 +8,7 @@ import { html, memo, useLayoutEffect, useRef } from './html.js';
 import { createChat } from './session.js';
 import { Transcript } from './transcript.js';
 
-function ChatHead({ ctrl, verbose, setVerbose }) {
+function ChatHead({ ctrl }) {
   const { session, status } = useFields(ctrl.store, 'session', 'status');
   const draft = !!ctrl.draft;
   useDocumentTitle(draft ? 'New session · Capcom' : session?.title ? `${session.title} · Capcom` : 'Capcom');
@@ -22,10 +22,6 @@ function ChatHead({ ctrl, verbose, setVerbose }) {
       <p class="chat-meta" id="meta">${meta}</p>
     </div>
     <span class="lamp" id="chatLamp" data-state=${status?.state || 'idle'} aria-hidden="true"></span>
-    <div class="seg" id="view" role="group" aria-label="Tool calls" hidden=${draft}>
-      <button type="button" data-tools="normal" aria-pressed=${!verbose} onClick=${() => setVerbose(false)}>Normal</button>
-      <button type="button" data-tools="verbose" aria-pressed=${verbose} onClick=${() => setVerbose(true)}>Verbose</button>
-    </div>
   </header>`;
 }
 
@@ -36,7 +32,7 @@ function Notice({ ctrl }) {
 
 // `row` is the list's entry for the session, which names it until the transcript answers. It is read once, so a
 // fresh copy of the list never redraws the chat.
-export const ChatPane = memo(function ChatPane({ id, row, verbose, setVerbose, refreshIndex }) {
+export const ChatPane = memo(function ChatPane({ id, row, refreshIndex }) {
   const held = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
   const ctrl = held.current;
@@ -45,8 +41,8 @@ export const ChatPane = memo(function ChatPane({ id, row, verbose, setVerbose, r
     return ctrl.close;
   }, [ctrl]);
   return html`<section class="session" id="session">
-    <${ChatHead} ctrl=${ctrl} verbose=${verbose} setVerbose=${setVerbose} />
-    <${Transcript} ctrl=${ctrl} verbose=${verbose} />
+    <${ChatHead} ctrl=${ctrl} />
+    <${Transcript} ctrl=${ctrl} />
     <div class="dock">
       <${Approvals} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
@@ -54,4 +50,4 @@ export const ChatPane = memo(function ChatPane({ id, row, verbose, setVerbose, r
       <${Composer} ctrl=${ctrl} />
     </div>
   </section>`;
-}, (a, b) => a.id === b.id && a.verbose === b.verbose && a.setVerbose === b.setVerbose && a.refreshIndex === b.refreshIndex);
+}, (a, b) => a.id === b.id && a.refreshIndex === b.refreshIndex);

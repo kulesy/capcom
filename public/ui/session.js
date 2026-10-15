@@ -17,7 +17,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const touched = draft ? new Set() : null;
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
-    status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, chrome: true } : null,
+    status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
     live: '', sending: first ? [first.text] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
@@ -88,7 +88,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('mode', d => patchStatus({ mode: d.mode }));
     on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
     on('effort', d => patchStatus({ effort: d.effort }));
-    on('chrome', d => patchStatus({ chrome: d.chrome }));
     on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
     on('error', d => notice(d.message));
     on('exit', () => patchStatus({ running: false, state: 'idle', pending: [] }));
@@ -226,16 +225,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
-  async function setChrome(on) {
-    if (draft) return setDraft({ chrome: on });
-    try {
-      const status = await api(`api/sessions/${enc(id)}/chrome`, { on, mode: state().status?.mode });
-      if (!closed) store.set({ status });
-    } catch (err) {
-      notice(err.message);
-    }
-  }
-
   // ---- starting a session ------------------------------------------------------------------------------
 
   const setFolder = folder => store.set({ folder });
@@ -257,7 +246,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const { id: created } = await api('api/new', {
         cwd: state().folder.trim(), text, mode: s.mode,
-        ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('chrome') && { chrome: !!s.chrome }),
+        ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }),
       });
       onCreated();
       startedHere = { id: created, text };
@@ -272,6 +261,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   return {
     id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier,
-    send, stop, decide, chip, setMode, pick, setChrome, setFolder, loadDefaults, startNew, notice,
+    send, stop, decide, chip, setMode, pick, setFolder, loadDefaults, startNew, notice,
   };
 }
