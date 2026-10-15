@@ -250,6 +250,8 @@ a { color: var(--focus); }
 
 .row[aria-current="page"], .row[aria-selected="true"] { background: var(--selected); }
 
+.row:focus-visible, .group-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 0.5rem; }
+
 .row .lamp { grid-area: lamp; }
 
 .row-title {
@@ -794,17 +796,75 @@ body.dragging, body.dragging * {
   box-shadow: 0 1rem 3rem var(--edge);
 }
 
+.spotlight-top { display: flex; align-items: center; gap: 0.25rem; padding-right: 0.5rem; }
+
 .spotlight-input {
+  flex: 1;
+  min-width: 0;
   border: 0;
-  border-bottom: 1px solid var(--rule);
   background: none;
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 1rem 0.6rem;
   font-size: 1rem;
 }
 
 .spotlight-input:focus-visible { outline: 0; }
 
-.spotlight-results { list-style: none; margin: 0; padding: 0.35rem; overflow-y: auto; }
+.spotlight-input::-webkit-search-cancel-button { display: none; }
+
+.chips { display: flex; gap: 0.25rem; padding: 0 0.75rem 0.6rem; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+
+.chip {
+  flex: none;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.875rem;
+  color: var(--ink-quiet);
+  cursor: pointer;
+}
+
+.chip:hover { color: var(--ink); }
+
+.chip[aria-selected="true"] { background: var(--hover); color: var(--ink); font-weight: 600; }
+
+.spotlight-results { margin: 0; padding: 0 0 0.35rem; overflow-y: auto; }
+
+.spotlight-results ul { list-style: none; margin: 0; padding: 0 0.35rem; }
+
+.spotlight-head { margin: 0; padding: 0.7rem 0.85rem 0.25rem; font: 500 0.75rem/1.2 var(--sans); color: var(--ink-quiet); }
+
+.row.action .action-icon { grid-area: lamp; font-size: 1rem; line-height: 1; color: var(--ink-quiet); text-align: center; }
+
+.spotlight-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  padding: 0.55rem 0.9rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.75rem;
+  color: var(--ink-quiet);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.3em;
+  margin-left: 0.3rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.3rem;
+  padding: 0 0.3rem;
+  font: 500 0.6875rem/1.5 var(--mono);
+  text-align: center;
+  color: var(--ink-quiet);
+}
+
+kbd + kbd { margin-left: 0.2rem; }
+
+.row-time kbd, kbd.row-time { margin-left: 0; }
+
+@media (pointer: coarse) {
+  .spotlight-foot { display: none; }
+}
 
 .gate {
   display: grid;

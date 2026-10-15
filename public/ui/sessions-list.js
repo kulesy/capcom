@@ -94,6 +94,32 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
 }
 
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
+// The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a section or a
+// routine's runs. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
+const STOPS = '.group-head, a.row[data-id]';
+
+function walk(e, box) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box) return;
+  const stops = [...box.querySelectorAll(STOPS)];
+  const at = stops.indexOf(document.activeElement);
+  const go = el => { if (!el) return; e.preventDefault(); el.focus(); el.scrollIntoView({ block: 'nearest' }); };
+  if (at < 0) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') go(box.querySelector('a.row[aria-current="page"]') || stops[0]);
+    return;
+  }
+  const here = stops[at];
+  if (e.key === 'ArrowDown') go(stops[at + 1]);
+  else if (e.key === 'ArrowUp') go(stops[at - 1]);
+  else if (e.key === 'Home') go(stops[0]);
+  else if (e.key === 'End') go(stops[stops.length - 1]);
+  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const opening = e.key === 'ArrowRight';
+    const fold = here.matches('.group-head') ? here : here.closest('.routine')?.querySelector('.runs-toggle');
+    if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
+    else if (!opening && !here.matches('.group-head')) go(here.closest('.group')?.querySelector('.group-head'));
+  }
+}
+
 export function SessionList({ ix, error, current, place, onFind }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
@@ -113,6 +139,18 @@ export function SessionList({ ix, error, current, place, onFind }) {
       if (section) setNote(await latestPlace.current(id, section));
     },
   }), []);
+
+  // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it.
+  useEffect(() => {
+    const onKey = e => {
+      const el = document.activeElement;
+      if (box.current?.contains(el)) return walk(e, box.current);
+      const idle = (!el || el === document.body) && !document.getElementById('session');
+      if (idle && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) walk(e, box.current);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     if (!note) return;

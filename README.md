@@ -42,10 +42,15 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of the list if
   it cannot.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
-  spotlight over the page. It lists the newest sessions first and filters as you type, by title, folder,
-  branch or routine. The arrow keys and Enter open one, and Esc closes it. Archived sessions stay out of
-  the list and only turn up here: they join any search, and typing `archived` lists them all, most
-  recently archived first.
+  search laid out like Desktop's. Chips pick what to look through: All, Sessions, Routines and Archived,
+  and the left and right arrows move between them from either end of the text. With nothing typed, All
+  shows recent sessions and a New session action. Typing filters by title, folder, branch or routine.
+  The up and down arrows and Enter open a result, and Esc closes it. Archived sessions stay out of the
+  list and turn up here, under their own chip, most recently archived first, and after the live
+  matches in any search.
+- **Keyboard in the list.** The up and down arrows move through the section headers and sessions, Home
+  and End jump to either end, and left and right fold a section or a routine's runs. Enter opens the
+  focused session. With no chat open, up or down steps into the list.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
