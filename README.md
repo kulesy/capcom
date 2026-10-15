@@ -70,6 +70,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
   call.
+- **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
+  failed or was stopped, a line from a monitor, a message from another session or a subagent, and a
+  command you ran with `!`. Capcom shows each as a compact notice instead of a message from you. A notice
+  has a lamp (green when a task finished, red when it failed, grey otherwise), a title such as "Background
+  task finished", and a line saying what happened. The task ids, the output file, the CLI's note and any
+  text meant for Claude alone sit behind a Details toggle. Only known kinds of message become notices, so
+  text you type that mentions a tag stays your message.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
   running somewhere else, in Desktop or a terminal, update as their file grows. The images in a message are
   not part of what the page loads. Each message names them, and the page fetches each one from
@@ -187,7 +194,7 @@ node server.mjs
 ```
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
-the unit tests, for the cron parser, the routine scheduler and the start timeout, with Node's own test runner. The password is
+the unit tests, for the cron parser, the routine scheduler, the start timeout and the transcript parser, with Node's own test runner. The password is
 kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
 out. Until one is set, Capcom refuses every request.
 

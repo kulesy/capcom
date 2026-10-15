@@ -2,7 +2,7 @@
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
 import { clip, lf, modelLabel, pre, tilde, toolLabel } from './format.js';
-import { html, memo, useState } from './html.js';
+import { Fragment, html, memo, useState } from './html.js';
 import { summarize } from './thread.js';
 import { Widget } from './widget.js';
 
@@ -12,6 +12,17 @@ const ToolRow = memo(function ToolRow({ t }) {
   const input = pre(t.name === 'Bash' ? t.input?.command || '' : JSON.stringify(t.input ?? {}, null, 2));
   return html`<li class="tool" data-status=${t.status}><details data-k=${t.id}><summary><span class="tool-name">${toolLabel(t.name)}</span><span class="tool-sum">${t.summary || ''}</span><span class="tool-status">${STATUS_LABEL[t.status] || t.status}</span></summary>
     <pre class="tool-io">${input}</pre>${t.output ? html`<pre class="tool-io">${pre(t.output)}</pre>` : null}</details></li>`;
+});
+
+const SystemNotice = memo(function SystemNotice({ n }) {
+  return html`<li class="system"><span class="lamp" data-state=${n.state || ''}></span>
+    <div>
+      <p class="system-title">${n.title}</p>
+      ${n.text ? html`<p class="system-text">${lf(n.text)}</p>` : null}
+      ${n.output ? html`<pre class="tool-io">${pre(n.output)}</pre>` : null}
+      ${n.details.length ? html`<details><summary><span class="system-more">Details</span></summary>
+        <dl class="system-details">${n.details.map((d, k) => html`<${Fragment} key=${k}><dt>${d.label}</dt><dd>${lf(d.value)}</dd><//>`)}</dl></details>` : null}
+    </div></li>`;
 });
 
 const sameTools = (a, b) => a.length === b.length && a.every((t, n) => t === b[n]);
@@ -71,6 +82,7 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl }) {
     return html`<${ToolRow} t=${i} />`;
   }
   if (i.kind === 'group') return html`<${ToolGroup} tools=${i.tools} />`;
+  if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;
   if (i.kind === 'divider') return html`<li class="divider">${i.text}</li>`;
