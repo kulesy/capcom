@@ -96,15 +96,16 @@ export function Composer({ ctrl }) {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // Pasting or dropping image files anywhere on the page attaches them. A paste that also holds several lines of text,
-  // as a spreadsheet copy does, pastes the text instead, and a paste into another field is left to that field.
+  // Pasting or dropping image files anywhere on the page attaches them, even in a text field, which would lose them.
+  // A paste that also holds text stays text if it has several lines, as a spreadsheet copy does, or is in another field.
   useLayoutEffect(() => {
     const note = text => now.current.ctrl.notice(text);
     let depth = 0;
     const onPaste = e => {
       const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
-      if (!files.length || /[\n\t]/.test(e.clipboardData.getData('text/plain'))) return;
-      if (e.target !== area.current && e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+      const text = e.clipboardData?.getData('text/plain') || '';
+      if (!files.length || /[\n\t]/.test(text)) return;
+      if (text && e.target !== area.current && e.target.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
       attach(files, note);
       if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });

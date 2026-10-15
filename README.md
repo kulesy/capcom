@@ -25,14 +25,16 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   permissions), the model and the effort sit under the text. A model or effort change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
-- **Images.** Paste a screenshot into the prompt box, or drop image files onto the page, and it attaches as a
+- **Images.** Paste a screenshot anywhere on the page, or drop image files onto it, and it attaches as a
   thumbnail above the text, with a cross to take it off again. PNG, JPEG, GIF and WebP, up to 10 to a message,
   and a message may be images alone. Before it sends, the page scales anything over 2000 pixels on its long
   edge down and keeps each image under 3.75 MB, so that even as base64 it is under the 5 MB the API takes. It
   keeps PNG and falls back to JPEG only when a PNG is too big. The CLI then re-encodes any image over about
   0.5 MB itself, so a large screenshot reaches Claude re-encoded whatever the page sent. A paste that also
-  holds several lines of text, as a spreadsheet copy does, pastes the text instead. A message sent while
-  Claude works can carry images too, and the CLI holds it until the running tool finishes, as it does a text
+  holds several lines of text, as a spreadsheet copy does, pastes the text instead, and so does one with any
+  text into another field. An image pasted alone into a field, such as a question's answer box, attaches to
+  the prompt box, because the field would drop it. A message sent while Claude works can carry images too,
+  and the CLI holds it until the running tool finishes, as it does a text
   message. Every message in a transcript that carries images shows them as thumbnails that open full size on
   click, including messages sent from Desktop or a terminal.
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
