@@ -1,5 +1,5 @@
-// Capcom. A browser chat client for every Claude Code session on this Mac, listed the way Claude Desktop
-// groups them, and driven through headless `claude -p` processes.
+// Capcom. A browser chat client for every Claude Code session on this Mac, grouped in its own layout, and driven
+// through headless `claude -p` processes.
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
+import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, completeEnd } from './lib/transcripts.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth } from './lib/auth.mjs';
@@ -15,6 +16,7 @@ import { esc } from './public/md.mjs';
 
 const auth = makeAuth(cfg.stateDir);
 const chips = makeChips(cfg.stateDir);
+const layout = makeLayout(cfg.stateDir);
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 // The levels `claude --help` lists for --effort. Models are checked for shape only, because the CLI knows the current names.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -34,6 +36,7 @@ const viewers = new Map();
 
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
+  const own = layout.read();
   const files = indexTranscripts(cfg.projectsDir);
   const live = activeStates();
   const started = new Map(readStarted().map(s => [s.id, s]));
@@ -44,8 +47,7 @@ function buildIndex({ archived = false } = {}) {
   for (const r of desk.sessions) {
     const t = files.get(r.id);
     if (!t) continue;
-    rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime),
-      group: desk.assignments[r.localId] || null, pinned: desk.pinned.includes(r.localId), state: stateOf(r.id, t.mtime) });
+    rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), state: stateOf(r.id, t.mtime) });
   }
   const cutoff = now - cfg.otherDays * 86400_000;
   for (const t of files.values()) {
@@ -59,22 +61,28 @@ function buildIndex({ archived = false } = {}) {
     if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, source: 'capcom', state: stateOf(s.id, s.at) });
   }
 
+  // Groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its sessions loose.
+  const groupIds = new Set(own.groups.map(g => g.id));
+  const pins = new Set(own.pinned);
+  for (const r of rows.values()) {
+    r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
+    r.pinned = pins.has(r.id);
+  }
+
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   const byRecent = (a, b) => b.lastActivityAt - a.lastActivityAt;
-  const localIndex = new Map(visible.filter(r => r.localId).map(r => [r.localId, r]));
-  // Every section lists its newest session first, so Desktop's own hand-made order within a group is not used.
-  const pinned = desk.pinned.map(l => localIndex.get(l)).filter(Boolean).sort(byRecent);
-  const pinnedIds = new Set(pinned.map(r => r.id));
-  const groups = desk.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !pinnedIds.has(r.id)).sort(byRecent) }));
+  // Every section lists its newest session first.
+  const pinned = visible.filter(r => r.pinned).sort(byRecent);
+  const groups = own.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byRecent) }));
   const routines = new Map();
-  for (const r of visible.filter(r => r.routine && !r.group && !pinnedIds.has(r.id)).sort(byRecent)) {
+  for (const r of visible.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
     else if (routines.get(r.routine).earlier.length < 12) routines.get(r.routine).earlier.push(r);
   }
-  const loose = visible.filter(r => !r.group && !r.routine && !pinnedIds.has(r.id)).sort(byRecent);
+  const loose = visible.filter(r => !r.group && !r.routine && !r.pinned).sort(byRecent);
   return {
     station: cfg.station,
-    problem: desk.problem,
+    problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byRecent(a.latest, b.latest)),
@@ -391,6 +399,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// Capcom's groups and pins start as a copy of Desktop's, made once. Until a copy exists it tries again on every start.
+function seedLayout() {
+  const have = layout.read();
+  if (have.seededAt) return;
+  const desk = loadDesktop(cfg.desktopDir, 0);
+  try {
+    const made = layout.seed(desk);
+    if (made) return console.log(`Copied Desktop's layout into layout.json: ${made.groups.length} groups, ${Object.keys(made.assignments).length} sessions in groups, ${made.pinned.length} pinned.`);
+  } catch (e) {
+    return console.error(`Could not write layout.json: ${e.message}`);
+  }
+  console.error(`Desktop's groups and pins are not copied yet (${have.problem || desk.problem}). Capcom tries again on the next start.`);
+}
+
+seedLayout();
 server.listen(cfg.port, '127.0.0.1', () => console.log(`Capcom on http://localhost:${cfg.port}`));
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
