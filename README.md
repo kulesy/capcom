@@ -77,6 +77,22 @@ Things to know:
   effort level, and the model from `~/.claude/settings.json`. The mode, model and effort can still be
   changed per chat from the prompt box.
 
+## The page
+
+The page is a Preact app written with htm templates, so it runs straight from `public/` with no build
+step and no `npm install`. Preact, its hooks and htm are vendored into `public/vendor/`, and an import map
+in `public/index.html` points their bare names at those files. `public/vendor/README.md` has the
+versions, the checksums and how to update them. The browser needs import maps: Safari 16.4, Chrome 89 or
+Firefox 108 and later.
+
+- `public/app.js` holds the routes and the session list's data, and mounts the app.
+- `public/ui/session.js` is one open chat. It reads the transcript, follows the live event stream and
+  sends everything you do. The other files in `public/ui/` are components that draw what it holds, and
+  small helpers.
+- `public/md.mjs` renders Claude's Markdown. It escapes everything first, so a reply cannot inject markup.
+- The server sends the files in `public/` that end in `.js`, `.mjs`, `.css` or `.png` before anyone signs
+  in, so keep anything private out of that folder.
+
 ## Run it
 
 ```bash
@@ -84,9 +100,9 @@ npm run set-password
 node server.mjs
 ```
 
-There are no dependencies (Node 20 or later). The password is kept only as a scrypt hash in
-`~/.config/capcom/auth.json`, and setting a new one signs every browser out. Until one is set, Capcom
-refuses every request.
+There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. The password is
+kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
+out. Until one is set, Capcom refuses every request.
 
 ## Configuration
 
@@ -141,4 +157,5 @@ password and keep the address private.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The libraries in `public/vendor/` keep their own licenses, MIT for Preact and
+Apache-2.0 for htm, which sit next to them.
