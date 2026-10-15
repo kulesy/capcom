@@ -48,10 +48,12 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that blocks network requests, so model-written HTML cannot reach Capcom or its cookie.
 - **Questions** (`AskUserQuestion`) show as option buttons, plus a box for your own answer.
-- **Claude in Chrome** is off until switched on per chat, from the `+` menu in the prompt box. It starts
-  the CLI with `--chrome` and an ask rule for every Chrome tool, so each action reaches an approval
-  card, even ones your settings already allow. Chrome cannot be on in Auto or Bypass permissions, and
-  its cards have no Always allow.
+- **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. Switch it
+  off for one session from the `+` menu in the prompt box, or from the Chrome tag beside it. Capcom
+  remembers the choice for that session in `picks.json`, next to the model and effort. It starts the CLI
+  with `--chrome` and an ask rule for every Chrome tool, so each action reaches an approval card in
+  every mode, Auto and Bypass permissions included, even ones your settings already allow. Chrome cards
+  have no Always allow.
 
 Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar,
 computer use (not available to the CLI in `-p` mode) and routines.

@@ -8,8 +8,6 @@ const store = {
 };
 
 const ui = { index: null, query: '', archived: store.get('archived', false), collapsed: store.get('collapsed', {}), openRoutines: new Set(), verbose: store.get('verbose', false), first: null };
-// In these modes the CLI waves Chrome actions through without asking, so Chrome is never on alongside them.
-const UNWATCHED = ['auto', 'bypassPermissions'];
 let chat = null;
 
 async function api(path, body) {
@@ -467,18 +465,16 @@ function syncPick(select, value, label) {
 }
 
 function renderStatus() {
-  const s = chat.status || { state: 'idle', pending: [], mode: 'manual', chrome: false };
+  const s = chat.status || { state: 'idle', pending: [], mode: 'manual', chrome: true };
   const busy = isBusy(s);
-  const unwatched = UNWATCHED.includes(s.mode);
   $('chatLamp').dataset.state = s.state;
   for (const id of ['mode', 'model', 'effort']) $(id).disabled = !chat.status;
   $('mode').value = s.mode || 'manual';
-  for (const o of $('mode').options) o.disabled = !!s.chrome && UNWATCHED.includes(o.value);
   syncPick($('model'), s.shownModel || s.model, modelLabel);
   syncPick($('effort'), s.effort, e => e);
   $('chrome').setAttribute('aria-checked', String(!!s.chrome));
-  $('chrome').disabled = !chat.status || (busy && !chat.draft) || (unwatched && !s.chrome);
-  $('chromeHint').textContent = busy && !chat.draft ? 'Wait for Claude to finish this turn' : unwatched ? 'Needs Manual, Accept edits or Plan' : 'Every Chrome action asks first';
+  $('chrome').disabled = !chat.status || (busy && !chat.draft);
+  $('chromeHint').textContent = busy && !chat.draft ? 'Wait for Claude to finish this turn' : 'Asks before each action';
   $('chromeTag').hidden = !s.chrome;
   renderComposer();
   renderHead();
@@ -836,7 +832,7 @@ async function openNew() {
   chat?.es?.close();
   chat = newChat(null);
   chat.draft = { touched: new Set() };
-  chat.status = { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, chrome: false };
+  chat.status = { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, chrome: true };
   $('items').innerHTML = '';
   $('approvals').innerHTML = '';
   $('earlier').hidden = true;
@@ -865,7 +861,6 @@ async function loadDraftDefaults() {
     if (chat !== c) return;
     const t = c.draft.touched;
     c.status = { ...c.status, ...(!t.has('mode') && { mode: d.mode }), ...(!t.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!t.has('effort') && { effort: d.effort }) };
-    if (UNWATCHED.includes(c.status.mode)) c.status.chrome = false;
   } catch {}
   if (chat === c) renderStatus();
 }
@@ -881,7 +876,7 @@ async function startSession(c, text) {
   $('send').textContent = 'Starting';
   notice('');
   try {
-    const { id } = await api('api/new', { cwd: $('folder').value.trim(), text, mode: s.mode, chrome: !!s.chrome, ...(t.has('model') && { model: s.shownModel }), ...(t.has('effort') && { effort: s.effort }) });
+    const { id } = await api('api/new', { cwd: $('folder').value.trim(), text, mode: s.mode, ...(t.has('model') && { model: s.shownModel }), ...(t.has('effort') && { effort: s.effort }), ...(t.has('chrome') && { chrome: !!s.chrome }) });
     textBox.value = '';
     fit(textBox);
     ui.first = { id, text };

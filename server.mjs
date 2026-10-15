@@ -16,14 +16,12 @@ import { esc } from './public/md.mjs';
 const auth = makeAuth(cfg.stateDir);
 const chips = makeChips(cfg.stateDir);
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
-// In these modes the CLI waves Chrome actions through without asking, so Chrome is never on alongside them.
-const UNWATCHED = ['auto', 'bypassPermissions'];
 // The levels `claude --help` lists for --effort. Models are checked for shape only, because the CLI knows the current names.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL = /^[a-z][\w.-]*(\[1m\])?$/i;
 const startedFile = path.join(cfg.stateDir, 'started.json');
 const readStarted = () => { try { return JSON.parse(fs.readFileSync(startedFile, 'utf8')); } catch { return []; } };
-// The model and effort picked in Capcom for each session, kept here because Desktop's own records are read only.
+// The model, effort and Chrome choice made in Capcom for each session, kept here because Desktop's own records are read only.
 const picksFile = path.join(cfg.stateDir, 'picks.json');
 const readPicks = () => { try { return JSON.parse(fs.readFileSync(picksFile, 'utf8')); } catch { return {}; } };
 const savePick = (id, pick) => {
@@ -137,16 +135,16 @@ function desktopSettings(row) {
   return { mode, model: row?.model || null, shownModel: row?.model || user.model || null, effort: row?.effort || desk.effort || null };
 }
 
-// What Desktop would use, with whatever model and effort was picked here laid over it.
+// What Desktop would use, with whatever model, effort and Chrome choice was made here laid over it. Chrome is on unless switched off.
 function settingsFor(id, row) {
-  const { model, effort } = readPicks()[id] || {};
-  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }) };
+  const { model, effort, chrome } = readPicks()[id] || {};
+  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: chrome !== false };
 }
 
 async function newSession({ cwd, text, mode, model, effort, chrome, title }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome, claude: cfg.claude, chips });
-  if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome: chrome !== false, claude: cfg.claude, chips });
+  if (model || effort || chrome !== undefined) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chrome !== undefined && { chrome }) });
   fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: (title || text.trim()).slice(0, 120) }]));
   if (cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
@@ -224,7 +222,7 @@ function loginPage(message = '') {
 
 function ensureChat(id, row, { mode } = {}) {
   const s = settingsFor(id, row);
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, claude: cfg.claude, chips });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, chrome: s.chrome, claude: cfg.claude, chips });
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
 }
@@ -234,7 +232,7 @@ function events(req, res, id) {
   const write = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
   const forward = ev => write(ev.type, ev.data);
   const chat = getChat(id);
-  write('status', chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, findRow(id)), chrome: false, live: '', pending: [] });
+  write('status', chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, findRow(id)), live: '', pending: [] });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
   chat?.listeners.add(forward);
@@ -279,9 +277,9 @@ async function api(req, res, u) {
     if (!text?.trim()) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
+    if (chrome !== undefined && typeof chrome !== 'boolean') return send(res, 400, { error: 'Chrome is on or off.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    if (chrome && UNWATCHED.includes(chosen)) return send(res, 400, { error: 'Chrome only runs in a mode that asks first. Pick Manual, Accept edits or Plan.' });
-    const id = await newSession({ cwd, text, mode: chosen, model, effort, chrome: !!chrome });
+    const id = await newSession({ cwd, text, mode: chosen, model, effort, chrome });
     return send(res, 200, { id });
   }
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
@@ -296,7 +294,7 @@ async function api(req, res, u) {
     const folder = known?.cwd || cwd || home;
     if (!text || !folder || !fs.existsSync(folder)) return send(res, 400, { error: 'This chip has no prompt or folder to start from.' });
     if (folder !== home && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
-    const id = await newSession({ cwd: folder, text, chrome: false, title: known?.title || title });
+    const id = await newSession({ cwd: folder, text, title: known?.title || title });
     return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
   }
   if (parts[1] !== 'sessions' || !parts[2]) return send(res, 404, { error: 'Not found' });
@@ -322,7 +320,6 @@ async function api(req, res, u) {
   const chat = getChat(id);
   if (action === 'mode') {
     if (!MODES.includes(body.mode)) return send(res, 400, { error: 'Unknown permission mode.' });
-    if (chat?.chrome && UNWATCHED.includes(body.mode)) return send(res, 400, { error: 'Turn Chrome off before switching to Bypass or Auto.' });
     const row = findRow(id);
     ensureChat(id, row, { mode: body.mode }).setMode(body.mode);
     return send(res, 200, { mode: body.mode });
@@ -343,10 +340,11 @@ async function api(req, res, u) {
   }
   if (action === 'chrome') {
     const row = findRow(id);
+    if (!chat && !row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const target = chat || ensureChat(id, row, { mode: body.mode });
-    if (body.on && UNWATCHED.includes(target.mode)) return send(res, 400, { error: 'Chrome only runs in a mode that asks first. Switch out of Bypass or Auto first.' });
     if (target.state !== 'idle') return send(res, 409, { error: 'Wait for Claude to finish this turn first.' });
     target.setChrome(!!body.on);
+    savePick(id, { chrome: !!body.on });
     return send(res, 200, target.status());
   }
   if (!chat) return send(res, 409, { error: 'That session is not running here.' });
