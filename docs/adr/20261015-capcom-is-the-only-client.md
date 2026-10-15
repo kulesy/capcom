@@ -45,6 +45,8 @@ Chosen option: "Capcom is the only client", because Capcom can run any session i
 
 **Amended 2026-10-15.** Groups and pins are now Capcom's own, copied once from Desktop's and changed by dragging rows in the list (see [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md)). Renaming, archive, unread markers and transcript search are still to come.
 
+**Amended 2026-10-15.** Pasted and dropped images are in the prompt box (see [Send pasted images as content blocks](20261015-images-in-the-prompt-box.md)). Attached files, slash commands and @ mentions are still to come.
+
 ## Pros and Cons of the Options
 
 ### Capcom is the only client
