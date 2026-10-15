@@ -8,7 +8,7 @@ import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { makeLayout } from './lib/layout.mjs';
-import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, completeEnd } from './lib/transcripts.mjs';
+import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth } from './lib/auth.mjs';
@@ -350,6 +350,13 @@ async function api(req, res, u) {
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
+  // An image from a message in the transcript. The ref comes from the item, and the bytes never travel in the messages.
+  if (req.method === 'GET' && action === 'images') {
+    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const image = t && readImage(t, parts[4]);
+    if (!image) return send(res, 404, { error: 'No such image.' });
+    return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' });
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   const body = JSON.parse(await readBody(req, action === 'send' ? MAX_BODY_BYTES : undefined) || '{}');
   if (action === 'send') {
