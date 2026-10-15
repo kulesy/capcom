@@ -187,8 +187,18 @@ async function handOff(id) {
 
 // ---- http ----------------------------------------------------------------------------------------
 
-const page = name => fs.readFileSync(path.join(ROOT, 'public', name), 'utf8');
-const STATIC = { '/app.css': 'text/css; charset=utf-8', '/app.js': 'text/javascript; charset=utf-8', '/md.mjs': 'text/javascript; charset=utf-8', '/icon.png': 'image/png' };
+const PUBLIC = path.join(ROOT, 'public');
+const page = name => fs.readFileSync(path.join(PUBLIC, name), 'utf8');
+// NOTE: [15 Oct 2026] EK - Every file under public/ with one of these extensions is served before sign-in. The page templates
+// (.html) and the vendor license texts are not on the list, so keep anything private out of public/.
+const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png' };
+
+function asset(pathname) {
+  const type = TYPES[path.extname(pathname)];
+  const file = path.join(PUBLIC, pathname);
+  if (!type || !file.startsWith(PUBLIC + path.sep)) return null;
+  try { return fs.statSync(file).isFile() ? { file, type } : null; } catch { return null; }
+}
 
 function send(res, status, body, type = 'application/json', headers = {}) {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...headers });
@@ -365,7 +375,8 @@ const server = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   try {
     if (u.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
-    if (STATIC[u.pathname]) return send(res, 200, fs.readFileSync(path.join(ROOT, 'public', u.pathname)), STATIC[u.pathname], { 'cache-control': 'no-cache' });
+    const file = asset(u.pathname);
+    if (file) return send(res, 200, fs.readFileSync(file.file), file.type, { 'cache-control': 'no-cache' });
     if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     if (!auth.hasPassword()) return send(res, 503, page('setup.html'), 'text/html; charset=utf-8');
     if (u.pathname === '/login' && req.method === 'POST') {
