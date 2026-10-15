@@ -2,7 +2,7 @@ import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
 import { useLocal } from './ui/hooks.js';
 import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
-import { findRow, SessionList } from './ui/sessions-list.js';
+import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
 
 // #/ is the list, #/s/<id> a session and #/new an empty chat for a session not started yet.
@@ -23,6 +23,7 @@ function App() {
   const now = useRef({});
   now.current = { archived, ix };
   const latest = useRef(0);
+  const writing = useRef(0);
 
   // Only the newest request counts, so a slow answer cannot put an older list back.
   const loadIndex = useCallback(async () => {
@@ -38,8 +39,30 @@ function App() {
   // The first load comes before the route is acted on, so a session opens with its name already known.
   useEffect(() => { loadIndex().then(() => setReady(true)); }, [archived]);
 
+  // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
+  const place = useCallback(async (id, section) => {
+    const before = now.current.ix;
+    const guess = placeRow(before, id, section);
+    if (guess === before) return '';
+    const pin = section === 'pinned';
+    const group = before.groups.some(g => g.id === section) ? section : null;
+    setIx(guess);
+    latest.current++;
+    writing.current++;
+    try {
+      await api(pin ? 'api/layout/pin' : 'api/layout/move', pin ? { id, pinned: true } : { id, group });
+      return '';
+    } catch (e) {
+      setIx(before);
+      return `${pin ? 'Not pinned' : 'Not moved'}: ${e.message}`;
+    } finally {
+      writing.current--;
+      loadIndex();
+    }
+  }, []);
+
   useEffect(() => {
-    const refresh = () => { if (!document.hidden) loadIndex(); };
+    const refresh = () => { if (!document.hidden && !writing.current) loadIndex(); };
     const timer = setInterval(refresh, 15_000);
     const onHash = () => setHash(location.hash);
     document.addEventListener('visibilitychange', refresh);
@@ -69,7 +92,7 @@ function App() {
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} />
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} place=${place} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>

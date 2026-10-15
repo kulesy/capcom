@@ -264,6 +264,44 @@ a { color: var(--focus); }
 
 .more { margin: 0 0 0.25rem 2.25rem; }
 
+.rows .row {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.group[data-drop] {
+  border-radius: 0.75rem;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.group[data-over] {
+  background: var(--selected);
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.row[data-lifted] { opacity: 0.4; }
+
+.row.lifted {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  margin: 0;
+  background: var(--console);
+  box-shadow: 0 0.5rem 1.5rem var(--edge), 0 0 0 1px var(--rule);
+  opacity: 0.96;
+  pointer-events: none;
+}
+
+.drop-hint { padding: 0.55rem 0.5rem; color: var(--ink-quiet); font-size: 0.875rem; }
+
+body.dragging, body.dragging * {
+  cursor: grabbing !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .list-foot {
   display: flex;
   justify-content: space-between;
