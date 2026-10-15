@@ -9,6 +9,7 @@ import { cfg, ROOT } from './lib/config.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, completeEnd } from './lib/transcripts.mjs';
+import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth } from './lib/auth.mjs';
 import { makeChips } from './lib/tools.mjs';
@@ -53,7 +54,7 @@ function buildIndex({ archived = false } = {}) {
   for (const t of files.values()) {
     if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id))) continue;
     const head = readHead(t);
-    rows.set(t.id, { id: t.id, title: head.title || 'Untitled session', cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
+    rows.set(t.id, { id: t.id, title: head.title || started.get(t.id)?.title || 'Untitled session', cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
       archived: false, lastActivityAt: t.mtime, routine: head.routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone.
@@ -145,11 +146,13 @@ function settingsFor(id, row) {
   return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, mode, model, effort, title }) {
+async function newSession({ cwd, text, images = [], mode, model, effort, title }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, chrome: cfg.chrome, claude: cfg.claude, chips });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
   if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
-  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: (title || text.trim()).slice(0, 120) }]));
+  // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
+  const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
+  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120) }]));
   if (cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
@@ -209,11 +212,12 @@ function send(res, status, body, type = 'application/json', headers = {}) {
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
-function readBody(req) {
+// One megabyte, except where a message can carry images (the send and new routes).
+function readBody(req, limit = 1_000_000) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
-    req.on('data', c => { size += c.length; if (size > 1_000_000) { reject(new Error('Request too large')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > limit) { reject(new Error('Request too large')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
@@ -308,13 +312,15 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort } = JSON.parse(await readBody(req) || '{}');
+    const { cwd, text, mode, model, effort, images: sent } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    const { images, error } = readImages(sent);
+    if (error) return send(res, 400, { error });
     if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
-    if (!text?.trim()) return send(res, 400, { error: 'Write the first message.' });
+    if (!text?.trim() && !images.length) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text, mode: chosen, model, effort });
+    const id = await newSession({ cwd, text: text || '', images, mode: chosen, model, effort });
     return send(res, 200, { id });
   }
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
@@ -345,13 +351,15 @@ async function api(req, res, u) {
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
-  const body = JSON.parse(await readBody(req) || '{}');
+  const body = JSON.parse(await readBody(req, action === 'send' ? MAX_BODY_BYTES : undefined) || '{}');
   if (action === 'send') {
-    if (!body.text?.trim()) return send(res, 400, { error: 'Nothing to send.' });
+    const { images, error } = readImages(body.images);
+    if (error) return send(res, 400, { error });
+    if (!body.text?.trim() && !images.length) return send(res, 400, { error: 'Nothing to send.' });
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
-    chat.send(body.text);
+    chat.send(body.text || '', images);
     return send(res, 200, chat.status());
   }
   const chat = getChat(id);
