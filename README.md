@@ -1,8 +1,8 @@
 # Capcom
 
 A browser chat client for every Claude Code session on this Mac: the ones started in Claude Desktop,
-the routine runs, and the ones started in a terminal. The list follows Desktop's own groups and pins.
-It listens on http://localhost:4310.
+the routine runs, and the ones started in a terminal. The list uses Capcom's own groups and pins, which start
+as a copy of Desktop's. It listens on http://localhost:4310.
 
 The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
 
@@ -10,8 +10,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 
 - **Sessions** come from two places, both read only. Claude Code saves every session as a JSON lines
   file under `~/.claude/projects`. Claude Desktop keeps its titles, groups and pins under
-  `~/Library/Application Support/Claude`. Those Desktop files are internal and undocumented, so when a
-  Desktop update moves them the list carries on without groups and says so at the top.
+  `~/Library/Application Support/Claude`. Capcom reads the titles and records each time, and the groups and
+  pins once (see "Groups and pins"). Those Desktop files are internal and undocumented, so when a Desktop
+  update moves them the list carries on from the session files alone and says so at the top.
 - **Chatting** runs the real CLI headless, one process per open chat:
   `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`,
   with `--resume <id>` for an existing session. It uses your normal login, skills, hooks and MCP
@@ -29,8 +30,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the running tool finishes and adjusts before its next step.
 - **New sessions** start with Ctrl+N: an empty chat with a folder picker above the prompt box (the home
   folder, or a recent one). The first message starts the session in that folder.
-- **The list** shows routines first, then pinned sessions and Desktop's groups. Every section lists its
-  newest session first.
+- **The list** shows routines first, then pinned sessions, your groups, the sessions started here, ungrouped
+  ones and terminal sessions. Every section lists its newest session first.
+- **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
+  starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
+  when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
+  the layout starts empty and it tries again on each later start. Drag a row onto a group to move it there,
+  onto Pinned to pin it, or onto Ungrouped, Started here or Terminal and other to take it out of its group.
+  Routines is not a place to drop. A mouse drags after a few pixels of movement, a finger after a long
+  press, and Esc cancels. There is no screen yet to create, rename, delete or reorder groups. Edit
+  `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of the list if
+  it cannot.
 - **Finding a session.** Ctrl+K (or Cmd+K) opens a spotlight over the page. It lists the newest sessions
   first and filters as you type, by title, folder, branch or routine. The arrow keys and Enter open one,
   and Esc closes it.

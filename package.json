@@ -2,7 +2,7 @@
   "name": "capcom",
   "version": "0.1.0",
   "private": true,
-  "description": "A browser chat client for every Claude Code session on this Mac, organised the way Claude Desktop organises them.",
+  "description": "A browser chat client for every Claude Code session on this Mac, with its own groups and pins.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs",

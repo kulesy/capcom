@@ -1,6 +1,6 @@
 # Make Capcom the only client and stop integrating with Desktop
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-15
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: scope, claude-desktop, roadmap, routines
@@ -42,6 +42,8 @@ Chosen option: "Capcom is the only client", because Capcom can run any session i
 - ❌ The in-app browser, the iOS Simulator panel and computer use are not available in Capcom.
 - ❌ Desktop has to stay open for routines until Capcom runs them.
 - ❌ Capcom has to build its own groups, pins and the rest of the organisation that it now reads from Desktop.
+
+**Amended 2026-10-15.** Groups and pins are now Capcom's own, copied once from Desktop's and changed by dragging rows in the list (see [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md)). Renaming, archive, unread markers and transcript search are still to come.
 
 ## Pros and Cons of the Options
 

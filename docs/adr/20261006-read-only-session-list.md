@@ -1,6 +1,6 @@
 # List sessions from transcripts and Desktop's records, read only
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-15
 - Deciders: Eli
 - Date: 2026-10-06
 - Tags: sessions, claude-desktop, groups, read-only
@@ -32,6 +32,8 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 
 **Amended 2026-10-08.** The owner asked whether Capcom could write to Desktop's sidebar. Desktop's code shows that Desktop loads its session list and sidebar settings at launch, keeps them in memory and writes them back over the files. A write from Capcom would be overwritten or ignored. The check on 8 Oct was a read of Desktop's code, with no live test. Capcom stays read only.
 
+**Amended 2026-10-15.** Capcom now keeps its own groups and pins in `layout.json`, copied once from Desktop's on its first start, so the list no longer follows Desktop's groups after that. Desktop's records are still read, read only, for titles, folders, archive state and routines. See [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md).
+
 ### Consequences
 
 - ✅ The list shows Desktop's groups and pins, plus sessions that Desktop has no record of.
@@ -60,4 +62,5 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 
 - [Headless CLI per chat](20261006-headless-claude-cli-per-chat.md)
 - [Hand new sessions to Desktop](20261014-hand-new-sessions-to-desktop.md), the one supported way into Desktop's sidebar
-- [Capcom is the only client](20261015-capcom-is-the-only-client.md) plans Capcom's own groups and pins in place of Desktop's
+- [Capcom is the only client](20261015-capcom-is-the-only-client.md) planned Capcom's own groups and pins in place of Desktop's
+- [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md), which put them in place
