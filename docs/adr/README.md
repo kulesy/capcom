@@ -16,4 +16,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-14 | [Hand new sessions to Claude Desktop through its resume link](20261014-hand-new-sessions-to-desktop.md) | Accepted, amended 2026-10-15 (opt-in, off by default) |
 | 2026-10-15 | [Make Capcom the only client and stop integrating with Desktop](20261015-capcom-is-the-only-client.md) | Accepted |
 | 2026-10-15 | [Turn Claude in Chrome on by default in every chat and mode, as Desktop does](20261015-claude-in-chrome-on-by-default.md) | Accepted |
-| 2026-10-15 | [Rewrite the front end on vendored Preact with htm, with no build step](20261015-preact-htm-front-end.md) | Accepted. The rewrite is in progress. |
+| 2026-10-15 | [Rewrite the front end on vendored Preact with htm, with no build step](20261015-preact-htm-front-end.md) | Accepted. Shipped 2026-10-15. |

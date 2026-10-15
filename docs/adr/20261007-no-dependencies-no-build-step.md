@@ -29,7 +29,7 @@ Chosen option: "Node's built-in `http` and a plain page", because nothing needs 
 
 `package.json` lists no dependencies and asks for Node 20 or later. The server uses `node:http` and Server-Sent Events for live updates. The page is plain HTML, CSS and JavaScript served as it is, with a small Markdown renderer in `public/md.mjs`.
 
-**Reviewed 2026-10-15.** The server keeps its empty dependency list. For the page, [Preact with htm](20261015-preact-htm-front-end.md) is set to replace the hand-written JavaScript, still with no build step. The rewrite is in progress.
+**Reviewed 2026-10-15.** The server keeps its empty dependency list. For the page, [Preact with htm](20261015-preact-htm-front-end.md) replaced the hand-written JavaScript on 2026-10-15, still with no build step. The rewrite is in progress.
 
 ### Consequences
 

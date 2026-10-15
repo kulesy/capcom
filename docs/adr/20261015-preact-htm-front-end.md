@@ -1,6 +1,6 @@
 # Rewrite the front end on vendored Preact with htm, with no build step
 
-- Status: Accepted. The rewrite is in progress.
+- Status: Accepted. The rewrite shipped on 2026-10-15, on Preact 11.0.1 and htm 3.1.1.
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: front-end, preact, htm, build, dependencies
