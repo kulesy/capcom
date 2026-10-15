@@ -1,7 +1,9 @@
 // Ctrl+K finds a session from anywhere: the newest first while the box is empty, then whatever matches what is typed.
+// Archived sessions are only found here. They join any search, and typing "archived" lists them all, newest first.
+import { api } from './api.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
-import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { everyRow } from './sessions-list.js';
 
 const SHOWN = 50;
@@ -11,11 +13,13 @@ const matches = (r, words) => {
   return words.every(w => text.includes(w));
 };
 
-function hits(ix, query) {
+function hits(ix, archived, query) {
+  if (query.trim().toLowerCase() === 'archived') return archived;
   const seen = new Set();
   const rows = everyRow(ix).filter(r => !seen.has(r.id) && seen.add(r.id)).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  return (words.length ? rows.filter(r => matches(r, words)) : rows).slice(0, SHOWN);
+  if (!words.length) return rows.slice(0, SHOWN);
+  return [...rows.filter(r => matches(r, words)), ...archived.filter(r => matches(r, words))].slice(0, SHOWN);
 }
 
 export function Spotlight({ ix, onClose }) {
@@ -23,7 +27,15 @@ export function Spotlight({ ix, onClose }) {
   const [active, setActive] = useState(0);
   const input = useRef(null);
   const list = useRef(null);
-  const found = useMemo(() => (ix ? hits(ix, query) : []), [ix, query]);
+  const [archived, setArchived] = useState([]);
+  const found = useMemo(() => (ix ? hits(ix, archived, query) : []), [ix, archived, query]);
+
+  useEffect(() => {
+    let live = true;
+    api('api/archived').then(d => { if (live) setArchived(d.archived || []); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   const pick = Math.min(active, Math.max(found.length - 1, 0));
 
   useLayoutEffect(() => { input.current.focus(); }, []);
@@ -41,19 +53,19 @@ export function Spotlight({ ix, onClose }) {
 
   return html`<div class="spotlight-backdrop" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
     <div class="spotlight" role="dialog" aria-modal="true" aria-label="Find a session">
-      <input class="spotlight-input" ref=${input} type="search" placeholder="Find a session" autocomplete="off" spellcheck=${false}
+      <input class="spotlight-input" ref=${input} type="search" placeholder='Find a session, or type "archived"' autocomplete="off" spellcheck=${false}
         aria-label="Find a session" aria-controls="spotlightResults" value=${query}
         onInput=${e => { setQuery(e.target.value); setActive(0); }} onKeyDown=${onKeyDown} />
       ${found.length
         ? html`<ul class="spotlight-results" id="spotlightResults" role="listbox" ref=${list}>
             ${found.map((r, i) => {
-              const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
+              const meta = [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join('  ');
               return html`<li key=${r.id} role="option" aria-selected=${i === pick}>
                 <a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} aria-selected=${i === pick} onMouseMove=${() => i !== pick && setActive(i)}
                   onClick=${e => { e.preventDefault(); open(r); }}>
                   <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
                   <span class="row-title">${r.title || 'Untitled session'}</span>
-                  <time class="row-time">${when(r.lastActivityAt)}</time>
+                  <time class="row-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>
                   ${meta ? html`<span class="row-meta">${meta}</span>` : null}
                 </a></li>`;
             })}</ul>`

@@ -207,7 +207,7 @@ a { color: var(--focus); }
   gap: 0.5rem;
   border: 0;
   background: none;
-  padding: 0.85rem 1rem 0.35rem;
+  padding: 0.7rem 1rem 0.25rem;
   color: var(--ink-quiet);
   font: 600 0.75rem/1.2 var(--sans);
   letter-spacing: 0.06em;
@@ -237,11 +237,11 @@ a { color: var(--focus); }
   display: grid;
   grid-template-columns: 0.75rem minmax(0, 1fr) auto;
   grid-template-areas: "lamp title time" ". meta meta";
-  column-gap: 0.65rem;
-  row-gap: 0.05rem;
+  column-gap: 0.6rem;
+  row-gap: 0;
   align-items: center;
-  padding: 0.55rem 0.5rem;
-  border-radius: 0.6rem;
+  padding: 0.32rem 0.5rem;
+  border-radius: 0.5rem;
   color: inherit;
   text-decoration: none;
 }
@@ -254,31 +254,62 @@ a { color: var(--focus); }
 
 .row-title {
   grid-area: title;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.row-time { grid-area: time; font-size: 0.75rem; color: var(--ink-quiet); font-variant-numeric: tabular-nums; }
+.row-time { grid-area: time; font-size: 0.6875rem; color: var(--ink-quiet); font-variant-numeric: tabular-nums; }
 
 .row-meta {
   grid-area: meta;
-  font: 400 0.75rem/1.35 var(--mono);
+  font: 400 0.6875rem/1.3 var(--mono);
   color: var(--ink-quiet);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.earlier-runs { list-style: none; margin: 0 0 0.25rem 1.9rem; padding: 0; }
+.routine { position: relative; }
 
-.earlier-runs .row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title time"; padding-block: 0.35rem; }
+.routine.has-runs > .row { padding-right: 2.1rem; }
 
-.earlier-runs .row-title { font-size: 0.875rem; color: var(--ink-quiet); font-weight: 400; }
+.runs-toggle {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.2rem;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.6rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--ink-quiet);
+  cursor: pointer;
+}
 
-.more { margin: 0 0 0.25rem 2.25rem; }
+.runs-toggle:hover { background: var(--hover); color: var(--ink); }
+
+.runs-toggle::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms ease-out;
+}
+
+.runs-toggle[aria-expanded="true"]::after { transform: rotate(45deg) translateY(-0.1rem); }
+
+.earlier-runs { list-style: none; margin: 0 0 0.2rem 1.35rem; padding: 0; }
+
+.earlier-runs .row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title time"; padding-block: 0.22rem; }
+
+.earlier-runs .row-title { font-size: 0.8125rem; color: var(--ink-quiet); font-weight: 400; }
 
 .rows .row {
   -webkit-user-select: none;
@@ -729,6 +760,11 @@ body.dragging, body.dragging * {
 .folder:hover { background: var(--hover); }
 
 .folderbar .folders { max-height: 30vh; overflow-y: auto; }
+
+/* Fingers need a little more room than a mouse. */
+@media (pointer: coarse) {
+  .row { padding-block: 0.45rem; }
+}
 
 /* Below 16px, iOS zooms the page when a picker is tapped. */
 @media (pointer: coarse) {

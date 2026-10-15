@@ -6,14 +6,16 @@ import { folderName, STATE_LABEL, when } from './format.js';
 import { useLocal } from './hooks.js';
 import { Fragment, html, useEffect, useRef, useState } from './html.js';
 
-function Row({ r, title = r.title, current, lifted }) {
+function RowLink({ r, title = r.title, current, lifted }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
-  return html`<li><a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} aria-current=${current === r.id ? 'page' : null}>
+  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} aria-current=${current === r.id ? 'page' : null}>
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
     <span class="row-title">${title || 'Untitled session'}</span>
     <time class="row-time">${when(r.lastActivityAt)}</time>
-    ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a></li>`;
+    ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
+
+const Row = props => html`<li><${RowLink} ...${props} /></li>`;
 
 function Section({ id, name, count, collapsed, toggle, drop, over, children }) {
   const open = !collapsed[id];
@@ -22,12 +24,15 @@ function Section({ id, name, count, collapsed, toggle, drop, over, children }) {
 }
 
 // The latest run of a routine, with the earlier ones folded away until asked for.
-function Routine({ g, current, lifted, open, onOpen }) {
+// A routine's row opens its latest run. The arrow at its end folds the earlier runs out underneath.
+function Routine({ g, current, lifted, open, onToggle }) {
   const earlier = g.earlier.length;
-  return html`<${Row} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} />
-    ${earlier ? open
-      ? html`<li><ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} />`)}</ul></li>`
-      : html`<li class="more"><button class="link" type="button" data-routine=${g.name} onClick=${() => onOpen(g.name)}>${earlier} earlier run${earlier > 1 ? 's' : ''}</button></li>` : null}`;
+  const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
+  return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
+    <${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} />
+    ${earlier ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}></button>` : null}
+    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} />`)}</ul>` : null}
+  </li>`;
 }
 
 export const everyRow = ix => [...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...ix.started, ...ix.ungrouped, ...ix.other];
@@ -68,7 +73,7 @@ export function placeRow(ix, id, section) {
 }
 
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
-function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine, drag }) {
+function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine, drag }) {
   const carried = drag && findRow(ix, drag.id);
   const over = drag?.over;
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
@@ -79,7 +84,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine, d
     if (!list.length && !(drag && drop)) return;
     parts.push(html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id}>${list.length ? body : html`<li class="drop-hint">Drop here</li>`}<//>`);
   };
-  add('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} open=${openRoutines.has(g.name)} onOpen=${openRoutine} /><//>`), false);
+  add('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} /><//>`), false);
   add('pinned', 'Pinned', ix.pinned, rows(ix.pinned));
   for (const g of ix.groups) add(g.id, g.name, g.sessions, rows(g.sessions));
   add('started', 'Started here', ix.started, rows(ix.started));
@@ -89,7 +94,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine, d
 }
 
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
-export function SessionList({ ix, error, current, archived, setArchived, place, onFind }) {
+export function SessionList({ ix, error, current, place, onFind }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
@@ -98,7 +103,7 @@ export function SessionList({ ix, error, current, archived, setArchived, place, 
   const latestPlace = useRef(place);
   latestPlace.current = place;
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
-  const openRoutine = name => setOpenRoutines(all => new Set([...all, name]));
+  const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
 
   useEffect(() => dragRows(box.current, {
     onStart: id => setDrag({ id, over: null }),
@@ -124,11 +129,10 @@ export function SessionList({ ix, error, current, archived, setArchived, place, 
     <div role="status">${note ? html`<p class="problem" id="moveNote">${note}</p>` : null}</div>
     <div class="sections" id="sections" ref=${box}>
       ${ix
-        ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} openRoutine=${openRoutine} drag=${drag} />`
+        ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">
-      <label><input id="archived" type="checkbox" checked=${archived} onChange=${e => setArchived(e.target.checked)} /> Show archived</label>
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
   </nav>`;

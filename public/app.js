@@ -1,6 +1,5 @@
 import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
-import { useLocal } from './ui/hooks.js';
 import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
@@ -15,13 +14,12 @@ function parseRoute(hash) {
 
 function App() {
   const [hash, setHash] = useState(location.hash);
-  const [archived, setArchived] = useLocal('archived', false);
   const [ix, setIx] = useState(null);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
   const [finding, setFinding] = useState(false);
   const now = useRef({});
-  now.current = { archived, ix };
+  now.current = { ix };
   const latest = useRef(0);
   const writing = useRef(0);
 
@@ -29,7 +27,7 @@ function App() {
   const loadIndex = useCallback(async () => {
     const mine = ++latest.current;
     try {
-      const next = await api(`api/sessions${now.current.archived ? '?archived=1' : ''}`);
+      const next = await api('api/sessions');
       if (mine === latest.current) { setIx(next); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
@@ -37,7 +35,7 @@ function App() {
   }, []);
 
   // The first load comes before the route is acted on, so a session opens with its name already known.
-  useEffect(() => { loadIndex().then(() => setReady(true)); }, [archived]);
+  useEffect(() => { loadIndex().then(() => setReady(true)); }, []);
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
   const place = useCallback(async (id, section) => {
@@ -92,7 +90,7 @@ function App() {
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} place=${place} onFind=${() => setFinding(true)} />
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} onFind=${() => setFinding(true)} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>

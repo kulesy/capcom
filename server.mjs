@@ -288,6 +288,14 @@ async function api(req, res, u) {
     const { rows, ...index } = buildIndex({ archived: u.searchParams.get('archived') === '1' });
     return send(res, 200, index);
   }
+  // Archived sessions are left out of the list and found through search. Desktop does not record when a session was
+  // archived, but archiving rewrites its record, so the record's file time stands in, newest first.
+  if (req.method === 'GET' && u.pathname === '/api/archived') {
+    const archived = [...buildIndex({ archived: true }).rows.values()].filter(r => r.archived)
+      .map(({ id, title, cwd, branch, routine, state, lastActivityAt, changedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt: changedAt || lastActivityAt, archived: true }))
+      .sort((a, b) => b.archivedAt - a.archivedAt);
+    return send(res, 200, { archived });
+  }
   if (req.method === 'GET' && u.pathname === '/api/defaults') {
     return send(res, 200, desktopSettings({ cwd: u.searchParams.get('cwd') || process.env.HOME }));
   }
