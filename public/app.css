@@ -796,6 +796,9 @@ body.dragging, body.dragging * {
   box-shadow: 0 1rem 3rem var(--edge);
 }
 
+/* Only the results shrink when the list is long. The chips scroll sideways, and a scroller would otherwise shrink too. */
+.spotlight-top, .chips, .spotlight-foot { flex: none; }
+
 .spotlight-top { display: flex; align-items: center; gap: 0.25rem; padding-right: 0.5rem; }
 
 .spotlight-input {
@@ -828,7 +831,7 @@ body.dragging, body.dragging * {
 
 .chip[aria-selected="true"] { background: var(--hover); color: var(--ink); font-weight: 600; }
 
-.spotlight-results { margin: 0; padding: 0 0 0.35rem; overflow-y: auto; }
+.spotlight-results { flex: 1; min-height: 0; margin: 0; padding: 0 0 0.35rem; overflow-y: auto; }
 
 .spotlight-results ul { list-style: none; margin: 0; padding: 0 0.35rem; }
 
