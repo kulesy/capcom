@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>{{id}}</string>
+  <key>CFBundleName</key><string>Capcom</string>
+  <key>CFBundleDisplayName</key><string>Capcom</string>
+  <key>CFBundleExecutable</key><string>capcom</string>
+  <key>CFBundleIconFile</key><string>Capcom</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{{version}}</string>
+  <key>CFBundleVersion</key><string>{{version}}</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Sessions and routines in Capcom read your calendar, and add events when you ask them to.</string>
+  <key>NSCalendarsUsageDescription</key><string>Sessions and routines in Capcom read your calendar, and add events when you ask them to.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>Sessions in Capcom read and add reminders when you ask them to.</string>
+  <key>NSRemindersUsageDescription</key><string>Sessions in Capcom read and add reminders when you ask them to.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Sessions in Capcom control other apps when you ask them to, such as adding an event in Calendar.</string>
+  <key>NSDesktopFolderUsageDescription</key><string>Sessions in Capcom open files on your Desktop when you ask them to.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>Sessions in Capcom open files in Documents when you ask them to.</string>
+  <key>NSDownloadsFolderUsageDescription</key><string>Sessions in Capcom open files in Downloads, such as a file a session saved from Chrome.</string>
+</dict>
+</plist>

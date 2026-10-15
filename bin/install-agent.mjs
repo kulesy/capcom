@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cfg, ROOT } from '../lib/config.mjs';
+import { APP, cfg, ROOT } from '../lib/config.mjs';
 
 if (process.platform !== 'darwin') { console.error('launchd is macOS only.'); process.exit(1); }
 
@@ -33,11 +33,16 @@ if (!claude) {
 const home = os.homedir();
 const logs = path.join(home, 'Library', 'Logs', 'capcom');
 const pathDirs = [...new Set([path.dirname(node), path.dirname(claude), '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'])];
-const values = { label, node, repo: ROOT, home, path: pathDirs.join(':'), logs };
+const values = { label, repo: ROOT, home, path: pathDirs.join(':'), logs };
+
+// Run through Capcom.app when it is built, so that macOS asks about permissions for Capcom rather than node.
+const launcher = path.join(APP, 'Contents', 'MacOS', 'capcom');
+const app = fs.existsSync(launcher) ? launcher : null;
 
 const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const program = [app, node, path.join(ROOT, 'server.mjs')].filter(Boolean).map(arg => `    <string>${xml(arg)}</string>`).join('\n');
 const plist = fs.readFileSync(path.join(ROOT, 'launchd', 'capcom.plist.template'), 'utf8')
-  .replace(/\{\{(\w+)\}\}/g, (_, key) => xml(values[key]));
+  .replace(/\{\{(\w+)\}\}/g, (_, key) => (key === 'program' ? program : xml(values[key])));
 
 const agents = path.join(home, 'Library', 'LaunchAgents');
 const target = path.join(agents, `${label}.plist`);
@@ -46,6 +51,6 @@ fs.mkdirSync(logs, { recursive: true });
 fs.writeFileSync(target, plist);
 
 const domain = `gui/${process.getuid()}`;
-console.log(`Wrote ${target}\nNode ${node}\nClaude ${claude}\nLogs ${logs}\n\nStart it with:`);
+console.log(`Wrote ${target}\nApp ${app ? APP : 'none, so sessions cannot be allowed the calendar or other apps. Run npm run build-app first.'}\nNode ${node}\nClaude ${claude}\nLogs ${logs}\n\nStart it with:`);
 console.log(`  launchctl bootstrap ${domain} ${target}`);
 console.log(`  launchctl kickstart -k ${domain}/${label}`);

@@ -5,8 +5,7 @@
   <key>Label</key><string>{{label}}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>{{node}}</string>
-    <string>{{repo}}/server.mjs</string>
+{{program}}
   </array>
   <key>WorkingDirectory</key><string>{{repo}}</string>
   <key>EnvironmentVariables</key>
