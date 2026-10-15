@@ -1,0 +1,66 @@
+# Serve Desktop-style tools from Capcom's own MCP server
+
+- Status: Accepted
+- Deciders: Eli
+- Date: 2026-10-07
+- Tags: tools, mcp, chips, widgets, security
+
+## Context and Problem Statement
+
+Claude Desktop gives its sessions built-in tools, such as suggested-task chips, chapter dividers and inline widgets. Desktop serves them from inside its own process, so a session that Capcom runs through the CLI cannot use them. The owner wanted Capcom to have Desktop's built-in tools.
+
+Capcom needs another way to offer the ones that only draw in the page.
+
+## Decision Drivers
+
+- The owner wanted Desktop's built-in tools in Capcom.
+- These tools only draw in the page, so they should not ask for approval.
+- Model-written HTML in a widget must not reach Capcom or its cookie.
+
+## Considered Options
+
+1. Serve Capcom's own SDK MCP server, the way Desktop serves its tools
+2. Borrow Desktop's tools
+3. Offer the standard Claude Code tools and the owner's MCP servers only
+
+## Decision Outcome
+
+Chosen option: "Serve Capcom's own SDK MCP server", because it is the mechanism Desktop uses, and Desktop's own tools are out of reach.
+
+Capcom declares a server named `capcom` in the CLI's `initialize` request and answers its `mcp_message` requests over the session's stdio (`lib/tools.mjs`). The server has four tools:
+
+- `spawn_task` and `dismiss_task` make chips, which are cards with Start and Dismiss. Start opens a new Capcom session with the chip's prompt.
+- `mark_chapter` draws a titled divider.
+- `show_widget` draws HTML or SVG in an iframe sandboxed to `allow-scripts`. A content policy blocks network requests from the frame, apart from script loads from two public script hosts.
+
+Capcom allows its own tools by exact name, with no approval card.
+
+### Consequences
+
+- ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.
+- ✅ The sandbox keeps widget code away from Capcom's cookie and page.
+- ❌ The server relies on the Agent SDK's wire format (`sdkMcpServers` and `mcp_message`), which is not a published contract. It was proven on CLI 2.1.292. If chips stop appearing after a CLI update, check this first.
+- ❌ Three Desktop tools stay out of reach: the in-app browser, the iOS Simulator panel and computer use.
+
+## Pros and Cons of the Options
+
+### Capcom's own MCP server
+
+- ✅ Same mechanism as Desktop, and the CLI accepts it
+- ❌ Capcom builds and maintains each tool
+
+### Borrow Desktop's tools
+
+- ✅ Nothing to build
+- ❌ Not possible, because the tools live inside Desktop's process
+
+### Standard tools only
+
+- ✅ No protocol risk
+- ❌ No chips, chapters or widgets
+
+## Links
+
+- [Headless CLI per chat](20261006-headless-claude-cli-per-chat.md)
+- [Claude in Chrome on by default](20261015-claude-in-chrome-on-by-default.md), a Desktop tool the CLI provides with a flag
+- [Capcom is the only client](20261015-capcom-is-the-only-client.md)

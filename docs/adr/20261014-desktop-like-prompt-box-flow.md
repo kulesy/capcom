@@ -1,0 +1,62 @@
+# Match Desktop's flow for new sessions, settings, stopping and tool calls
+
+- Status: Accepted
+- Deciders: Eli
+- Date: 2026-10-14
+- Tags: prompt-box, control-requests, tool-calls, claude-desktop
+
+## Context and Problem Statement
+
+Capcom's first version had a separate form for new sessions, the mode and Chrome controls in the chat header, a Stop button of its own and one row for each tool call. Desktop puts the controls in the prompt box, turns Send into Stop while Claude works, and summarises a run of tool calls in one line. On 14 Oct the owner chose four changes to build: the new-session flow, the controls, Send turning into Stop, and grouped tool calls.
+
+Should Capcom copy all four?
+
+## Decision Drivers
+
+- The owner uses Desktop and wants the same habits in Capcom.
+- Model and effort should change mid-session without a restart.
+- A message typed while Claude works should steer it.
+
+## Considered Options
+
+1. Build all four changes
+2. Build some of the four
+3. Keep the first version's flow
+
+## Decision Outcome
+
+Chosen option: "Build all four changes", because the owner wants Capcom to work the way Desktop does.
+
+- **New session.** "+ New session" opens an empty chat with a folder picker above the prompt box. The first message starts the session in that folder.
+- **Controls.** The mode, model and effort pickers sit under the text, with Desktop's labels. The `+` menu holds the Chrome switch.
+- **Send and Stop.** While Claude works and the box is empty, Send turns into Stop, and Esc stops too. A message typed during a turn redirects Claude. The CLI holds it until the running tool finishes, and Claude reads it before its next step.
+- **Tool calls.** Calls between Claude's messages collapse into one row, such as "Read 3 files, ran 2 commands". A Normal and Verbose switch in the chat header shows them ungrouped, and the browser remembers the choice.
+- **Model and effort.** A change goes to the running process as a `set_model` or `apply_flag_settings` control request, so Capcom does not restart the process. It applies from Claude's next request, even mid-turn. Capcom saves each pick in `picks.json` in its state folder, so the pick survives the idle stop and a restart.
+
+### Consequences
+
+- ✅ New sessions, settings and stopping work as they do in Desktop.
+- ✅ A model or effort change does not interrupt the work.
+- ❌ `set_model` and `apply_flag_settings` are Agent SDK control requests, not a published contract. They were proven on CLI 2.1.299. `apply_flag_settings` accepts any effort level, so `server.mjs` checks the level against the CLI's list first.
+
+## Pros and Cons of the Options
+
+### Build all four
+
+- ✅ One consistent flow, matching Desktop
+- ❌ The most work to build and to test
+
+### Build some of the four
+
+- ✅ Smaller change
+- ❌ The flow would match Desktop in some places and not others
+
+### Keep the first version's flow
+
+- ✅ No work
+- ❌ A separate form, header controls and a separate Stop button that Desktop does not have
+
+## Links
+
+- [Settings follow Claude Desktop](20261008-settings-follow-claude-desktop.md)
+- [Preact with htm for the front end](20261015-preact-htm-front-end.md), the rewrite that carries this flow forward
