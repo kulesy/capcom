@@ -69,7 +69,7 @@ function App() {
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} onFind=${() => setFinding(true)} />
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} archived=${archived} setArchived=${setArchived} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>

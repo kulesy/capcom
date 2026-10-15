@@ -45,7 +45,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, openRoutine })
   return parts.length ? parts : html`<p class="quiet pad">No sessions found.</p>`;
 }
 
-export function SessionList({ ix, error, current, archived, setArchived, onFind }) {
+export function SessionList({ ix, error, current, archived, setArchived }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
@@ -53,10 +53,6 @@ export function SessionList({ ix, error, current, archived, setArchived, onFind 
   return html`<nav class="list" aria-label="Sessions">
     <header class="list-head">
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
-      <div class="list-actions">
-        <button class="button find" type="button" aria-label="Find a session" onClick=${onFind}>Find</button>
-        <a class="button new" href="#/new">+ New session</a>
-      </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}. Sessions are listed without Desktop's groups.` : ''}</p>
     <div class="sections" id="sections">

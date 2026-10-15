@@ -27,14 +27,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
-- **New sessions** start with Ctrl+N, or "+ New session" on a touch screen: an empty chat with a folder
-  picker above the prompt box (the home folder, or a recent one). The first message starts the session in
-  that folder.
+- **New sessions** start with Ctrl+N: an empty chat with a folder picker above the prompt box (the home
+  folder, or a recent one). The first message starts the session in that folder.
 - **The list** shows routines first, then pinned sessions and Desktop's groups. Every section lists its
   newest session first.
 - **Finding a session.** Ctrl+K (or Cmd+K) opens a spotlight over the page. It lists the newest sessions
   first and filters as you type, by title, folder, branch or routine. The arrow keys and Enter open one,
-  and Esc closes it. On a touch screen, the Find button opens it.
+  and Esc closes it.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
   call.

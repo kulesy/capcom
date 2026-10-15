@@ -33,7 +33,7 @@ Chosen option: "Build all four changes", because the owner wants Capcom to work 
 - **Tool calls.** Calls between Claude's messages collapse into one row, such as "Read 3 files, ran 2 commands". A Normal and Verbose switch in the chat header shows them ungrouped, and the browser remembers the choice.
 - **Model and effort.** A change goes to the running process as a `set_model` or `apply_flag_settings` control request, so Capcom does not restart the process. It applies from Claude's next request, even mid-turn. Capcom saves each pick in `picks.json` in its state folder, so the pick survives the idle stop and a restart.
 
-**Amended 2026-10-15.** The owner had the Normal and Verbose switch removed, so tool calls are always grouped and a group opens to show each call. The `+` menu went with the Chrome switch. Ctrl+N starts a new session, and "+ New session" shows only on touch screens. A Ctrl+K spotlight replaced the search box, and every section of the list shows its newest session first, with routines at the top.
+**Amended 2026-10-15.** The owner had the Normal and Verbose switch removed, so tool calls are always grouped and a group opens to show each call. The `+` menu went with the Chrome switch. Ctrl+N starts a new session, and the "+ New session" button was removed. A Ctrl+K spotlight replaced the search box, and every section of the list shows its newest session first, with routines at the top.
 
 ### Consequences
 

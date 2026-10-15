@@ -166,8 +166,6 @@ a { color: var(--focus); }
 
 .brand h1 { margin: 0; font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.02em; }
 
-.list-actions { display: flex; gap: 0.5rem; }
-
 .problem {
   margin: 0 1rem 0.75rem;
   padding: 0.6rem 0.75rem;
@@ -681,11 +679,6 @@ a { color: var(--focus); }
 /* Below 16px, iOS zooms the page when a picker is tapped. */
 @media (pointer: coarse) {
   .pick select { font-size: 1rem; }
-}
-
-/* With a keyboard, Ctrl+N and Ctrl+K do these, so the buttons are only shown on touch screens. */
-@media (pointer: fine) {
-  .list-actions { display: none; }
 }
 
 .spotlight-backdrop {
