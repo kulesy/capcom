@@ -34,7 +34,7 @@ Chosen option: "A password, a local bind and a private network, with no further 
 - Capcom binds to 127.0.0.1. A reverse proxy or a private network the owner trusts carries phone access.
 - It works under a sub-path such as `/chat`. The page uses relative URLs, a script in `index.html` adds the trailing slash, the proxy strips the prefix, and the cookie sets no `Path`, so it stays scoped to the sub-path.
 
-**Amended 2026-10-15.** The owner's other local apps share Capcom's host name under other paths, and the owner kept that for clean addresses. A browser treats them as one site, so the same-origin check on writes and `SameSite=Strict` do not stop a script bug in one of them from acting through Capcom with the owner's cookie. The owner says those apps escape untrusted text, so the risk is low. A separate port or host name would remove it.
+**Amended 2026-10-15.** The owner's other local apps share Capcom's host name under other paths, and the owner kept that for clean addresses. A browser treats them as one site, so the same-origin check on writes and `SameSite=Strict` do not stop a script bug in one of them from acting through Capcom with the owner's cookie. The one neighbour that shows text from an outside service escapes it before display, checked in its code on 2026-10-15, so the risk is low. A separate port or host name would remove it.
 
 ### Consequences
 
