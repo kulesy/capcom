@@ -474,7 +474,7 @@ function renderStatus() {
   syncPick($('effort'), s.effort, e => e);
   $('chrome').setAttribute('aria-checked', String(!!s.chrome));
   $('chrome').disabled = !chat.status || (busy && !chat.draft);
-  $('chromeHint').textContent = busy && !chat.draft ? 'Wait for Claude to finish this turn' : 'Asks before each action';
+  $('chromeHint').textContent = busy && !chat.draft ? 'Wait for Claude to finish this turn' : 'Asks before each action, except in Bypass';
   $('chromeTag').hidden = !s.chrome;
   renderComposer();
   renderHead();
@@ -787,9 +787,17 @@ async function setChrome(on) {
 $('chrome').addEventListener('click', () => setChrome($('chrome').getAttribute('aria-checked') !== 'true'));
 $('chromeTag').addEventListener('click', () => setChrome(false));
 
+// Claude can refuse a switch, so a failed one puts the picker back on the mode the chat is still in.
 $('mode').addEventListener('change', async e => {
   if (chat.draft) { setDraft({ mode: e.target.value }); return; }
-  try { await api(`api/sessions/${encodeURIComponent(chat.id)}/mode`, { mode: e.target.value }); } catch (err) { notice(err.message); renderStatus(); }
+  const c = chat;
+  try {
+    await api(`api/sessions/${encodeURIComponent(c.id)}/mode`, { mode: e.target.value });
+  } catch (err) {
+    if (chat !== c) return;
+    notice(err.message);
+    renderStatus();
+  }
 });
 
 // The change shows at once and is put back if Claude refuses it. It applies from Claude's next request, even mid-turn.

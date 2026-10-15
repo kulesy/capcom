@@ -82,7 +82,7 @@ function buildIndex({ archived = false } = {}) {
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byRecent(a.latest, b.latest)),
-    started: loose.filter(r => r.source === 'capcom'),
+    started: loose.filter(r => r.source === 'capcom').slice(0, 60),
     ungrouped: loose.filter(r => r.source === 'desktop').slice(0, 60),
     other: loose.filter(r => r.source === 'cli').slice(0, 60),
     rows,
@@ -321,7 +321,11 @@ async function api(req, res, u) {
   if (action === 'mode') {
     if (!MODES.includes(body.mode)) return send(res, 400, { error: 'Unknown permission mode.' });
     const row = findRow(id);
-    ensureChat(id, row, { mode: body.mode }).setMode(body.mode);
+    try {
+      await ensureChat(id, row, { mode: body.mode }).setMode(body.mode);
+    } catch (e) {
+      return send(res, 400, { error: e.message });
+    }
     return send(res, 200, { mode: body.mode });
   }
   if (action === 'model' || action === 'effort') {

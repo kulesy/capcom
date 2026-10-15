@@ -51,9 +51,10 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
 - **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. Switch it
   off for one session from the `+` menu in the prompt box, or from the Chrome tag beside it. Capcom
   remembers the choice for that session in `picks.json`, next to the model and effort. It starts the CLI
-  with `--chrome` and an ask rule for every Chrome tool, so each action reaches an approval card in
-  every mode, Auto and Bypass permissions included, even ones your settings already allow. Chrome cards
-  have no Always allow.
+  with `--chrome` and an ask rule for every Chrome tool, so Chrome asks before each action, even ones
+  your settings already allow, and the question shows as an approval card. Bypass permissions is the
+  exception: Capcom allows Chrome there without a card, as Desktop does, and a switch to a stricter mode
+  asks again at once. Chrome cards have no Always allow.
 
 Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar,
 computer use (not available to the CLI in `-p` mode) and routines.
