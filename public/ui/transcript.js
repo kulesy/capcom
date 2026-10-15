@@ -1,16 +1,35 @@
 import { md } from '../md.mjs';
+import { duration, tokenCount } from './format.js';
 import { html, useLayoutEffect, useMemo, useRef } from './html.js';
-import { useFields, useStick, useStore } from './hooks.js';
-import { isChip, Row } from './rows.js';
-import { display } from './thread.js';
+import { useClock, useFields, useStick, useStore } from './hooks.js';
+import { isChip, Row, Thought } from './rows.js';
+import { activity, display } from './thread.js';
 
-// Claude's reply as it is written, and the working indicator before the first word.
+// Claude's thinking as it is written. It is open while it grows and folds once the block ends.
+function LiveThink({ think }) {
+  const body = useRef(null);
+  useStick(body);
+  return html`<div class="live-think"><div class="think"><${Thought} text=${think.text} name=${think.done ? 'Thought' : 'Thinking'} open=${!think.done} bodyRef=${body} /></div></div>`;
+}
+
+// What Claude is doing now, how long the turn has run, and the tokens of the replies it has finished.
+function Working({ work, since, on }) {
+  useClock(on);
+  const { doing, detail } = activity(work);
+  const meta = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`].filter(Boolean).join(' · ');
+  return html`<p class="working" id="working" hidden=${!on}><span class="lamp" data-state="working"></span>
+    <span class="working-text" id="workingText"><span class="working-doing">${doing}</span>${detail ? html`<span class="working-detail">${detail}</span>` : null}</span>
+    <span class="working-meta" title="Time since the turn began, and the tokens in the replies Claude has finished this turn. The count moves when a reply ends, not while it is written.">${meta}</span></p>`;
+}
+
+// The thinking and the reply as they are written, and the line that says what Claude is doing.
 function Live({ ctrl, box }) {
-  const live = useStore(ctrl.store, s => s.live);
+  const { live, think, work, turnStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart');
   const state = useStore(ctrl.store, s => s.status?.state || 'idle');
   useStick(box);
-  return html`<div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live) : '' }}></div>
-    <p class="working" id="working" hidden=${!(state === 'working' && !live)}><span class="lamp" data-state="working"></span><span id="workingText">Working</span></p>`;
+  return html`${think ? html`<${LiveThink} think=${think} />` : null}
+    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live) : '' }}></div>
+    <${Working} work=${work} since=${turnStart} on=${state === 'working'} />`;
 }
 
 export function Transcript({ ctrl }) {

@@ -157,3 +157,24 @@ test('a session whose first entry is a notice is titled by its first real prompt
   const t = file('head', [{ ...user(ORPHANS), cwd: '/work' }, { ...user('Fix the login bug'), cwd: '/work' }]);
   assert.equal(readHead(t).title, 'Fix the login bug');
 });
+
+const assistant = (id, content) => ({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id, role: 'assistant', content } });
+
+test('a thinking block that has text is a thinking item beside the reply it belongs to, and a redacted one shows nothing', () => {
+  const t = file('thinking', [
+    user('is 2027 prime?'),
+    assistant('msg_1', [{ type: 'thinking', thinking: 'Checking divisors up to 45.', signature: 'sig' }]),
+    assistant('msg_1', [{ type: 'thinking', thinking: '', signature: 'sig' }]),
+    assistant('msg_1', [{ type: 'text', text: 'Yes.' }]),
+  ]);
+  assert.deepEqual(itemsOf(t).map(i => [i.kind, i.msgId, i.text]), [
+    ['user', undefined, 'is 2027 prime?'],
+    ['thinking', 'msg_1', 'Checking divisors up to 45.'],
+    ['assistant', 'msg_1', 'Yes.'],
+  ]);
+});
+
+test('a long thinking summary is cut at the output limit', () => {
+  const t = file('long-thinking', [assistant('msg_2', [{ type: 'thinking', thinking: 'y'.repeat(30) }])]);
+  assert.equal(itemsOf(t, 10)[0].text, `${'y'.repeat(10)}\n... (20 more characters)`);
+});

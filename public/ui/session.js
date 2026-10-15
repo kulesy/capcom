@@ -14,6 +14,14 @@ let startedHere = null;
 // A bubble that is still being sent and the transcript's copy of it are one message when the words and the number of images match.
 const sameMessage = (item, m) => item.kind === 'user' && item.text.trim() === m.text.trim() && (item.images?.length || 0) === m.images.length;
 
+// When the turn began by this page's clock. A later report can only move it earlier, so a slow one never steps the timer back.
+const began = work => (work ? Date.now() - work.turnMs : 0);
+
+// A finished block is kept until the transcript has it, so the text does not vanish before its saved row arrives.
+const thought = (shown, d) => (d.done
+  ? (shown?.id === d.id ? { ...shown, done: true } : shown)
+  : { id: d.id, done: false, text: (shown?.id === d.id ? shown.text : '') + d.text });
+
 export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
@@ -22,7 +30,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
-    live: '', sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
+    live: '', think: null, work: null, turnStart: 0,
+    sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
   });
@@ -83,9 +92,11 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', notice: '' }); fetchNew(); });
-    on('state', d => patchStatus({ state: d.state }));
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), notice: '' }); fetchNew(); });
+    on('state', d => { patchStatus({ state: d.state }); if (d.state === 'idle') store.set({ work: null, turnStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
+    on('think', d => store.set(s => ({ think: thought(s.think, d) })));
+    on('work', d => store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })));
     on('changed', () => fetchNew());
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));
@@ -94,7 +105,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('effort', d => patchStatus({ effort: d.effort }));
     on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
     on('error', d => notice(d.message));
-    on('exit', () => patchStatus({ running: false, state: 'idle', pending: [] }));
+    on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [] }); store.set({ work: null, turnStart: 0 }); });
     es.onerror = () => { if (!closed) notice(es.readyState === EventSource.CLOSED ? 'Lost contact with the Mac.' : ''); };
   }
 
@@ -111,15 +122,18 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       // Chips are loaded first so a new chip never shows as open for a moment when it is already settled.
       const chips = r.items.some(i => /__(spawn|dismiss)_task$/.test(i.name || '')) ? await loadChips() : null;
       if (closed) return;
-      const clearLive = ended || r.items.some(i => i.kind === 'assistant');
+      const over = ended;
+      const clearLive = over || r.items.some(i => i.kind === 'assistant');
       ended = false;
       store.set(s => {
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
+        const saved = s.think?.done && r.items.some(i => i.kind === 'thinking' && i.msgId === s.think.id);
         return {
           ...thread, ...(chips && { chips }), end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
           sending: s.sending.filter(m => !r.items.some(i => sameMessage(i, m))),
           ...(clearLive && { live: '' }),
+          ...((over || saved) && { think: null }),
         };
       });
     } catch (e) {

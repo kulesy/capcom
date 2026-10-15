@@ -454,9 +454,9 @@ body.dragging, body.dragging * {
 
 .items > li + li { margin-top: 0.85rem; }
 
-.items > :is(.tool, .tool-group) + :is(.tool, .tool-group) { margin-top: 0.2rem; }
+.items > :is(.tool, .tool-group, .think) + :is(.tool, .tool-group, .think) { margin-top: 0.2rem; }
 
-.live, .working { max-width: 46rem; margin: 0.85rem auto 0; }
+.live, .working, .live-think { max-width: 46rem; margin: 0.85rem auto 0; }
 
 .msg { overflow-wrap: anywhere; }
 
@@ -531,9 +531,9 @@ body.dragging, body.dragging * {
 
 .msg hr { border: 0; border-top: 1px solid var(--rule); margin: 1rem 0; }
 
-.tool details, .tool-group details { border-radius: 0.5rem; }
+.tool details, .tool-group details, .think details { border-radius: 0.5rem; }
 
-.tool summary, .tool-group summary {
+.tool summary, .tool-group summary, .think summary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.6rem;
@@ -545,11 +545,11 @@ body.dragging, body.dragging * {
   font-size: 0.8125rem;
 }
 
-.tool summary::-webkit-details-marker, .tool-group summary::-webkit-details-marker { display: none; }
+.tool summary::-webkit-details-marker, .tool-group summary::-webkit-details-marker, .think summary::-webkit-details-marker { display: none; }
 
-.tool summary:hover, .tool-group summary:hover { background: var(--hover); }
+.tool summary:hover, .tool-group summary:hover, .think summary:hover { background: var(--hover); }
 
-.tool-name { font-weight: 600; }
+.tool-name, .think-name { font-weight: 600; }
 
 .tool-sum {
   font-family: var(--mono);
@@ -598,7 +598,38 @@ body.dragging, body.dragging * {
 
 .group-tools { list-style: none; margin: 0.1rem 0 0.3rem 0.75rem; padding: 0 0 0 0.5rem; border-left: 2px solid var(--rule); }
 
-.group-tools > .tool + .tool { margin-top: 0.2rem; }
+.group-tools > :is(.tool, .think) + :is(.tool, .think) { margin-top: 0.2rem; }
+
+.think-sum {
+  color: var(--ink-quiet);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.think details[open] > summary .think-sum { display: none; }
+
+.think-text {
+  margin: 0.1rem 0 0.4rem 0.75rem;
+  padding: 0.1rem 0 0.1rem 0.85rem;
+  border-left: 2px solid var(--rule);
+  color: var(--ink-quiet);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.think-text > :first-child { margin-top: 0; }
+
+.think-text > :last-child { margin-bottom: 0; }
+
+.think-text p, .think-text ul, .think-text ol { margin: 0.4rem 0; }
+
+.think-text ul, .think-text ol { padding-left: 1.2rem; }
+
+.live-think { margin-top: 0.4rem; }
+
+.live-think .think-text { max-height: 12rem; overflow: auto; }
 
 .tool-io {
   margin: 0.25rem 0 0.5rem 0.5rem;
@@ -679,6 +710,20 @@ body.dragging, body.dragging * {
   color: var(--ink-quiet);
   font-size: 0.875rem;
 }
+
+.working-text { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+
+.working-doing { white-space: nowrap; }
+
+.working-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 0.8125rem var(--mono);
+}
+
+.working-meta { margin-left: auto; padding-left: 0.5rem; font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .dock {
   position: relative;

@@ -35,6 +35,8 @@ Chosen option: "Build all four changes", because the owner wants Capcom to work 
 
 **Amended 2026-10-15.** The owner had the Normal and Verbose switch removed, so tool calls are always grouped and a group opens to show each call. The `+` menu went with the Chrome switch. Ctrl+N starts a new session, and the "+ New session" button was removed. A Ctrl+K spotlight replaced the search box, and every section of the list shows its newest session first, with routines at the top.
 
+**Amended 2026-10-16.** A thought among the calls joins the row, as in "Thought, ran 2 commands", and opens with the calls. A thought with no call beside it is a row of its own. See [Show Claude's live work](20261016-live-work-from-the-cli-stream.md).
+
 ### Consequences
 
 - ✅ New sessions, settings and stopping work as they do in Desktop.

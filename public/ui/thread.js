@@ -1,6 +1,6 @@
 // The transcript as a list of display items. These are plain functions on plain data: items are never changed in
 // place, so a row can tell by identity whether it needs to draw again.
-import { plural } from './format.js';
+import { plural, toolLabel } from './format.js';
 
 export const CHROME = 'mcp__claude-in-chrome__';
 
@@ -75,7 +75,20 @@ const KINDS = {
   chrome: n => `used Chrome ${plural(n, 'time')}`,
   other: n => `used ${plural(n, 'tool')}`,
 };
+const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Editing', web: 'Searching the web', fetch: 'Fetching', agent: 'Running an agent', skill: 'Using a skill', todo: 'Updating the to-do list', chrome: 'Using Chrome', other: 'Using' };
 const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || ((name || '').startsWith(CHROME) ? 'chrome' : 'other'));
+
+// What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.
+export function activity(work) {
+  const tools = work?.tools || [];
+  if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => toolLabel(t.name)))].join(', ') };
+  if (tools.length) {
+    const [t] = tools;
+    const kind = toolKind(t.name);
+    return { doing: DOING[kind], detail: kind === 'other' ? [toolLabel(t.name), t.summary].filter(Boolean).join(': ') : t.summary };
+  }
+  return { doing: work?.thinking ? 'Thinking' : work?.writing ? 'Writing' : 'Working', detail: '' };
+}
 
 const splitLines = text => (text ? text.replace(/\n$/, '').split('\n') : []);
 
@@ -98,14 +111,16 @@ function linesChanged(t) {
   return [splitLines(t.name === 'Write' ? i.content : i.new_source).length, 0];
 }
 
-// What a run of tool calls did: the sentence, the changed-line counts, and whether any call is running or failed.
-export function summarize(tools) {
+// What a run of tool calls and thoughts did: the sentence, the changed-line counts, and whether any call is running or failed.
+export function summarize(rows) {
   const kinds = new Map();
+  let thoughts = 0;
   let added = 0;
   let removed = 0;
   let edited = false;
   const tally = { pending: 0, failed: 0, denied: 0 };
-  for (const t of tools) {
+  for (const t of rows) {
+    if (t.kind === 'thinking') { thoughts++; continue; }
     const kind = toolKind(t.name);
     if (!kinds.has(kind)) kinds.set(kind, new Set());
     kinds.get(kind).add(kind === 'read' || kind === 'edit' ? t.input?.file_path || t.input?.notebook_path || t.id : t.id);
@@ -115,7 +130,7 @@ export function summarize(tools) {
       if (t.status === 'pending' || t.status === 'ok') { const [a, d] = linesChanged(t); added += a; removed += d; }
     }
   }
-  const phrase = [...kinds].map(([kind, set]) => KINDS[kind](set.size)).join(', ');
+  const phrase = [thoughts && 'thought', ...[...kinds].map(([kind, set]) => KINDS[kind](set.size))].filter(Boolean).join(', ');
   return {
     title: phrase[0].toUpperCase() + phrase.slice(1),
     edited,
@@ -126,19 +141,27 @@ export function summarize(tools) {
   };
 }
 
-// Chips, chapters, widgets and questions render as themselves and end a run; every other tool call joins it.
+// Chips, chapters, widgets and questions render as themselves and end a run; every other tool call joins it, and so does thinking.
 export function groupable(i) {
+  if (i.kind === 'thinking') return true;
   if (i.kind !== 'tool' || i.name === 'AskUserQuestion' || /__(spawn_task|dismiss_task|mark_chapter)$/.test(i.name)) return false;
   return !(/__show_widget$/.test(i.name) && i.input?.widget_code);
 }
 
+// A run holding a tool call folds into one group row, with the thinking between the calls inside it.
+// Thinking with no call beside it stays a row of its own.
 export function display(items) {
   const out = [];
+  let run = [];
+  const close = () => {
+    if (run.some(i => i.kind === 'tool')) out.push({ kind: 'group', rows: run, key: `g${run[0].key}` });
+    else out.push(...run);
+    run = [];
+  };
   for (const i of items) {
-    const last = out[out.length - 1];
-    if (!groupable(i)) out.push(i);
-    else if (last?.kind === 'group') last.tools.push(i);
-    else out.push({ kind: 'group', tools: [i], key: `g${i.key}` });
+    if (groupable(i)) run.push(i);
+    else { close(); out.push(i); }
   }
+  close();
   return out;
 }

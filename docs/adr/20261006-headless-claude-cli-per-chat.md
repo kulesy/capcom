@@ -30,11 +30,13 @@ Chosen option: "Run the Claude Code CLI headless, one process per open chat", be
 
 Capcom starts `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio` for each open chat, with `--permission-mode` and a few more flags (`lib/runner.mjs`). An existing session adds `--resume <id>`. The CLI sends permission requests as control requests, and the page shows them as approval cards. A process stops after 30 idle minutes with no page open on it, and the next message starts it again.
 
+**Amended 2026-10-16.** Right after `initialize`, Capcom also sends a `set_max_thinking_tokens` control request that asks for thinking summaries, and it reads the thinking, tool call and token events in the stream to show what Claude is doing while it works. See [Show Claude's live work](20261016-live-work-from-the-cli-stream.md).
+
 ### Consequences
 
 - ✅ A chat behaves as it does in a terminal, and Capcom stores no API key.
 - ✅ Capcom can continue any session by id, whoever started it.
-- ❌ It depends on stream-json control requests, which are not a published contract. Notes in the code mark each place that leans on this, with the CLI version it was checked on (2.1.292 to 2.1.300).
+- ❌ It depends on stream-json control requests, which are not a published contract. Notes in the code mark each place that leans on this, with the CLI version it was checked on (2.1.292 to 2.1.301).
 - ❌ A session also open in Desktop continues in place under the same id, and the two can drift apart if the owner uses both at once. The owner accepted that over a fork or a read-only view.
 
 ## Pros and Cons of the Options

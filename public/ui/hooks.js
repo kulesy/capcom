@@ -34,6 +34,16 @@ export function useDocumentTitle(title) {
   useEffect(() => { document.title = title; }, [title]);
 }
 
+// Draws the component again every second while `on`, so a timer on screen keeps counting between events.
+export function useClock(on) {
+  const [, rerender] = useReducer(n => n + 1, 0);
+  useEffect(() => {
+    if (!on) return undefined;
+    const timer = setInterval(rerender, 1000);
+    return () => clearInterval(timer);
+  }, [on]);
+}
+
 export const atBottom = el => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
 // Keeps a scroll box pinned to its bottom when it was within 80px of it before this render changed the page.

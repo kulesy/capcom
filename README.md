@@ -69,7 +69,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   routine's title, beside Desktop's runs of the same routine.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
-  call.
+  call. A thought among the calls folds into the row, as in "Thought, ran 2 commands".
+- **Live work.** While Claude works, its thinking streams into a Thinking block above the status line.
+  The block folds into a Thought row when the thought ends, and a tap opens it again. Each tool call shows
+  as soon as it starts. The status line names the step, such as "Running npm test", "Reading
+  lib/runner.mjs" or "Writing", with the time the turn has run and the output tokens of the replies Claude
+  has finished. That count moves when a reply ends, not while one is written, because the CLI reports an
+  exact count only then. A headless CLI redacts its thinking, so Capcom asks it for summaries when the
+  process starts, and the CLI saves them in the transcript. If the CLI sends no thinking text, no block
+  appears and the status line says "Thinking" beside the timer. A thinking block saved with no text shows
+  nothing, and a turn stopped mid-thought keeps none of it, because the CLI saves a block only when it
+  ends. Checked on CLI 2.1.301 with Haiku 5.5.
 - **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
   failed or was stopped, a line from a monitor, a message from another session or a subagent, and a
   command you ran with `!`. Capcom shows each as a compact notice instead of a message from you. A notice
@@ -194,7 +204,8 @@ node server.mjs
 ```
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
-the unit tests, for the cron parser, the routine scheduler, the start timeout and the transcript parser, with Node's own test runner. The password is
+the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
+live work tracker and the thread display, with Node's own test runner. The password is
 kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
 out. Until one is set, Capcom refuses every request.
 

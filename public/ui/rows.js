@@ -1,7 +1,7 @@
 // The rows of the transcript. Each is memoised, so a row draws again only when its own item changes.
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
-import { clip, lf, modelLabel, pre, tilde, toolLabel } from './format.js';
+import { clip, lf, modelLabel, pre, preview, tilde, toolLabel } from './format.js';
 import { Fragment, html, memo, useState } from './html.js';
 import { summarize } from './thread.js';
 import { Widget } from './widget.js';
@@ -25,14 +25,24 @@ const SystemNotice = memo(function SystemNotice({ n }) {
     </div></li>`;
 });
 
-const sameTools = (a, b) => a.length === b.length && a.every((t, n) => t === b[n]);
+const sameRows = (a, b) => a.length === b.length && a.every((t, n) => t === b[n]);
 
-const ToolGroup = memo(function ToolGroup({ tools }) {
-  const g = summarize(tools);
-  return html`<li class="tool-group" data-status=${g.status}><details data-k=${`g:${tools[0].id}`}><summary><span class="group-sum">${g.title}</span>
+// One block of thinking: the start of it on the summary line, and all of it under that.
+export function Thought({ text, name, open, bodyRef }) {
+  return html`<details open=${open}><summary><span class="think-name">${name}</span><span class="think-sum">${preview(text)}</span></summary>
+    <div class="think-text" ref=${bodyRef} dangerouslySetInnerHTML=${{ __html: md(text) }}></div></details>`;
+}
+
+const ThinkRow = memo(function ThinkRow({ t }) {
+  return html`<li class="think"><${Thought} text=${t.text} name="Thought" /></li>`;
+});
+
+const ToolGroup = memo(function ToolGroup({ rows }) {
+  const g = summarize(rows);
+  return html`<li class="tool-group" data-status=${g.status}><details data-k=${`g:${rows[0].key}`}><summary><span class="group-sum">${g.title}</span>
     <span class="group-meta">${g.edited ? html`<span class="add">+${g.added}</span> <span class="del">-${g.removed}</span>` : null}<span class="tool-status">${g.note}</span></span></summary>
-    <ul class="group-tools">${tools.map(t => html`<${ToolRow} key=${t.key} t=${t} />`)}</ul></details></li>`;
-}, (a, b) => sameTools(a.tools, b.tools));
+    <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} />` : html`<${ToolRow} key=${r.key} t=${r} />`))}</ul></details></li>`;
+}, (a, b) => sameRows(a.rows, b.rows));
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
 function ChipCard({ t, chip, cwd, onChip }) {
@@ -67,7 +77,7 @@ function Thumbs({ images, url }) {
 }
 
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip
-  && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameTools(a.item.tools, b.item.tools)));
+  && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
@@ -81,7 +91,8 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl }) {
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;
     return html`<${ToolRow} t=${i} />`;
   }
-  if (i.kind === 'group') return html`<${ToolGroup} tools=${i.tools} />`;
+  if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} />`;
+  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} />`;
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;
