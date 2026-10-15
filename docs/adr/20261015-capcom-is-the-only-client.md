@@ -47,6 +47,8 @@ Chosen option: "Capcom is the only client", because Capcom can run any session i
 
 **Amended 2026-10-15.** Pasted and dropped images are in the prompt box (see [Send pasted images as content blocks](20261015-images-in-the-prompt-box.md)). Attached files, slash commands and @ mentions are still to come.
 
+**Amended 2026-10-15.** Capcom now runs routines itself, from the prompt files Desktop keeps, so Desktop no longer has to stay open for them once the owner has switched each routine over (see [Capcom runs routines itself](20261015-capcom-runs-routines-itself.md)).
+
 ## Pros and Cons of the Options
 
 ### Capcom is the only client

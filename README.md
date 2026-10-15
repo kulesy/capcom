@@ -62,7 +62,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and End jump to either end, and left and right fold a section or a routine's runs. Enter opens the
   focused session. With no chat open, up or down steps into the list.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
-  earlier runs out underneath.
+  earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
+  routine's title, beside Desktop's runs of the same routine.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
   call.
@@ -92,8 +93,8 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
   exception: Capcom allows Chrome there without a card, as Desktop does, and a switch to a stricter mode
   asks again at once. Chrome cards have no Always allow.
 
-Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar,
-computer use (not available to the CLI in `-p` mode) and routines.
+Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar, and
+computer use (not available to the CLI in `-p` mode).
 
 Things to know:
 
@@ -110,6 +111,50 @@ Things to know:
   that folder (falling back to `permissions.defaultMode` in `~/.claude/settings.json`), Desktop's
   effort level, and the model from `~/.claude/settings.json`. The mode, model and effort can still be
   changed per chat from the prompt box.
+
+## Routines
+
+Capcom runs the routines that Claude Desktop runs, so Desktop does not have to stay open for them. A
+routine is a prompt file that Desktop keeps, `~/.claude/scheduled-tasks/<id>/SKILL.md`, which Capcom reads
+and never writes, and a schedule that Capcom keeps in `routines.json` in its state folder. Capcom has to be
+running when a routine is due, which is what the launchd agent under "Always on" is for.
+
+- **Seeding.** Desktop's own schedule file is internal to it and has no jitter in it, so the schedules
+  are exported once from Desktop to a JSON file with a `routines` list. Each entry has an `id`, `title`,
+  `cron`, `jitterSeconds`, `file`, `cwd`, `model`, `effort`, `mode` and `enabledInDesktop`.
+  `npm run seed-routines -- <export.json>` copies them into `routines.json`, every one switched off, and
+  prints when each would fire next. Run it again with a newer export to add routines that are new. The
+  ones already there are left as they are, apart from `enabledInDesktop`. Capcom reads `routines.json`
+  on every check, so a seed run or a hand edit shows without a restart. Capcom writes the file too, so
+  reload it before a hand edit.
+- **Switching over.** A routine runs in Capcom only once it is switched on here, so switch it off in
+  Desktop first, or both apps run it. Switching on counts the schedule from that moment, so a fire time
+  earlier in the day is not run on top of Desktop's own run.
+- **When it fires.** The schedule is a five-field cron in the Mac's time zone, which Capcom follows if it
+  changes, with the routine's jitter added as a fixed offset, as Desktop does it: `30 7 * * 1-5` with 737
+  seconds of jitter fires at 07:42:17. Capcom checks every 30 seconds, and once when it starts. A routine
+  that is due starts a new session in its folder with its permission mode, model and effort. The first
+  message is Desktop's: the text of `SKILL.md` after its frontmatter, inside the same `<scheduled-task>`
+  wrapper. The file is read afresh at each run, so an edit applies at once.
+- **Missed runs.** If Capcom was not running at a fire time, the latest missed fire runs once as soon as
+  Capcom is up, provided it is under 12 hours late. A later one is skipped and logged. However many fires
+  were missed, that is at most one run.
+- **One at a time.** A fire that comes while the routine's previous run is still working, or waiting for an
+  approval, is skipped and logged, not held over until it ends.
+- **Restarts.** `routines.json` records when each routine was switched on and last ran, and the next
+  fire is worked out from that. A restart does not repeat a run, and a run that came due while Capcom
+  was down is caught up as above. A restart can cut a run in progress short, and Capcom does not start
+  that run again. A run that cannot start is recorded in `lastError` and waits for the routine's next
+  fire.
+- **A wrong file.** Capcom runs nothing while `routines.json` cannot be read, has a routine with no id, or
+  has an id twice, which is what a copied entry with its id left alone looks like. `GET api/routines` says
+  which, and Capcom logs it once on stderr. An `enabled` that is not `true` or `false` counts as off.
+- **API.** `GET api/routines` lists the routines with their next fire time, whether each is running, and
+  what is wrong with it if anything. `POST api/routines/<id>/run` runs one now, switched on or not, and
+  answers 409 while its previous run is working. `POST api/routines/<id>/enabled` takes
+  `{ "enabled": true }` or `false`.
+- **Logs.** Every run, skip and switch is a line on stdout, and every run that fails to start is a line on
+  stderr. Under launchd those are `out.log` and `err.log` in `~/Library/Logs/capcom/`.
 
 ## The page
 
@@ -134,7 +179,8 @@ npm run set-password
 node server.mjs
 ```
 
-There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. The password is
+There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
+the unit tests, for the cron parser, the routine scheduler and the start timeout, with Node's own test runner. The password is
 kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
 out. Until one is set, Capcom refuses every request.
 
@@ -161,7 +207,8 @@ optional and git-ignored, and its values replace the ones in `config.json`.
   here that Desktop does not have yet.
 
 Three environment variables win over both files. `PORT` sets the port, `CAPCOM_CLAUDE` sets the CLI,
-and `CAPCOM_STATE` points a test instance at its own login and registry.
+and `CAPCOM_STATE` points a test instance at its own login, registry and routines. Two instances that
+share a state folder both fire its routines, so always give a test instance its own.
 
 ## Always on
 
