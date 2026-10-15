@@ -4,17 +4,17 @@ import { useStore } from './hooks.js';
 import { html, useState } from './html.js';
 import { CHROME } from './thread.js';
 
-const CHROME_FORMS = {
+const CHROME_FORMS = new Map(Object.entries({
   navigate: i => ['open a page', [['URL', i.url], ['Tab', i.tabId]]],
   computer: i => [`${i.action || 'act'} on a page`, [['Action', i.action], ['Text', i.text], ['Where', i.coordinate?.join(', ') || i.ref], ['Tab', i.tabId]]],
   javascript_tool: i => ['run JavaScript in a tab', [['Script', i.text], ['Tab', i.tabId]]],
   form_input: i => ['fill in a form field', [['Field', i.ref], ['Value', i.value === undefined ? '' : String(i.value)], ['Tab', i.tabId]]],
   find: i => ['search a page', [['Looking for', i.query], ['Tab', i.tabId]]],
   file_upload: i => ['upload a file', [['Files', (i.paths || []).join('\n')], ['Field', i.ref], ['Tab', i.tabId]]],
-};
+}));
 
 function chromeCard(tool, i) {
-  const form = Object.hasOwn(CHROME_FORMS, tool) ? CHROME_FORMS[tool](i) : null;
+  const form = CHROME_FORMS.get(tool)?.(i);
   if (form) return { title: `Chrome wants to ${form[0]}`, fields: form[1] };
   return { title: `Chrome wants to use ${toolLabel(tool)}`, fields: Object.entries(i).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]) };
 }

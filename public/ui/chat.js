@@ -4,7 +4,7 @@ import { Composer, FolderBar } from './composer.js';
 import { HOME } from './env.js';
 import { folderName, settingsLine } from './format.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
-import { html, useLayoutEffect, useRef } from './html.js';
+import { html, memo, useLayoutEffect, useRef } from './html.js';
 import { createChat } from './session.js';
 import { Transcript } from './transcript.js';
 
@@ -34,8 +34,9 @@ function Notice({ ctrl }) {
   return html`<p class="notice" id="notice" hidden=${!text}>${text}</p>`;
 }
 
-// `row` is the list's entry for the session, which names it until the transcript answers.
-export function ChatPane({ id, row, verbose, setVerbose, text, setText, refreshIndex }) {
+// `row` is the list's entry for the session, which names it until the transcript answers. It is read once, so a
+// fresh copy of the list never redraws the chat.
+export const ChatPane = memo(function ChatPane({ id, row, verbose, setVerbose, refreshIndex }) {
   const held = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
   const ctrl = held.current;
@@ -50,7 +51,7 @@ export function ChatPane({ id, row, verbose, setVerbose, text, setText, refreshI
       <${Approvals} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
       ${ctrl.draft ? html`<${FolderBar} ctrl=${ctrl} />` : null}
-      <${Composer} ctrl=${ctrl} text=${text} setText=${setText} />
+      <${Composer} ctrl=${ctrl} />
     </div>
   </section>`;
-}
+}, (a, b) => a.id === b.id && a.verbose === b.verbose && a.setVerbose === b.setVerbose && a.refreshIndex === b.refreshIndex);

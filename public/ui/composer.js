@@ -1,4 +1,5 @@
 // The prompt box: the text, the settings under it, and the folder picker for a session that is not started yet.
+import { draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
 import { modelLabel, tilde } from './format.js';
 import { useFields } from './hooks.js';
@@ -11,7 +12,7 @@ const EFFORTS = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh
 const isBusy = s => s?.state === 'working' || s?.state === 'waiting';
 
 // A model or effort the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
-function Pick({ id, label, value, options, placeholder, labelOf, disabled, onChange }) {
+function Pick({ id, label, value, options, placeholder, labelOf = v => v, disabled, onChange }) {
   const extra = value && !options.some(([v]) => v === value) ? [[value, labelOf(value)]] : [];
   return html`<label class="pick"><span class="sr">${label}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
@@ -20,18 +21,25 @@ function Pick({ id, label, value, options, placeholder, labelOf, disabled, onCha
     </select></label>`;
 }
 
+let recentOpen = false;
+
 export function FolderBar({ ctrl }) {
   const { folder, folders } = useFields(ctrl.store, 'folder', 'folders');
   const choose = e => { ctrl.setFolder(e.target.value); ctrl.loadDefaults(); };
   return html`<div class="folderbar" id="folderBar">
     <label class="folder-field">Folder <input id="folder" type="text" autocomplete="off" spellcheck=${false} value=${folder} onInput=${e => ctrl.setFolder(e.target.value)} onChange=${ctrl.loadDefaults} /></label>
-    <details class="recent"><summary>Recent folders</summary><div class="folders" id="folders">
+    <details class="recent" open=${recentOpen} onToggle=${e => { recentOpen = e.currentTarget.open; }}><summary>Recent folders</summary><div class="folders" id="folders">
       ${folders.map((f, i) => html`<label class="folder" key=${f}><input type="radio" name="folder" value=${f} defaultChecked=${i === 0} onChange=${choose} /> ${tilde(f, HOME) || '~'}</label>`)}
     </div></details></div>`;
 }
 
-export function Composer({ ctrl, text, setText }) {
+// Starting a session replaces this box with the new session's, so focus is handed on to the box that mounts next.
+let keepFocus = false;
+
+export function Composer({ ctrl }) {
   const { status, starting } = useFields(ctrl.store, 'status', 'starting');
+  const [text, setLocal] = useState(draftText);
+  const setText = value => { setDraftText(value); setLocal(value); };
   const draft = !!ctrl.draft;
   const [menu, setMenu] = useState(false);
   const area = useRef(null);
@@ -54,7 +62,14 @@ export function Composer({ ctrl, text, setText }) {
     el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
   }, [text]);
 
-  useLayoutEffect(() => { if (draft) area.current.focus({ preventScroll: true }); }, []);
+  useLayoutEffect(() => {
+    if (draft || keepFocus) area.current.focus({ preventScroll: true });
+    keepFocus = false;
+    return () => {
+      keepFocus = document.activeElement === area.current;
+      setTimeout(() => { keepFocus = false; });
+    };
+  }, []);
 
   const now = useRef({});
   now.current = { menu, busy: isBusy(status), draft, ctrl };
@@ -111,7 +126,7 @@ export function Composer({ ctrl, text, setText }) {
       </div>
       <div class="composer-right">
         <${Pick} id="model" label="Model" value=${s.shownModel || s.model} options=${MODELS} placeholder="Model" labelOf=${modelLabel} disabled=${!status} onChange=${v => ctrl.pick('model', v)} />
-        <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" labelOf=${e => e} disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
+        <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
         <button class="button send" id="send" type=${stop ? 'button' : 'submit'} data-act=${stop ? 'stop' : 'send'} disabled=${!stop && (!typed || starting)} onClick=${stop ? ctrl.stop : undefined}>${starting ? 'Starting' : stop ? 'Stop' : 'Send'}</button>
       </div>
     </div>

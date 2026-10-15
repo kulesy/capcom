@@ -23,6 +23,7 @@
 <link rel="modulepreload" href="ui/format.js">
 <link rel="modulepreload" href="ui/storage.js">
 <link rel="modulepreload" href="ui/store.js">
+<link rel="modulepreload" href="ui/draft.js">
 <link rel="modulepreload" href="ui/hooks.js">
 <link rel="modulepreload" href="ui/thread.js">
 <link rel="modulepreload" href="ui/session.js">
@@ -36,7 +37,22 @@
 </head>
 <body>
 <p id="unsupported" class="quiet pad" hidden>Capcom needs a newer browser: Safari 16.4, Chrome 89 or Firefox 108 or later.</p>
-<script>if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) document.getElementById('unsupported').hidden = false</script>
+<script>if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) { document.getElementById('unsupported').hidden = false; document.getElementById('boot').hidden = true }</script>
+<div class="app" id="boot" data-view="list">
+  <nav class="list" aria-label="Sessions">
+    <header class="list-head">
+      <div class="brand"><span class="station">{{station}}</span><h1>Capcom</h1></div>
+      <a class="button new" href="#/new">+ New session</a>
+    </header>
+    <div class="search"><input type="search" placeholder="Search sessions" autocomplete="off" aria-label="Search sessions" disabled></div>
+    <div class="sections"><p class="quiet pad">Loading sessions</p></div>
+    <footer class="list-foot">
+      <label><input type="checkbox" disabled> Show archived</label>
+      <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
+    </footer>
+  </nav>
+  <main class="chat"><section class="empty"><p>Pick a session, or start a new one.</p></section></main>
+</div>
 <div id="root" data-home="{{home}}" data-station="{{station}}"></div>
 <script type="module" src="app.js"></script>
 </body>

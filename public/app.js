@@ -19,7 +19,6 @@ function App() {
   const [ix, setIx] = useState(null);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
-  const [text, setText] = useState('');
   const now = useRef({});
   now.current = { archived, ix };
   const latest = useRef(0);
@@ -62,10 +61,11 @@ function App() {
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <p>Pick a session, or start a new one.</p>
       </section>
-      ${view === 'chat' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} verbose=${verbose} setVerbose=${setVerbose} text=${text} setText=${setText} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} verbose=${verbose} setVerbose=${setVerbose} refreshIndex=${loadIndex} />` : null}
     </main>
   </div>`;
 }
 
+document.getElementById('boot').remove();
 document.getElementById('unsupported').remove();
 render(html`<${App} />`, document.getElementById('root'));

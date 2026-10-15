@@ -27,6 +27,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   let es = null;
   let fetching = false;
   let again = false;
+  // Once a turn ends the streamed text stays up until the transcript has the real message, so it never blinks out.
+  let ended = false;
 
   const notice = text => store.set({ notice: text || '' });
   const patchStatus = patch => store.set(s => ({ status: { ...s.status, ...patch } }));
@@ -77,9 +79,9 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { store.set({ status: s, live: s.live || '', notice: '' }); fetchNew(); });
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', notice: '' }); fetchNew(); });
     on('state', d => patchStatus({ state: d.state }));
-    on('delta', d => store.set(s => ({ live: s.live + d.text })));
+    on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
     on('changed', () => fetchNew());
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));
@@ -87,7 +89,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
     on('effort', d => patchStatus({ effort: d.effort }));
     on('chrome', d => patchStatus({ chrome: d.chrome }));
-    on('turn-end', d => { store.set({ live: '' }); if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
+    on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
     on('error', d => notice(d.message));
     on('exit', () => patchStatus({ running: false, state: 'idle', pending: [] }));
     es.onerror = () => { if (!closed) notice(es.readyState === EventSource.CLOSED ? 'Lost contact with the Mac.' : ''); };
@@ -106,6 +108,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       // Chips are loaded first so a new chip never shows as open for a moment when it is already settled.
       const chips = r.items.some(i => /__(spawn|dismiss)_task$/.test(i.name || '')) ? await loadChips() : null;
       if (closed) return;
+      const clearLive = ended || r.items.some(i => i.kind === 'assistant');
+      ended = false;
       store.set(s => {
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
         const users = r.items.filter(i => i.kind === 'user').map(i => i.text.trim());
@@ -113,7 +117,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
           ...thread, ...(chips && { chips }), end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
           sending: s.sending.filter(t => !users.includes(t.trim())),
-          ...(r.items.some(i => i.kind === 'assistant') && { live: '' }),
+          ...(clearLive && { live: '' }),
         };
       });
     } catch (e) {
