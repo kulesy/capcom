@@ -13,6 +13,7 @@ import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth } from './lib/auth.mjs';
 import { makeChips } from './lib/tools.mjs';
+import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 
 const auth = makeAuth(cfg.stateDir);
@@ -54,12 +55,15 @@ function buildIndex({ archived = false } = {}) {
   for (const t of files.values()) {
     if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id))) continue;
     const head = readHead(t);
-    rows.set(t.id, { id: t.id, title: head.title || started.get(t.id)?.title || 'Untitled session', cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
-      archived: false, lastActivityAt: t.mtime, routine: head.routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
+    // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
+    // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
+    const routine = head.routine || started.get(t.id)?.routine || null;
+    rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || 'Untitled session', cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
+      archived: false, lastActivityAt: t.mtime, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone.
   for (const s of started.values()) {
-    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, source: 'capcom', state: stateOf(s.id, s.at) });
+    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
   }
 
   // Groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its sessions loose.
@@ -146,16 +150,40 @@ function settingsFor(id, row) {
   return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], mode, model, effort, title }) {
+async function newSession({ cwd, text, images = [], mode, model, effort, title, routine }) {
   const s = desktopSettings({ cwd });
   const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
-  if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
-  // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
-  const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
-  fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120) }]));
-  if (cfg.desktopHandoff) afterTurn(chat, () => handOff(chat.id));
+  // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
+  try {
+    // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
+    const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
+    fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
+    if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
+  } catch (e) {
+    console.error(`Could not record session ${chat.id}: ${e.message}`);
+  }
+  if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
+
+// ---- routines ------------------------------------------------------------------------------------
+// Desktop's scheduled tasks, run from here. See docs/adr/20261015-capcom-runs-routines-itself.md.
+
+function routineProblem(r) {
+  if (!r.cwd || !fs.existsSync(r.cwd) || !fs.statSync(r.cwd).isDirectory()) return `The folder ${r.cwd} does not exist.`;
+  if (r.mode && !MODES.includes(r.mode)) return `Unknown permission mode ${r.mode}.`;
+  if (r.model && !MODEL.test(r.model)) return `Unknown model ${r.model}.`;
+  if (r.effort && !EFFORTS.includes(r.effort)) return `Unknown effort level ${r.effort}.`;
+  return null;
+}
+
+// A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
+const routines = makeScheduler({
+  store: makeRoutines(cfg.stateDir),
+  check: routineProblem,
+  start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
+  working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
+});
 
 // ---- handing new sessions to Desktop -------------------------------------------------------------
 // Opt-in through desktopHandoff in config.json, because a hand-off adds to Desktop's sidebar and switches its window.
@@ -286,8 +314,27 @@ async function editLayout(req, res, change) {
   return send(res, 200, { id, group: now.assignments[id] || null, pinned: now.pinned.includes(id) });
 }
 
+// GET api/routines lists them. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches one on or off.
+async function routinesApi(req, res, parts) {
+  if (parts.length === 2) return req.method === 'GET' ? send(res, 200, routines.list()) : send(res, 405, { error: 'Method not allowed' });
+  const [, , id, action] = parts;
+  if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad routine id' });
+  if (parts.length !== 4 || !['run', 'enabled'].includes(action)) return send(res, 404, { error: 'Not found' });
+  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
+  const raw = await readBody(req);
+  let body;
+  try { body = JSON.parse(raw || '{}') || {}; } catch { return send(res, 400, { error: 'Send JSON.' }); }
+  try {
+    if (action === 'run') return send(res, 200, await routines.runNow(id));
+    return send(res, 200, { routine: routines.setEnabled(id, body.enabled) });
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message });
+  }
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
+  if (parts[1] === 'routines') return routinesApi(req, res, parts);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const { rows, ...index } = buildIndex({ archived: u.searchParams.get('archived') === '1' });
     return send(res, 200, index);
@@ -453,7 +500,18 @@ function seedLayout() {
 }
 
 seedLayout();
-server.listen(cfg.port, '127.0.0.1', () => console.log(`Capcom on http://localhost:${cfg.port}`));
+// Routines fire from here, and only once the port is ours, so a second Capcom that cannot bind never runs one. The first check
+// is at start, so a run that came due while Capcom was down is caught up.
+const followZone = makeZoneFollower();
+const checkRoutines = () => {
+  followZone();
+  routines.tick().catch(e => console.error(`Routine check failed: ${e.message}`));
+};
+server.listen(cfg.port, '127.0.0.1', () => {
+  console.log(`Capcom on http://localhost:${cfg.port}`);
+  setInterval(checkRoutines, 30_000).unref();
+  checkRoutines();
+});
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
-if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
+if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));
