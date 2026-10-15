@@ -2,6 +2,7 @@
 // the components only draw what is in its store and call what it returns.
 import { api } from './api.js';
 import { HOME } from './env.js';
+import { payload } from './images.js';
 import { createStore } from './store.js';
 import { absorb, prepend } from './thread.js';
 
@@ -9,6 +10,9 @@ const enc = encodeURIComponent;
 
 // The first message of a session started here shows as a bubble until its transcript has it.
 let startedHere = null;
+
+// A bubble that is still being sent and the transcript's copy of it are one message when the words and the number of images match.
+const sameMessage = (item, m) => item.kind === 'user' && item.text.trim() === m.text.trim() && (item.images?.length || 0) === m.images.length;
 
 export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
@@ -18,7 +22,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
-    live: '', sending: first ? [first.text] : [], notice: '', starting: false, loadingEarlier: false,
+    live: '', sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
   });
@@ -60,7 +64,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       if (closed) return;
       store.set(s => ({
         ...thread, ...(chips && { chips }), start: r.start, end: r.end, hasEarlier: r.hasEarlier, loaded: true,
-        sending: s.sending.filter(t => !thread.items.some(i => i.kind === 'user' && i.text.trim() === t.trim())),
+        sending: s.sending.filter(m => !thread.items.some(i => sameMessage(i, m))),
       }));
     } catch (e) {
       notice(`Could not open this session: ${e.message}`);
@@ -111,11 +115,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       ended = false;
       store.set(s => {
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
-        const users = r.items.filter(i => i.kind === 'user').map(i => i.text.trim());
         return {
           ...thread, ...(chips && { chips }), end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
-          sending: s.sending.filter(t => !users.includes(t.trim())),
+          sending: s.sending.filter(m => !r.items.some(i => sameMessage(i, m))),
           ...(clearLive && { live: '' }),
         };
       });
@@ -143,14 +146,15 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // ---- talking to Claude -------------------------------------------------------------------------------
 
   // Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
-  async function send(text, mode) {
-    store.set(s => ({ sending: [...s.sending, text], notice: '', jump: s.jump + 1 }));
+  async function send(text, images, mode) {
+    const message = { text, images };
+    store.set(s => ({ sending: [...s.sending, message], notice: '', jump: s.jump + 1 }));
     try {
-      const status = await api(`api/sessions/${enc(id)}/send`, { text, mode });
+      const status = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }) });
       if (!closed) store.set({ status });
       return true;
     } catch (err) {
-      if (!closed) store.set(s => ({ sending: s.sending.filter(t => t !== text), notice: `Not sent: ${err.message}` }));
+      if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), notice: `Not sent: ${err.message}` }));
       return false;
     }
   }
@@ -239,17 +243,17 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   }
 
   // The first message goes to the new session; the page follows once the list knows about it.
-  async function startNew(text, onCreated) {
+  async function startNew(text, images, onCreated) {
     if (state().starting) return;
     const s = state().status;
     store.set({ starting: true, notice: '' });
     try {
       const { id: created } = await api('api/new', {
-        cwd: state().folder.trim(), text, mode: s.mode,
+        cwd: state().folder.trim(), text, mode: s.mode, ...(images.length && { images: payload(images) }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }),
       });
       onCreated();
-      startedHere = { id: created, text };
+      startedHere = { id: created, text, images };
       await refreshIndex();
       location.hash = `#/s/${enc(created)}`;
     } catch (err) {

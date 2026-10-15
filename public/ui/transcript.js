@@ -35,7 +35,7 @@ export function Transcript({ ctrl }) {
     <button class="button earlier" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
     <ol class="items" id="items">
       ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} />`)}
-      ${sending.map((text, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text, sending: true }} />`)}
+      ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} />`)}
     </ol>
     <${Live} ctrl=${ctrl} box=${box} />
   </div>`;
