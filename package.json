@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.mjs",
     "set-password": "node bin/set-password.mjs",
-    "install-agent": "node bin/install-agent.mjs"
+    "install-agent": "node bin/install-agent.mjs",
+    "test": "node --test test/*.test.mjs"
   },
   "engines": {
     "node": ">=20"
