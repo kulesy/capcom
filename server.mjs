@@ -531,6 +531,8 @@ const server = http.createServer(async (req, res) => {
     if (u.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
     const file = asset(u.pathname);
     if (file) return send(res, 200, fs.readFileSync(file.file), file.type, { 'cache-control': 'no-cache' });
+    // NOTE: [16 Oct 2026] EK - The cookie is SameSite=Lax (lib/auth.mjs), so a link from another site arrives signed in.
+    // A GET must never write, and every write must be a POST past this check.
     if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     if (!auth.hasPassword()) return send(res, 503, page('setup.html'), 'text/html; charset=utf-8');
     const secure = overHttps(req);

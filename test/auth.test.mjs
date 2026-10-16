@@ -30,9 +30,9 @@ const withCookie = token => ({ headers: { cookie: `theme=dark; capcom=${token}; 
 
 test('a cookie lasts a year and keeps the flags it always had', () => {
   assert.equal(LIFETIME_S, 31_536_000);
-  assert.equal(sessionCookie('abc', LIFETIME_S, false), 'capcom=abc; HttpOnly; SameSite=Strict; Max-Age=31536000');
-  assert.equal(sessionCookie('abc', LIFETIME_S, true), 'capcom=abc; HttpOnly; SameSite=Strict; Max-Age=31536000; Secure');
-  assert.equal(sessionCookie('', 0, false), 'capcom=; HttpOnly; SameSite=Strict; Max-Age=0');
+  assert.equal(sessionCookie('abc', LIFETIME_S, false), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=31536000');
+  assert.equal(sessionCookie('abc', LIFETIME_S, true), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=31536000; Secure');
+  assert.equal(sessionCookie('', 0, false), 'capcom=; HttpOnly; SameSite=Lax; Max-Age=0');
 });
 
 test('believes X-Forwarded-Proto only from a loopback peer', () => {

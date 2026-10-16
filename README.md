@@ -308,8 +308,8 @@ A proxy that ends https and leaves the header out, or that does not pass the ori
 header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached Capcom some other way
 could not switch `Secure` on. Capcom listens on 127.0.0.1 only, so the test passes for every connection today.
 An http address keeps working, because it sends no such header. The cookie is also `HttpOnly` and
-`SameSite=Strict`, so a link to Capcom on another website shows the sign-in page. Sign in again, or open the
-address from the address bar.
+`SameSite=Lax`, so a signed-in browser that follows a link to Capcom from another website arrives signed in,
+and the cookie is not sent with a form or script request from that website.
 
 Passkeys need an https address. A phone that reaches Capcom over plain http, as on a private network without
 https, signs in with the password only, and the sign-in page says why. To use passkeys remotely, serve

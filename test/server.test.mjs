@@ -15,7 +15,7 @@ import { makeAuthenticator } from './authenticator.mjs';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PASSWORD = 'a long password for the tests';
 const DAY = 24 * 3600_000;
-const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Strict; Max-Age=31536000$/;
+const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Max-Age=31536000$/;
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const HTTPS = { 'x-forwarded-proto': 'https' };
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-'));
@@ -173,7 +173,7 @@ test('renew sends the cookie again at most once a day, and pushes the expiry a y
   });
   const due = await renew();
   assert.equal(due.status, 200);
-  assert.equal(due.headers['set-cookie'][0], `capcom=${token}; HttpOnly; SameSite=Strict; Max-Age=31536000`);
+  assert.equal(due.headers['set-cookie'][0], `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=31536000`);
   const record = JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token];
   assert.ok(Date.parse(record.expires) - Date.now() > 364 * DAY);
   assert.ok(Date.now() - Date.parse(record.used) < 60_000);
@@ -192,7 +192,7 @@ test('signing out clears the cookie, with Secure behind an https proxy, and ends
   const out = await request(s, 'POST', '/logout', { headers: { ...as(token), ...HTTPS }, json: {} });
   assert.equal(out.status, 303);
   assert.equal(out.headers.location, './');
-  assert.equal(out.headers['set-cookie'][0], 'capcom=; HttpOnly; SameSite=Strict; Max-Age=0; Secure');
+  assert.equal(out.headers['set-cookie'][0], 'capcom=; HttpOnly; SameSite=Lax; Max-Age=0; Secure');
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(token) })).status, 401);
 });
 
