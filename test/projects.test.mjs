@@ -26,11 +26,11 @@ async function ready(mac) {
 test('the list carries the projects in order, and says which project each group is in, with a gone project meaning the top level', async () => {
   const { s, token } = await ready({
     groups: [{ id: 'cg-a', name: 'Reviewing', project: 'cp-x' }, { id: 'cg-b', name: 'Backlog', project: 'cp-gone' }, { id: 'cg-c', name: 'Notes', project: 5 }],
-    layout: { projects: [{ id: 'cp-y', name: 'Tina' }, { id: 'cp-x', name: 'Capcom' }] },
+    layout: { projects: [{ id: 'cp-y', name: 'Garden' }, { id: 'cp-x', name: 'Capcom' }] },
   });
   const before = fs.readFileSync(s.layout, 'utf8');
   const ix = await index(s, token);
-  assert.deepEqual(ix.projects, [{ id: 'cp-y', name: 'Tina' }, { id: 'cp-x', name: 'Capcom' }]);
+  assert.deepEqual(ix.projects, [{ id: 'cp-y', name: 'Garden' }, { id: 'cp-x', name: 'Capcom' }]);
   assert.deepEqual(places(ix), { 'cg-a': 'cp-x', 'cg-b': null, 'cg-c': null });
   assert.deepEqual(kept(ix), { 'cg-a': ['In reviewing'], 'cg-b': ['In backlog'], 'cg-c': [] });
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before, 'reading the list changes nothing');

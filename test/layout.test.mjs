@@ -69,7 +69,7 @@ test('the first copy from Desktop keeps what was already in the file, the projec
 
 const WITH_PROJECTS = {
   ...OLD,
-  projects: [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Tina' }],
+  projects: [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Garden' }],
   groups: [{ id: 'cg-a', name: 'Reviewing', project: 'cp-a', colour: 'blue' }, { id: 'cg-b', name: 'Backlog', project: 'cp-b' }, { id: 'cg-c', name: 'Loose' }],
   unarchived: ['s5'],
 };
@@ -100,8 +100,8 @@ test('a name must be text with something in it and no more than 80 characters, a
 
 test('renaming a project changes its name and nothing else', () => {
   const f = folder(WITH_PROJECTS);
-  const renamed = f.layout.renameProject('cp-b', ' Tina CMS ');
-  assert.deepEqual(renamed, { id: 'cp-b', name: 'Tina CMS' });
+  const renamed = f.layout.renameProject('cp-b', ' Garden plans ');
+  assert.deepEqual(renamed, { id: 'cp-b', name: 'Garden plans' });
   assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, projects: [WITH_PROJECTS.projects[0], renamed] });
 });
 
@@ -134,7 +134,7 @@ test('deleting a project sends its groups back to the top level and deletes no g
   assert.deepEqual(f.layout.removeProject('cp-a'), { id: 'cp-a', name: 'Capcom' });
   assert.deepEqual(f.onDisk(), {
     ...WITH_PROJECTS,
-    projects: [{ id: 'cp-b', name: 'Tina' }],
+    projects: [{ id: 'cp-b', name: 'Garden' }],
     groups: [{ id: 'cg-a', name: 'Reviewing', colour: 'blue' }, { id: 'cg-b', name: 'Backlog', project: 'cp-b' }, { id: 'cg-c', name: 'Loose' }],
   });
   f.layout.removeProject('cp-b');
