@@ -69,8 +69,10 @@ function buildIndex({ archived = false } = {}) {
     if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
   }
 
-  // Groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its sessions loose.
+  // Projects, groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its
+  // sessions loose, and a group whose project is gone is at the top level.
   const groupIds = new Set(own.groups.map(g => g.id));
+  const projectIds = new Set(own.projects.map(p => p.id));
   const pins = new Set(own.pinned);
   const unarchived = new Set(own.unarchived);
   for (const r of rows.values()) {
@@ -82,7 +84,7 @@ function buildIndex({ archived = false } = {}) {
   const visible = [...rows.values()].filter(r => archived || !r.archived);
   // Every list shows its newest session first, except a group, which goes by title.
   const pinned = visible.filter(r => r.pinned).sort(byRecent);
-  const groups = own.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
+  const groups = own.groups.map(g => ({ id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
   const routines = new Map();
   for (const r of visible.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
@@ -92,6 +94,7 @@ function buildIndex({ archived = false } = {}) {
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
+    projects: own.projects.map(({ id, name }) => ({ id, name })),
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byRecent(a.latest, b.latest)),
@@ -340,6 +343,25 @@ async function editLayout(req, res, change) {
   return send(res, 200, { id, group: now.assignments[id] || null, pinned: now.pinned.includes(id) });
 }
 
+// Projects and groups change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
+const STRUCTURE = new Map([
+  ['/api/layout/project/add', b => layout.addProject(b.name)],
+  ['/api/layout/project/rename', b => layout.renameProject(b.id, b.name)],
+  ['/api/layout/project/remove', b => layout.removeProject(b.id)],
+  ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
+  ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
+]);
+
+async function editStructure(req, res, change) {
+  const body = await readJson(req, 10_000);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  try {
+    return send(res, 200, change(body));
+  } catch (e) {
+    return send(res, e.status || 500, { error: e.message });
+  }
+}
+
 // GET api/routines lists them. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches one on or off.
 async function routinesApi(req, res, parts) {
   if (parts.length === 2) return req.method === 'GET' ? send(res, 200, routines.list()) : send(res, 405, { error: 'Method not allowed' });
@@ -459,6 +481,7 @@ async function api(req, res, u) {
   }
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned));
+  if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd } = JSON.parse(await readBody(req) || '{}');
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
