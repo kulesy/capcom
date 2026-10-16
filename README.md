@@ -91,7 +91,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   while the group is folded, so they need no tap to see. A row shows up to four. When there are more, the
   fourth thumbnail is dimmed with a count such as "+7" for the pictures that have no thumbnail of their own, and
   a click on it opens the viewer at that picture. Each thumbnail opens the viewer. A picture a tool returned in
-  a form the page cannot draw still shows as "[image]" in the call's output.
+  a form the page cannot draw still shows as "[image]" in the call's output. A message to another chat reads
+  "to name: summary" and counts as "sent 2 messages", and a look at the other chats reads "looked up other
+  sessions". A send asks for approval only when a permission rule makes the CLI ask, and the approval card
+  then shows who it goes to and the message.
 - **Live work.** While Claude works, its thinking streams into a Thinking block above the status line.
   The block folds into a Thought row when the thought ends, and a tap opens it again. Each tool call shows
   as soon as it starts. The status line names the step, such as "Running npm test", "Reading
@@ -103,12 +106,40 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   nothing, and a turn stopped mid-thought keeps none of it, because the CLI saves a block only when it
   ends. Checked on CLI 2.1.301 with Haiku 5.5.
 - **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
-  failed or was stopped, a line from a monitor, a message from another session or a subagent, and a
-  command you ran with `!`. Capcom shows each as a compact notice instead of a message from you. A notice
-  has a lamp (green when a task finished, red when it failed, grey otherwise), a title such as "Background
-  task finished", and a line saying what happened. The task ids, the output file, the CLI's note and any
-  text meant for Claude alone sit behind a Details toggle. Only known kinds of message become notices, so
-  text you type that mentions a tag stays your message.
+  failed or was stopped, a line from a monitor, a message from another session or a subagent, the CLI's
+  report on a message this chat sent to another session, and a command you ran with `!`. Capcom shows each
+  as a compact notice instead of a message from you. A notice has a lamp (green when a task finished or a
+  message was delivered, amber while a message waits for approval, red when a task failed or a message was
+  not delivered, grey otherwise), a title such as "Background task finished", and a line saying what
+  happened. The task ids, the output file, the CLI's note and any text meant for Claude alone sit behind a
+  Details toggle. Only known kinds of message become notices, so text you type that mentions a tag stays
+  your message.
+- **Messages between chats.** Chats message each other with the CLI's `SendMessage` tool and find each
+  other with `ListAgents`. The CLI delivers a message when the sender and the receiving chat are in the
+  same kind of permission mode, both bypassing permission prompts or both asking. An idle chat then starts
+  a turn to answer it. Capcom shows the message as a notice titled "Message from" and the sender's name,
+  with the sender's address and mode behind Details. The name and the address are claims the sender
+  makes, so they label a message and do not prove who sent it. A chat that Capcom stopped after 30 idle
+  minutes has nothing listening and receives no messages until it starts again.
+- **Held messages.** The CLI holds a message instead of delivering it when the two kinds of permission
+  mode differ, when the sender does not say which kind it is in and this chat bypasses permission prompts,
+  and for a few other reasons, such as the `crossSessionInbound` setting being `hold`. A held message
+  shows above the reply box as a card with an amber lamp. The card names the sender, gives the reason and
+  says Claude has seen none of it. Several messages from one sender for the same reason share one card
+  and a count. When the CLI gives up on a message, a grey card says why, and it stays until you press
+  Dismiss. Cards are live only. The CLI saves nothing about a held message, so a page opened later shows
+  the messages still held and none that ended.
+- **Approving a held message** cannot be done from Capcom. A terminal session shows its owner an approval
+  dialog, which the CLI's code calls `peer_inbound_approval`. A chat run as Capcom runs it was not sent
+  that dialog when checked on CLI 2.1.302, even after it declared it could show one. It gets only a note
+  that a message is held, and the CLI answers a made-up approval request with "Unsupported control request
+  subtype". The CLI waits 5 minutes for an approval by default (its `dialogExpiry` setting, which the
+  `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS` environment variable overrides), and then drops the message. Two
+  things release a held message sooner. One is changing the chat's permission mode to the sender's kind.
+  The other is setting `crossSessionInbound` to `accept`, which releases every held message and accepts the
+  later ones. Capcom does neither for you, because a message from another session is untrusted input.
+  [The decision record](docs/adr/20261016-peer-messages-between-chats.md) says what approving one message
+  would need from the CLI.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
   running somewhere else, in Desktop or a terminal, update as their file grows. The images in a message, and
   the pictures a tool returned to Claude, are not part of what the page loads. Each message or tool result names
@@ -230,7 +261,8 @@ node server.mjs
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
-live work tracker, the thread display, the sign-in and the passkey checks, with Node's own test runner. The
+live work tracker, the messages the CLI holds, the thread display, the sign-in and the passkey checks, with
+Node's own test runner. The
 password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
 browser out and removes every passkey. Until one is set, Capcom refuses every request.
 

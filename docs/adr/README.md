@@ -22,5 +22,6 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-15 | [Capcom runs routines itself, from Desktop's prompt files](20261015-capcom-runs-routines-itself.md) | Accepted |
 | 2026-10-16 | [Run the server under a small Capcom app, so macOS permissions belong to Capcom](20261016-capcom-app-for-macos-permissions.md) | Accepted |
 | 2026-10-16 | [Show Claude's live work from the CLI's stream, and ask the CLI for thinking summaries](20261016-live-work-from-the-cli-stream.md) | Accepted |
-| 2026-10-16 | [Show the CLI's own user turns as compact notices, from a closed list of known tags](20261016-notices-for-cli-written-user-turns.md) | Accepted |
+| 2026-10-16 | [Show the CLI's own user turns as compact notices, from a closed list of known tags](20261016-notices-for-cli-written-user-turns.md) | Accepted, amended 2026-10-16 |
 | 2026-10-16 | [Sign in with passkeys that Capcom checks itself on node:crypto, against a list of origins](20261016-passkeys-on-node-crypto.md) | Accepted |
+| 2026-10-16 | [Show messages between chats by sender, and show a held message with no way to approve it](20261016-peer-messages-between-chats.md) | Proposed |
