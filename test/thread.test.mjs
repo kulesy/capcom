@@ -1,7 +1,7 @@
 // Run with `npm test`. The page's thread logic is plain functions on plain data, so it runs here without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { activity, display, summarize } from '../public/ui/thread.js';
+import { absorb, activity, display, prepend, summarize } from '../public/ui/thread.js';
 
 let n = 0;
 const item = (kind, extra = {}) => ({ kind, key: `k${++n}`, ...extra });
@@ -53,4 +53,44 @@ test('with no tool the status line says thinking, writing or just working', () =
   assert.equal(activity({ tools: [], thinking: false, writing: true }).doing, 'Writing');
   assert.equal(activity({ tools: [], thinking: false, writing: false }).doing, 'Working');
   assert.equal(activity(null).doing, 'Working');
+});
+
+const fresh = () => ({ items: [], orphans: new Map() });
+const call = (id, name = 'Read') => ({ kind: 'tool', id, name, status: 'pending', summary: '' });
+const answer = (toolId, extra = {}) => ({ kind: 'result', toolId, status: 'ok', output: 'done', ...extra });
+const shot = ref => ({ ref, type: 'image/png' });
+
+test('a result hands its pictures to its tool, and one with none leaves the tool without a list', () => {
+  const [read, grep] = [call('toolu_1'), call('toolu_2', 'Grep')];
+  const { items } = absorb(fresh(), [read, grep, answer('toolu_1', { images: [shot('5.r0.u'), shot('5.r1.u')] }), answer('toolu_2')]);
+  assert.deepEqual(items.map(i => [i.status, i.output]), [['ok', 'done'], ['ok', 'done']]);
+  assert.deepEqual(items[0].images, [shot('5.r0.u'), shot('5.r1.u')]);
+  assert.equal('images' in items[1], false);
+  assert.equal('images' in read, false, 'the tool the page held before is not changed in place');
+});
+
+test('a result that arrives in a later read finds its tool already in the thread and brings its pictures', () => {
+  const first = absorb(fresh(), [call('toolu_1')]);
+  const next = absorb(first, [answer('toolu_1', { images: [shot('9.r0.u')] })]);
+  assert.deepEqual(next.items[0].images, [shot('9.r0.u')]);
+  assert.equal(first.items[0].status, 'pending');
+  assert.equal(next.orphans.size, 0);
+});
+
+test('a result that comes before its tool waits with its pictures, and the earlier chunk that holds the tool settles it', () => {
+  const later = absorb(fresh(), [answer('toolu_1', { images: [shot('7.r0.u')] })]);
+  assert.equal(later.items.length, 0);
+  assert.deepEqual(later.orphans.get('toolu_1').images, [shot('7.r0.u')]);
+  const joined = prepend(later, [call('toolu_1'), call('toolu_2')]);
+  assert.deepEqual(joined.items.map(i => [i.id, i.status]), [['toolu_1', 'ok'], ['toolu_2', 'pending']]);
+  assert.deepEqual(joined.items[0].images, [shot('7.r0.u')]);
+  assert.equal('images' in joined.items[1], false);
+  assert.equal(joined.orphans.size, 0);
+});
+
+test('a chunk that holds both a tool and its result brings the pictures too, and one without pictures adds no list', () => {
+  const joined = prepend(absorb(fresh(), [call('toolu_9')]), [call('toolu_1'), answer('toolu_1', { images: [shot('2.r0.u')] }), call('toolu_2'), answer('toolu_2')]);
+  assert.deepEqual(joined.items[0].images, [shot('2.r0.u')]);
+  assert.equal('images' in joined.items[1], false);
+  assert.equal(joined.items.length, 3);
 });

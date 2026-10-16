@@ -13,6 +13,9 @@ function indexTools(list) {
   return at;
 }
 
+// A tool takes on what its result says. The pictures come across only when the result has some.
+const settle = (tool, result) => ({ ...tool, status: result.status, output: result.output, ...(result.images && { images: result.images }) });
+
 // Assistant text arrives one block per line, so consecutive blocks of one message are joined back up.
 // A result whose tool sits in a chunk not loaded yet waits in `orphans` until that chunk arrives.
 export function absorb({ items, orphans }, incoming) {
@@ -24,7 +27,7 @@ export function absorb({ items, orphans }, incoming) {
       toolAt ||= indexTools(list);
       const at = toolAt.get(item.toolId);
       if (at === undefined) waiting.set(item.toolId, item);
-      else list[at] = { ...list[at], status: item.status, output: item.output };
+      else list[at] = settle(list[at], item);
       continue;
     }
     const last = list[list.length - 1];
@@ -47,7 +50,7 @@ export function prepend({ items, orphans }, incoming) {
     const result = item.kind === 'tool' && waiting.get(item.id);
     if (!result) return item;
     waiting.delete(item.id);
-    return { ...item, status: result.status, output: result.output };
+    return settle(item, result);
   });
   for (const [id, result] of older.orphans) waiting.set(id, result);
   const seam = list[list.length - 1];
