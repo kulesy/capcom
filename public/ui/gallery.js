@@ -36,8 +36,8 @@ export function tileLabel(n, total, tool) {
   return total > 1 ? `View image ${n + 1} of ${total} from ${tool}` : `View image from ${tool}`;
 }
 
-// Which thumbnail on screen gets focus when the viewer closes. `shown` holds their keys in page order and `keys` the
-// thread's pictures. One for the picture opened wins, else the one nearest to it in the thread, else -1.
+// Which thumbnail on screen takes focus when the viewer closes: the one at the place it opened on, else the nearest, else -1.
+// `keys` are the thread's pictures as the page has them now, because a message is saved under new keys once it has sent.
 export function nearestThumb(shown, keys, start) {
   const same = shown.indexOf(keys[start]);
   if (same !== -1) return same;
