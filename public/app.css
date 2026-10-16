@@ -172,6 +172,8 @@ a { color: var(--focus); }
 
 .brand { display: grid; }
 
+.list-actions { display: flex; align-items: center; gap: 0.15rem; }
+
 .icon-btn {
   display: inline-grid;
   place-items: center;
@@ -208,7 +210,7 @@ a { color: var(--focus); }
   padding-bottom: 1rem;
 }
 
-.group + .group { margin-top: 0.25rem; }
+:is(.group, .project) + :is(.group, .project) { margin-top: 0.25rem; }
 
 .group-head {
   display: flex;
@@ -240,6 +242,117 @@ a { color: var(--focus); }
 }
 
 .group-head[aria-expanded="false"]::after { transform: rotate(-45deg); }
+
+.group-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.group-head .count { flex: none; }
+
+.bar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; }
+
+.bar > * { grid-area: 1 / 1; min-width: 0; }
+
+.has-menu { --more: 2rem; }
+
+.has-menu .group-head .count { margin-right: var(--more); }
+
+.has-menu .more { justify-self: end; width: var(--more); height: var(--more); margin: 0.35rem 1.75rem 0 0; }
+
+.group-head.project-head {
+  padding-top: 0.9rem;
+  padding-bottom: 0.3rem;
+  color: var(--ink);
+  font: 600 0.9375rem/1.3 var(--sans);
+  letter-spacing: -0.005em;
+  text-transform: none;
+}
+
+.project-head .count { color: var(--ink-quiet); font-size: 0.75rem; }
+
+.project-groups { margin-left: 1.25rem; border-left: 1px solid var(--rule); }
+
+.project-groups .group-head { padding-left: 0.75rem; }
+
+.project-groups .rows { padding-left: 0.25rem; }
+
+.project-groups .drop-hint { padding-left: 0.75rem; }
+
+.menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 11rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem;
+  background: var(--console);
+  box-shadow: var(--lift);
+}
+
+.menu button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  text-align: left;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.menu button:hover, .menu button:focus-visible { background: var(--hover); }
+
+.menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+.menu button.danger { color: var(--bad-text); }
+
+.name-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0.25rem 1rem 0.75rem;
+}
+
+.project-groups .name-form { padding-left: 0.75rem; padding-top: 0.5rem; }
+
+.name-field { display: grid; flex: 1; min-width: 0; gap: 0.2rem; }
+
+.name-field span { font-size: 0.75rem; font-weight: 600; color: var(--ink-quiet); }
+
+.name-field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  background: var(--field);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+}
+
+.confirm { display: grid; gap: 0.6rem; padding: 0.75rem 1rem; }
+
+.confirm p { margin: 0; font-size: 0.875rem; }
+
+.confirm-actions { display: flex; gap: 0.4rem; }
+
+@media (pointer: coarse) {
+  .has-menu { --more: 2.75rem; }
+
+  .has-menu .more { margin-top: 0; }
+
+  .has-menu .group-head { align-self: stretch; padding-block: 0; }
+
+  .menu button { min-height: 2.75rem; }
+
+  .name-field input { min-height: 2.75rem; font-size: 1rem; }
+
+  .name-form .button, .confirm .button { min-height: 2.75rem; }
+
+  .list-actions .icon-btn { width: 2.75rem; height: 2.75rem; }
+}
 
 .rows { list-style: none; margin: 0; padding: 0 0.5rem; }
 

@@ -39,6 +39,8 @@
 <link rel="modulepreload" href="ui/composer.js">
 <link rel="modulepreload" href="ui/chat.js">
 <link rel="modulepreload" href="ui/drag.js">
+<link rel="modulepreload" href="ui/menu.js">
+<link rel="modulepreload" href="ui/forms.js">
 <link rel="modulepreload" href="ui/sessions-list.js">
 <link rel="modulepreload" href="ui/spotlight.js">
 <link rel="modulepreload" href="ui/webauthn.js">
@@ -52,7 +54,10 @@
   <nav class="list" aria-label="Sessions">
     <header class="list-head">
       <div class="brand"><span class="station">{{station}}</span><h1>Capcom</h1></div>
-      <button class="icon-btn find" type="button" aria-label="Find a session" disabled><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      <div class="list-actions">
+        <button class="icon-btn add" type="button" aria-label="Add a project or group" disabled><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="icon-btn find" type="button" aria-label="Find a session" disabled><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+      </div>
     </header>
     <div class="sections"><p class="quiet pad">Loading sessions</p></div>
     <footer class="list-foot">

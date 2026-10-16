@@ -64,6 +64,20 @@ function App() {
     }
   }, []);
 
+  // A change to a project or group. It resolves with the reason when the server refuses, or an empty string, and the list is loaded again either way.
+  const edit = useCallback(async (path, body) => {
+    writing.current++;
+    try {
+      await api(path, body);
+      return '';
+    } catch (e) {
+      return e.message;
+    } finally {
+      writing.current--;
+      await loadIndex();
+    }
+  }, []);
+
   useEffect(() => {
     const refresh = () => { if (!document.hidden && !writing.current) loadIndex(); };
     const timer = setInterval(refresh, 15_000);
@@ -96,7 +110,7 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} edit=${edit} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
