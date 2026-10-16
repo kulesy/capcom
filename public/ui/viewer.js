@@ -7,8 +7,8 @@ import { createStore } from './store.js';
 
 const viewer = createStore({ open: null });
 
-// `images` are the chat's pictures as threadImages lists them, `index` the one to show and `from` the element that was clicked.
-export const openViewer = (images, index, from) => viewer.set({ open: { images, index, from } });
+// `current`, if given, returns the list as it stands when the viewer closes: a message still being sent gets new keys when it is saved.
+export const openViewer = (images, index, from, current) => viewer.set({ open: { images, index, from, current } });
 export const closeViewer = () => viewer.set({ open: null });
 
 const Close = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>`;
@@ -21,7 +21,7 @@ const isBackdrop = el => el.dataset?.backdrop !== undefined;
 // A thumbnail someone can see. Chromium and WebKit keep the boxes of what a closed details hides, so having a box is not enough.
 const isOnScreen = el => !!el?.isConnected && el.getClientRects().length > 0 && !el.closest('details:not([open])');
 
-function Viewer({ images, start, from }) {
+function Viewer({ images, start, from, current }) {
   const root = useRef(null);
   const press = useRef({ backdrop: false, swipe: null });
   const [at, setAt] = useState(start);
@@ -68,13 +68,11 @@ function Viewer({ images, start, from }) {
       document.documentElement.classList.remove('viewing');
       app?.removeAttribute('inert');
       app?.removeAttribute('aria-hidden');
-      // Focus goes back to where the person clicked, not to the picture they stepped to. If that thumbnail is gone, as
-      // when a message still being sent was saved, the one at the same place in the thread takes it, else the nearest.
-      const found = [...document.querySelectorAll('[data-image]')];
-      const onScreen = found.filter(isOnScreen);
-      const thread = [...new Set(found.map(t => t.dataset.image))];
-      const near = onScreen[nearestThumb(onScreen.map(t => t.dataset.image), thread, start)];
-      (isOnScreen(from) ? from : near || onScreen[onScreen.length - 1])?.focus();
+      // Focus goes back to the thumbnail clicked, not the picture stepped to. If that was redrawn or has gone, the same picture's
+      // thumbnail takes it, else the one at its place in the thread now (a sent message gets new keys), else the nearest.
+      const shown = [...document.querySelectorAll('[data-image]')].filter(isOnScreen);
+      const keys = (current?.() ?? images).map(i => i.key);
+      (isOnScreen(from) ? from : shown[nearestThumb(shown.map(t => t.dataset.image), keys, start, images[start].key)])?.focus();
     };
   }, []);
 
@@ -131,5 +129,5 @@ function Viewer({ images, start, from }) {
 
 export function ViewerHost() {
   const open = useStore(viewer, s => s.open);
-  return open ? html`<${Viewer} key=${open} images=${open.images} start=${open.index} from=${open.from} />` : null;
+  return open ? html`<${Viewer} key=${open} images=${open.images} start=${open.index} from=${open.from} current=${open.current} />` : null;
 }

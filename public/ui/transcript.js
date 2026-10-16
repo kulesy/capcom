@@ -53,9 +53,12 @@ export function Transcript({ ctrl }) {
 
   // The viewer steps through the pictures as the thread holds them when one is clicked, and closes with the chat.
   const viewImage = useCallback((key, from) => {
-    const { items: saved, sending: unsent } = ctrl.store.get();
-    const images = threadImages(saved, unsent, ctrl.imageUrl);
-    openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from);
+    const thread = () => {
+      const { items: saved, sending: unsent } = ctrl.store.get();
+      return threadImages(saved, unsent, ctrl.imageUrl);
+    };
+    const images = thread();
+    openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from, thread);
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 

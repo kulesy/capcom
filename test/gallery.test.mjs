@@ -88,6 +88,15 @@ test('closing the viewer goes to a thumbnail for the picture opened, else the ne
   assert.equal(nearestThumb(['a'], [], 0), -1);
 });
 
+test('closing the viewer prefers the picture opened on, then its place in the thread as it stands now', () => {
+  assert.equal(nearestThumb(['b', 'a'], ['x', 'a', 'b'], 1, 'b'), 0, 'the picture opened on, though the thread grew above it and moved its place');
+  assert.equal(nearestThumb(['r1', 'r2', 'r3'], ['r1', 'r2', 'r3'], 1, 'local:7'), 1, 'a message saved under a new key is found by its place');
+  assert.equal(nearestThumb(['r1', 'r3'], ['r1', 'r2', 'r3'], 1, 'local:7'), 0, 'and when that is not on screen either, the nearest, the earlier of two');
+  const thread = ['u0', 't0', 't1', 't2', 't3', 't4', 't5', 'u1', 't6'];
+  assert.equal(nearestThumb(['u0', 't0', 't1', 't2', 'u1', 't6'], thread, 7, 'local:3'), 4, 'pictures behind a strip\'s +N still count towards the place');
+  assert.equal(nearestThumb(['x', 'y'], thread, 7, 'local:3'), -1, 'thumbnails outside the thread are never chosen');
+});
+
 test('stepping stops at the first and the last picture instead of wrapping', () => {
   assert.deepEqual([[0, -1], [0, 1], [3, 1], [4, 1], [4, -1]].map(([at, by]) => stepIndex(at, by, 5)), [0, 1, 4, 4, 3]);
   assert.equal(stepIndex(0, 1, 1), 0);
