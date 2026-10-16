@@ -17,8 +17,9 @@ function ToolPictures({ shots, url, onOpen }) {
   return html`<div class="shots">${shots.slice(0, TILES).map(({ img, tool }, n) => {
     const key = imageKey(img);
     const last = more > 0 && n === TILES - 1;
+    // NOTE: [17 Oct 2026] EK - Keep loading before src. Preact sets props in template order and WebKit fetches the moment src is set.
     return html`<button class=${last ? 'thumb more' : 'thumb'} type="button" key=${key} data-image=${key} aria-haspopup="dialog" aria-label=${tileLabel(n, shots.length, tool)} onClick=${e => onOpen(key, e.currentTarget)}>
-      <img src=${url(img.ref)} alt=${fromTool(tool)} loading="lazy" />${last ? html`<span class="more-count" aria-hidden="true">+${more}</span>` : null}</button>`;
+      <img loading="lazy" src=${url(img.ref)} alt=${fromTool(tool)} />${last ? html`<span class="more-count" aria-hidden="true">+${more}</span>` : null}</button>`;
   })}</div>`;
 }
 
@@ -90,8 +91,9 @@ function Thumbs({ images, url, onOpen }) {
   return html`<div class="thumbs">${images.map((img, n) => {
     const key = imageKey(img);
     const label = images.length > 1 ? `View attached image ${n + 1} of ${images.length}` : 'View attached image';
+    // loading before src, as in ToolPictures.
     return html`<button class="thumb" type="button" key=${key} data-image=${key} aria-label=${label} aria-haspopup="dialog" onClick=${e => onOpen(key, e.currentTarget)}>
-      <img src=${img.src ?? url(img.ref)} alt="Attached image" loading=${img.src ? undefined : 'lazy'} /></button>`;
+      <img loading=${img.src ? undefined : 'lazy'} src=${img.src ?? url(img.ref)} alt="Attached image" /></button>`;
   })}</div>`;
 }
 
