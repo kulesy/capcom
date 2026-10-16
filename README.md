@@ -44,7 +44,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **New sessions** start with Ctrl+N: an empty chat with a folder picker above the prompt box (the home
   folder, or a recent one). The first message starts the session in that folder.
 - **The list** shows routines first, then pinned sessions, your groups, the sessions started here, ungrouped
-  ones and terminal sessions. Every section lists its newest session first.
+  ones and terminal sessions. A group lists its sessions by title, A to Z, with the titles that start with an
+  emoji first, and numbers in number order. Every other section lists its newest session first.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,

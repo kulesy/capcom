@@ -5,12 +5,13 @@ import { HOME, STATION } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { useLocal } from './hooks.js';
 import { Fragment, html, useEffect, useRef, useState } from './html.js';
+import { byRecent, byTitle, UNTITLED } from './order.js';
 
 function RowLink({ r, title = r.title, current, lifted }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
   return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} aria-current=${current === r.id ? 'page' : null}>
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
-    <span class="row-title">${title || 'Untitled session'}</span>
+    <span class="row-title">${title || UNTITLED}</span>
     <time class="row-time">${when(r.lastActivityAt)}</time>
     ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
@@ -44,8 +45,6 @@ const LOOSE_HOME = { capcom: 'started', desktop: 'ungrouped', cli: 'other' };
 const LOOSE = Object.values(LOOSE_HOME);
 const looseHome = row => (row.routine ? null : LOOSE_HOME[row.source]);
 
-const byRecent = (a, b) => b.lastActivityAt - a.lastActivityAt;
-
 // Where a dropped row shows until the server's list arrives and replaces this guess. It returns `ix` itself when the drop changes nothing.
 export function placeRow(ix, id, section) {
   const row = findRow(ix, id);
@@ -56,7 +55,7 @@ export function placeRow(ix, id, section) {
   const moved = { ...row, pinned: section === 'pinned', group };
   const lands = LOOSE.includes(section) ? looseHome(row) : section;
   const without = list => list.filter(r => r.id !== id);
-  const into = (section, list) => (section === lands ? [...without(list), moved].sort(byRecent) : without(list));
+  const into = (section, list) => (section === lands ? [...without(list), moved].sort(group ? byTitle : byRecent) : without(list));
   return {
     ...ix,
     pinned: into('pinned', ix.pinned),

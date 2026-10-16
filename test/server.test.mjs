@@ -1,81 +1,21 @@
 // Run with `npm test`. Each test starts the real server on a free port, with its own home and state folders, and talks to it
 // over HTTP, so the cookie headers, the route order and the lockout are checked where they are wired together.
-import test, { after } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { writePassword } from '../lib/auth.mjs';
 import { makeAuthenticator } from './authenticator.mjs';
+import { as, CHROME, PASSWORD, request, signIn, start, tokenIn } from './harness.mjs';
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const PASSWORD = 'a long password for the tests';
 const DAY = 24 * 3600_000;
 const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Max-Age=\d+$/;
-const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const HTTPS = { 'x-forwarded-proto': 'https' };
-const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-'));
-const running = [];
-
-const freePort = () => new Promise(resolve => {
-  const probe = net.createServer().listen(0, '127.0.0.1', () => {
-    const { port } = probe.address();
-    probe.close(() => resolve(port));
-  });
-});
-
-async function start() {
-  const home = fs.mkdtempSync(path.join(base, 'home-'));
-  const state = path.join(home, 'state');
-  fs.mkdirSync(state);
-  writePassword(state, PASSWORD);
-  const port = await freePort();
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env: { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state }, stdio: ['ignore', 'pipe', 'pipe'] });
-  let errors = '';
-  child.stderr.on('data', chunk => { errors += chunk; });
-  running.push(child);
-  await new Promise((resolve, reject) => {
-    let out = '';
-    const timer = setTimeout(() => reject(new Error(`The server did not start. ${errors}`)), 15_000);
-    child.stdout.on('data', chunk => { out += chunk; if (out.includes('Capcom on')) { clearTimeout(timer); resolve(); } });
-    child.once('exit', code => { clearTimeout(timer); reject(new Error(`The server exited with ${code}. ${errors}`)); });
-  });
-  return { port, state, origin: `http://localhost:${port}`, tokens: path.join(state, 'tokens.json') };
-}
-
-after(() => { for (const child of running) child.kill(); });
-
-function request(s, method, url, { headers = {}, json, form } = {}) {
-  const body = json !== undefined ? JSON.stringify(json) : form !== undefined ? new URLSearchParams(form).toString() : undefined;
-  const type = json !== undefined ? 'application/json' : form !== undefined ? 'application/x-www-form-urlencoded' : undefined;
-  return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port: s.port, method, path: url, headers: { host: `localhost:${s.port}`, ...(type && { 'content-type': type }), ...headers } }, res => {
-      let text = '';
-      res.setEncoding('utf8');
-      res.on('data', chunk => { text += chunk; });
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text, body: () => JSON.parse(text) }));
-    });
-    req.on('error', reject);
-    req.end(body);
-  });
-}
-
-const as = token => ({ cookie: `capcom=${token}`, 'user-agent': CHROME });
-const tokenIn = cookie => /^capcom=([0-9a-f]{64});/.exec(cookie)[1];
 const listUrl = origin => `/api/passkeys?origin=${encodeURIComponent(origin)}`;
 const maxAge = cookie => Number(/; Max-Age=(\d+)/.exec(cookie)[1]);
 const closeTo = (seconds, days) => Math.abs(seconds - days * 86400) <= 5;
-
-async function signIn(s, headers) {
-  const res = await request(s, 'POST', '/login', { form: { password: PASSWORD }, headers: { 'user-agent': CHROME, ...headers } });
-  assert.equal(res.status, 303);
-  const cookie = res.headers['set-cookie'][0];
-  return { res, cookie, token: tokenIn(cookie) };
-}
 
 function rewriteTokens(s, change) {
   const tokens = JSON.parse(fs.readFileSync(s.tokens, 'utf8'));

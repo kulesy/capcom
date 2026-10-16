@@ -35,6 +35,8 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 - `POST api/layout/move` (`{ id, group }`, a `group` of null meaning ungrouped) and `POST api/layout/pin` (`{ id, pinned }`) change the layout. Both refuse a session or a group that Capcom does not know.
 - In the list, a row is dragged onto a group, Pinned, Ungrouped, Started here or Terminal and other. Routines is not a target. The drag uses pointer events, so one implementation serves a mouse, which drags after a few pixels, and a finger, which drags after a 350 ms long press.
 
+**Amended 2026-10-16.** A group lists its sessions by title, A to Z, with the titles that start with an emoji first and each half in the collator's order (case ignored, 2 before 10). Pinned, Routines and the loose lists still show their newest session first. The server sorts, and the page uses the same module (`public/ui/order.js`) to place a row that was just dropped.
+
 ### Consequences
 
 - ✅ The owner can move and pin sessions from Capcom, on a phone too, and Desktop cannot overwrite the result.

@@ -16,6 +16,7 @@ import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
+import { byRecent, byTitle, UNTITLED } from './public/ui/order.js';
 
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
@@ -60,7 +61,7 @@ function buildIndex({ archived = false } = {}) {
     // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
     const routine = head.routine || started.get(t.id)?.routine || null;
-    rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || 'Untitled session', cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
+    rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
       archived: false, lastActivityAt: t.mtime, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone.
@@ -77,10 +78,9 @@ function buildIndex({ archived = false } = {}) {
   }
 
   const visible = [...rows.values()].filter(r => archived || !r.archived);
-  const byRecent = (a, b) => b.lastActivityAt - a.lastActivityAt;
-  // Every section lists its newest session first.
+  // Every list shows its newest session first, except a group, which goes by title.
   const pinned = visible.filter(r => r.pinned).sort(byRecent);
-  const groups = own.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byRecent) }));
+  const groups = own.groups.map(g => ({ id: g.id, name: g.name, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
   const routines = new Map();
   for (const r of visible.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });

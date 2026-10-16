@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { UNTITLED } from './order.js';
 import { everyRow } from './sessions-list.js';
 
 const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
@@ -57,7 +58,7 @@ function Hit({ it, selected, onPick, onHover }) {
   return html`<li role="option" aria-selected=${selected}>
     <a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} aria-selected=${selected} onMouseMove=${onHover} onClick=${pick}>
       <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
-      <span class="row-title">${r.title || 'Untitled session'}</span>
+      <span class="row-title">${r.title || UNTITLED}</span>
       <time class="row-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>
       ${meta ? html`<span class="row-meta">${meta}</span>` : null}
     </a></li>`;
