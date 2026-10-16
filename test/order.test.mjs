@@ -39,6 +39,10 @@ test('an untitled session is placed as the Untitled session it is shown as', () 
   assert.deepEqual(sorted(['Zed', '', 'Apple', 'Valid']), ['Apple', '', 'Valid', 'Zed']);
 });
 
+test('spaces count as the page draws them, so a doubled or leading space does not move a title', () => {
+  assert.deepEqual(sorted(['🟧  Upgrade', '🟧 Deploy', ' Zebra', 'apple']), ['🟧 Deploy', '🟧  Upgrade', 'apple', ' Zebra']);
+});
+
 test('titles that differ only in case go newest first', () => {
   const same = [{ id: 'old', title: 'Notes', lastActivityAt: 1 }, { id: 'new', title: 'NOTES', lastActivityAt: 3 }, { id: 'mid', title: 'notes', lastActivityAt: 2 }];
   assert.deepEqual([...same].sort(byTitle).map(r => r.id), ['new', 'mid', 'old']);

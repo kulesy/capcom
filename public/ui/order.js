@@ -9,7 +9,8 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'acc
 
 export const startsWithEmoji = title => EMOJI_FIRST.test(title);
 
-const titleOf = row => row.title || UNTITLED;
+// Spaces count as the page draws them, collapsed, so a doubled or leading space does not move a title.
+const titleOf = row => (row.title || UNTITLED).replace(/\s+/g, ' ').trim();
 const half = title => (startsWithEmoji(title) ? 0 : 1);
 
 // Inside a group: titles that start with an emoji first, then the rest, each half A to Z. The collator reads
