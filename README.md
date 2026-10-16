@@ -194,7 +194,8 @@ Firefox 108 and later.
   small helpers.
 - `public/md.mjs` renders Claude's Markdown. It escapes everything first, so a reply cannot inject markup.
 - The server sends the files in `public/` that end in `.js`, `.mjs`, `.css` or `.png` before anyone signs
-  in, so keep anything private out of that folder.
+  in, so keep anything private out of that folder. `public/login.js` and `public/ui/webauthn.js` run on the
+  sign-in page, so they import nothing beyond each other.
 
 ## Run it
 
@@ -205,9 +206,21 @@ node server.mjs
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
-live work tracker and the thread display, with Node's own test runner. The password is
-kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser
-out. Until one is set, Capcom refuses every request.
+live work tracker, the thread display, the sign-in and the passkey checks, with Node's own test runner. The
+password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
+browser out. Until one is set, Capcom refuses every request.
+
+A browser that signs in stays signed in for a year after it last used Capcom. Each day it is used, Capcom
+pushes the expiry a year out and sends the cookie again. Every sign-in records when it was made, when it was
+last used and a short device label such as "Chrome 155 on macOS".
+
+Passkeys are the second way in. A passkey signs you in with a fingerprint, face or screen lock, and the
+password keeps working beside it. After a password sign-in the page offers once to add one, and Passkeys in
+the footer of the session list adds, lists and removes them. Browsers offer passkeys only on an https
+address or on localhost, so http://localhost:4310 works as it is, and a remote address needs https and an
+entry in `passkeyOrigins` (see "Remote access"). Capcom keeps the public keys in `passkeys.json` in its state
+folder. `npm run set-password` signs every browser out and leaves the passkeys alone. To end a passkey,
+remove it under Passkeys and delete it from the device or password manager that holds it as well.
 
 Capcom has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own
 window and Dock icon. Window managers then see it as its own app rather than as the browser. On the Mac,
@@ -230,6 +243,11 @@ optional and git-ignored, and its values replace the ones in `config.json`.
 - `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see
   "Things to know"). Turning it on also hands over, the next time Capcom starts, every session started
   here that Desktop does not have yet.
+- `passkeyOrigins` is a list of the https addresses that may use passkeys, empty by default. Write each
+  entry as the browser shows the address, such as `https://capcom.example.com` or
+  `https://capcom.example.com:8443`, with no path. `http://localhost:<port>` needs no entry and works for a
+  browser that opens it directly. Capcom ignores an entry that is not https or that is an IP address, and says
+  so on stderr. Keep your real addresses in `config.local.json`.
 
 Three environment variables win over both files. `PORT` sets the port, `CAPCOM_CLAUDE` sets the CLI,
 and `CAPCOM_STATE` points a test instance at its own login, registry and routines. Two instances that
@@ -281,14 +299,37 @@ another computer, put a reverse proxy or a private network you trust in front of
 It works when mounted under a sub-path such as `/chat`. Every URL in the page is relative, and the
 page adds its own trailing slash. The proxy must strip the prefix before the request reaches Capcom.
 
+If the proxy ends https, it should send `X-Forwarded-Proto: https`, which nginx does with
+`proxy_set_header X-Forwarded-Proto $scheme;`. Capcom then adds `Secure` to the sign-in cookie. It believes
+that header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached Capcom some other
+way could not switch `Secure` on. Capcom listens on 127.0.0.1 only, so the test passes for every connection today.
+An http address keeps working, because it sends no such header. The cookie is also `HttpOnly` and
+`SameSite=Strict`, so a link to Capcom on another website shows the sign-in page. Sign in again, or open the
+address from the address bar.
+
+Passkeys need an https address. A phone that reaches Capcom over plain http, as on a private network without
+https, signs in with the password only, and the sign-in page says why. To use passkeys remotely, serve
+Capcom over https and list the address in `config.local.json`:
+
+```json
+{ "passkeyOrigins": ["https://capcom.example.com"] }
+```
+
+Restart Capcom after a change. A passkey belongs to a host name, so one made on `capcom.example.com` does
+not work on another name. An IP address cannot have passkeys, which includes http://127.0.0.1:4310, so use
+localhost there. Capcom believes the localhost address only for a request that reaches it as localhost, with no
+`X-Forwarded-*` or `Forwarded` header, so a proxy cannot hand it to a page on another device.
+
 A message with images can be about 53 MB, because the page sends them as base64 inside the request. The
 proxy has to let a request that large through, and nginx, for one, refuses more than 1 MB until
 `client_max_body_size` says otherwise. Capcom itself takes that size only on the routes that send a message
 or start a session, and keeps 1 MB on every other route.
 
-The password is the only thing between that address and a shell on this machine. Anyone who signs in
-can run commands as you. Capcom locks sign-in for 15 minutes after ten wrong guesses. Pick a long
-password and keep the address private.
+The password, and any passkey you add, is the only thing between that address and a shell on this machine.
+Anyone who signs in can run commands as you. Capcom locks sign-in for 15 minutes after ten failed tries with
+the password or a passkey. Pick a long password and keep the address private. A lost phone stays signed in
+for a year after its last use, so set a new password with `npm run set-password`, which signs every browser
+out, and remove its passkey under Passkeys.
 
 ## License
 
