@@ -3,6 +3,7 @@ import { Approvals } from './approvals.js';
 import { Composer, FolderBar } from './composer.js';
 import { HOME } from './env.js';
 import { folderName, settingsLine } from './format.js';
+import { Holds } from './holds.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
 import { html, memo, useLayoutEffect, useRef } from './html.js';
 import { createChat } from './session.js';
@@ -45,6 +46,7 @@ export const ChatPane = memo(function ChatPane({ id, row, refreshIndex }) {
     <${Transcript} ctrl=${ctrl} />
     <div class="dock">
       <${Approvals} ctrl=${ctrl} />
+      <${Holds} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
       ${ctrl.draft ? html`<${FolderBar} ctrl=${ctrl} />` : null}
       <${Composer} ctrl=${ctrl} />

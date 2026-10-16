@@ -65,3 +65,24 @@ export function tokenCount(n) {
 }
 
 export const preview = text => String(text).replace(/[*`]+/g, '').replace(/^#+\s*/gm, '').replace(/\s+/g, ' ').trim().slice(0, 160);
+
+const HOLD_CAUSES = {
+  'mode-mismatch': 'The sender and this chat are in different kinds of permission mode (one bypasses permission prompts and the other asks).',
+  'no-mode-asserted': 'The sender did not say which permission mode it is in, and this chat bypasses permission prompts.',
+  'bypass-default': 'This chat is not prompting for permissions, and the CLI holds messages from other sessions by default in that case.',
+  'mode-unknown': 'The CLI could not tell which permission mode this chat is in.',
+  'explicit-setting': 'Your Claude Code setting "crossSessionInbound" is "hold".',
+  'managed-setting': `Your organization's managed settings set "crossSessionInbound" to "hold".`,
+  'repo-setting': `This project's settings set "crossSessionInbound" to "hold".`,
+  'invalid-setting': 'A Claude Code settings file has a "crossSessionInbound" value the CLI does not recognise, so it holds every message.',
+};
+const HOLD_ENDS = {
+  expired: 'Nobody approved it, so Claude never saw it.',
+  refused: 'The CLI began refusing messages from other sessions while it waited.',
+  dropped: 'The CLI let it through, then discarded it (a rate limit, a repeat or a full queue).',
+  discarded: 'This chat ended while it was held.',
+};
+
+// Why the CLI holds a message from another session, and how a hold ends without the message arriving.
+export const holdCause = cause => HOLD_CAUSES[cause] || 'The CLI is holding it for approval.';
+export const holdEnd = outcome => HOLD_ENDS[outcome] || 'The CLI dropped it.';

@@ -30,7 +30,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
-    live: '', think: null, work: null, turnStart: 0,
+    live: '', think: null, work: null, turnStart: 0, holdsEnded: [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
@@ -100,12 +100,17 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('changed', () => fetchNew());
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));
+    on('hold', h => store.set(s => ({ status: { ...s.status, holds: [...(s.status?.holds || []).filter(x => x.id !== h.id), h] } })));
+    on('hold-ended', d => store.set(s => ({
+      status: { ...s.status, holds: (s.status?.holds || []).filter(x => x.id !== d.id) },
+      ...(d.state === 'dropped' && { holdsEnded: [...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-3) }),
+    })));
     on('mode', d => patchStatus({ mode: d.mode }));
     on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
     on('effort', d => patchStatus({ effort: d.effort }));
     on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
     on('error', d => notice(d.message));
-    on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [] }); store.set({ work: null, turnStart: 0 }); });
+    on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [], holds: [] }); store.set({ work: null, turnStart: 0 }); });
     es.onerror = () => { if (!closed) notice(es.readyState === EventSource.CLOSED ? 'Lost contact with the Mac.' : ''); };
   }
 
@@ -187,6 +192,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       return false;
     }
   }
+
+  const dismissHold = id => store.set(s => ({ holdsEnded: s.holdsEnded.filter(d => d.id !== id) }));
 
   // A 409 means the chip was settled somewhere else, and the error carries its current state for the card to show.
   async function chip(action, tool, folder) {
@@ -282,6 +289,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   return {
     id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier,
-    send, stop, decide, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
+    send, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
   };
 }

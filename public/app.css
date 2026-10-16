@@ -823,6 +823,39 @@ button.thumb:hover { border-color: var(--rule-strong); }
 
 .approval-actions .button { min-height: 2.5rem; flex: 1 1 auto; }
 
+.holds { display: grid; gap: 0.6rem; max-height: 40dvh; overflow-y: auto; }
+
+.holds:not(:empty) { margin-bottom: 0.65rem; }
+
+.hold {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem;
+  background: var(--raised);
+  font-size: 0.8125rem;
+}
+
+.hold > .lamp { margin-top: 0.3rem; }
+
+.hold h3 { margin: 0; font-size: 0.875rem; overflow-wrap: anywhere; }
+
+.hold p { margin: 0.25rem 0 0; }
+
+.holds .hold-more { margin: 0; font-size: 0.8125rem; }
+
+.hold .link { margin-top: 0.35rem; transition: color 150ms ease-out; }
+
+.hold .link:hover { color: var(--ink); text-decoration: underline; }
+
+.hold .link:active { opacity: 0.7; }
+
+@media (pointer: coarse) {
+  .hold .link { padding-block: 0.5rem; }
+}
+
 .notice { margin: 0 0 0.6rem; font-size: 0.875rem; color: var(--bad-text); }
 
 .notice:empty { display: none; }
