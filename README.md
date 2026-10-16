@@ -118,9 +118,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   other with `ListAgents`. The CLI delivers a message when the sender and the receiving chat are in the
   same kind of permission mode, both bypassing permission prompts or both asking. An idle chat then starts
   a turn to answer it. Capcom shows the message as a notice titled "Message from" and the sender's name,
-  with the sender's address and mode behind Details. The name and the address are claims the sender
-  makes, so they label a message and do not prove who sent it. A chat that Capcom stopped after 30 idle
-  minutes has nothing listening and receives no messages until it starts again.
+  with the sender's address and mode behind Details. A report from one of this chat's own subagents is
+  titled "Message from a subagent". The name and the address are claims the sender makes, so they label a
+  message and do not prove who sent it. A chat that Capcom stopped after 30 idle minutes has nothing
+  listening and receives no messages until it starts again.
 - **Held messages.** The CLI holds a message instead of delivering it when the two kinds of permission
   mode differ, when the sender does not say which kind it is in and this chat bypasses permission prompts,
   and for a few other reasons, such as the `crossSessionInbound` setting being `hold`. A held message

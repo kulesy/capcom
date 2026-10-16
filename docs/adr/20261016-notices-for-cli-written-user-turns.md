@@ -37,7 +37,7 @@ Chosen option: "Parse a closed list of known tags into a `system` item that the 
 - **Titles.** A session whose first user entry is a notice takes its title from its first real message.
 - **Checked.** After the change, no user message in those transcripts begins with a tag.
 
-**Amended 2026-10-16.** A message from another session now also arrives as a meta user entry whose `origin` has kind `peer`, or, when Claude is mid-turn, as a `queued_command` attachment with `commandMode: 'prompt'` whose prompt is the bare `<cross-session-message>` tag. `metaNotice` in `lib/notices.mjs` reads the first, and the CLI's own reports on a message this chat sent (meta entries that start with `[Cross-session delivery notice]`) become notices too. See [Show messages between chats by sender](20261016-peer-messages-between-chats.md).
+**Amended 2026-10-16.** A message from another session now also arrives as a meta user entry whose `origin` has kind `peer`, or, when Claude is mid-turn, as a `queued_command` attachment with `commandMode: 'prompt'` whose prompt is the bare `<cross-session-message>` tag. `metaNotice` in `lib/notices.mjs` reads both, as the attachment carries `isMeta` and the `origin` itself, and the CLI's own reports on a message this chat sent (meta entries or meta attachments that start with `[Cross-session delivery notice]`) become notices too. See [Show messages between chats by sender](20261016-peer-messages-between-chats.md).
 
 ### Consequences
 
