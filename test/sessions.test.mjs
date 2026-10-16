@@ -95,3 +95,15 @@ test('a message to an archived session brings it back to where it was, on the se
   assert.deepEqual(now.archived, []);
   assert.deepEqual(desktop(), before, "Desktop's records are never written");
 });
+
+test('a message to an archived session still goes through when layout.json cannot be used, and the file is left as it was', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'archived', title: 'Archived one', archived: true, ago: 1 }] });
+  const { token } = await signIn(s);
+  fs.writeFileSync(s.layout, '{ not json');
+  const sent = await request(s, 'POST', '/api/sessions/archived/send', { headers: as(token), json: { text: 'a message while the layout is broken' } });
+  assert.equal(sent.status, 200);
+  assert.equal(sent.body().unarchived, undefined, 'the page is not told the session came back');
+  await until(() => cliCalls(s).some(c => c.user === 'a message while the layout is broken'));
+  await until(() => /Could not unarchive archived: layout\.json cannot be read/.test(s.errors()));
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), '{ not json');
+});
