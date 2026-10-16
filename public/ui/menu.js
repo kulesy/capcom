@@ -12,8 +12,9 @@ export function Menu({ anchor, label, items, onClose }) {
     const a = anchor.getBoundingClientRect();
     const { width, height } = box.current.getBoundingClientRect();
     const room = window.innerHeight - a.bottom;
+    const top = room >= height + 8 || a.top < height + 8 ? a.bottom + 4 : a.top - height - 4;
     setAt({
-      top: room >= height + 8 || a.top < height + 8 ? a.bottom + 4 : a.top - height - 4,
+      top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
       left: Math.max(8, Math.min(a.right - width, window.innerWidth - width - 8)),
     });
   }, []);

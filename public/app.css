@@ -281,6 +281,9 @@ a { color: var(--focus); }
   z-index: 40;
   min-width: 11rem;
   max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0.25rem;
   border: 1px solid var(--rule);
   border-radius: 0.75rem;
