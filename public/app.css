@@ -184,7 +184,7 @@ a { color: var(--focus); }
   cursor: pointer;
 }
 
-.icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+.icon-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--hover); color: var(--ink); }
 
 .icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
@@ -1148,7 +1148,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
 .viewer .icon-btn { text-decoration: none; }
 
-.viewer .icon-btn:disabled { opacity: 0.35; cursor: default; }
+.viewer .icon-btn[aria-disabled="true"] { opacity: 0.35; cursor: default; }
 
 .viewer-fit { width: auto; padding: 0 0.75rem; font-size: 0.875rem; font-weight: 600; }
 

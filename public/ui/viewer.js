@@ -116,9 +116,9 @@ function Viewer({ images, start, from }) {
       ${note}
     </div>
     ${total > 1 ? html`<div class="viewer-pager" data-backdrop>
-      <button class="icon-btn" type="button" aria-label="Previous image" title="Previous (←)" disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
+      <button class="icon-btn" type="button" aria-label="Previous image" title="Previous (←)" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
       <p class="viewer-count" aria-live="polite" aria-atomic="true">${position(at, total)}</p>
-      <button class="icon-btn" type="button" aria-label="Next image" title="Next (→)" disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
+      <button class="icon-btn" type="button" aria-label="Next image" title="Next (→)" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
     </div>` : null}
   </div>`;
 }
