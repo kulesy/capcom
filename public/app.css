@@ -854,6 +854,8 @@ button.thumb:hover { border-color: var(--rule-strong); }
   list-style: none;
 }
 
+.attachment { position: relative; flex: none; }
+
 .attached .thumb { width: 6rem; height: 4.5rem; }
 
 .thumb.preparing { background: var(--hover); }

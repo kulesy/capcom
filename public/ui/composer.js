@@ -2,9 +2,11 @@
 import { attach, attached, detach, draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
 import { modelLabel, tilde } from './format.js';
+import { draftImages, imageKey } from './gallery.js';
 import { useFields, useStore } from './hooks.js';
 import { html, useLayoutEffect, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
+import { openViewer } from './viewer.js';
 
 const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 const MODELS = [['claude-opus-5-5', 'Opus 5.5'], ['claude-opus-5-5[1m]', 'Opus 5.5 (1M)'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']];
@@ -19,7 +21,8 @@ const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
 function Attachments({ images, preparing }) {
   return html`<ul class="attached" aria-label="Attached images">
-    ${images.map(img => html`<li class="thumb" key=${img.id}><img src=${img.src} alt=${img.name} />
+    ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
+      <button class="thumb" type="button" data-image=${imageKey(img)} aria-label=${`View ${img.name}`} aria-haspopup="dialog" onClick=${e => openViewer(draftImages(images), n, e.currentTarget)}><img src=${img.src} alt=${img.name} /></button>
       <button class="thumb-remove" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
