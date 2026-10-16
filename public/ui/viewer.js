@@ -18,7 +18,7 @@ const Next = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hid
 
 const isBackdrop = el => el.dataset?.backdrop !== undefined;
 
-// A thumbnail someone can see: not folded inside a closed group, and not hidden under an open one.
+// A thumbnail someone can see. Chromium and WebKit keep the boxes of what a closed details hides, so having a box is not enough.
 const isOnScreen = el => !!el?.isConnected && el.getClientRects().length > 0 && !el.closest('details:not([open])');
 
 function Viewer({ images, start, from }) {
