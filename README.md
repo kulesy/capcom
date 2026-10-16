@@ -208,7 +208,7 @@ There are no npm dependencies (Node 20 or later), and the page's libraries are v
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
 live work tracker, the thread display, the sign-in and the passkey checks, with Node's own test runner. The
 password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
-browser out. Until one is set, Capcom refuses every request.
+browser out and removes every passkey. Until one is set, Capcom refuses every request.
 
 A browser that signs in stays signed in for a year after it last used Capcom. Each day it is used, Capcom
 pushes the expiry a year out and sends the cookie again. Every sign-in records when it was made, when it was
@@ -219,8 +219,9 @@ password keeps working beside it. After a password sign-in the page offers once 
 the footer of the session list adds, lists and removes them. Browsers offer passkeys only on an https
 address or on localhost, so http://localhost:4310 works as it is, and a remote address needs https and an
 entry in `passkeyOrigins` (see "Remote access"). Capcom keeps the public keys in `passkeys.json` in its state
-folder. `npm run set-password` signs every browser out and leaves the passkeys alone. To end a passkey,
-remove it under Passkeys and delete it from the device or password manager that holds it as well.
+folder. `npm run set-password` signs every browser out and removes every passkey, so a passkey added with a
+stolen cookie cannot outlast a reset. Add yours again once you have signed in with the new password. To end
+one passkey, remove it under Passkeys and delete it from the device or password manager that holds it as well.
 
 Capcom has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own
 window and Dock icon. Window managers then see it as its own app rather than as the browser. On the Mac,
@@ -329,7 +330,7 @@ The password, and any passkey you add, is the only thing between that address an
 Anyone who signs in can run commands as you. Capcom locks sign-in for 15 minutes after ten failed tries with
 the password or a passkey. Pick a long password and keep the address private. A lost phone stays signed in
 for a year after its last use, so set a new password with `npm run set-password`, which signs every browser
-out, and remove its passkey under Passkeys.
+out and removes every passkey.
 
 ## License
 

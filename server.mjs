@@ -390,6 +390,8 @@ async function passkeysApi(req, res, parts, u) {
   if (req.method !== 'POST' || parts.length > 3 || (step && !['options', 'remove'].includes(step))) return send(res, 404, { error: 'Not found' });
   const body = await readJson(req, 100_000);
   if (!body) return send(res, 400, { error: 'Send JSON.' });
+  // A new password can land while the body is still arriving, so the session is checked again before a passkey is written.
+  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   try {
     if (step === 'options') return send(res, 200, passkeys.registrationOptions(claimedOrigin(req, body.origin)));
     if (step === 'remove') return passkeys.remove(String(body.id)) ? send(res, 200, { passkeys: passkeys.list() }) : send(res, 404, { error: 'No such passkey.' });

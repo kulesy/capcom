@@ -171,6 +171,19 @@ test('a new password signs every browser out, even while the server is running',
   assert.equal(r.auth.issue(CHROME).length, 64);
 });
 
+test('a new password also removes every passkey, and leaves a file that only the owner can read', () => {
+  const r = rig();
+  const file = path.join(r.dir, 'passkeys.json');
+  writePassword(r.dir, 'a different long password');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { passkeys: [] });
+
+  fs.writeFileSync(file, JSON.stringify({ user: 'a-handle', passkeys: [{ id: 'abc' }, { id: 'def' }] }));
+  writePassword(r.dir, 'yet another long password');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { passkeys: [] });
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(r.dir).filter(name => name.endsWith('.tmp')), []);
+});
+
 test('checks the password, and locks after ten failures from any mix of password and passkey', () => {
   const r = rig();
   writePassword(r.dir, 'correct horse battery');

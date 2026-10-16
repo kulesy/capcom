@@ -38,7 +38,7 @@ Chosen option: "Capcom's own checks on `node:crypto`, with a list of allowed ori
 - A good sign-in issues the same token and cookie as the password. A refused one counts toward the same lockout, ten failures in 15 minutes.
 - `passkeys.json` in the state folder, mode 0600, holds each passkey's id, public key, algorithm, RP ID, sign count, created and last-used times and a device label.
 - The page shows the passkey parts only where they can work. On a plain http address other than `localhost`, or on an IP address, it hides them, and the sign-in page says why in one line.
-- Removing a passkey in the page deletes Capcom's record. The device or password manager keeps its copy until the owner deletes it there. `npm run set-password` signs every browser out and leaves passkeys alone.
+- Removing a passkey in the page deletes Capcom's record. The device or password manager keeps its copy until the owner deletes it there. `npm run set-password` signs every browser out and removes every passkey, because a stolen cookie is enough to register one and a passkey left in place would sign the thief back in after the reset.
 
 ### Consequences
 
@@ -49,6 +49,7 @@ Chosen option: "Capcom's own checks on `node:crypto`, with a list of allowed ori
 - ❌ Capcom does not check attestation statements, so it cannot tell what kind of authenticator made a passkey.
 - ❌ The plain-http private network address cannot use passkeys. It needs https and an entry in `passkeyOrigins`.
 - ❌ A passkey removed in Capcom can still appear in the password manager's list, and picking it fails.
+- ❌ A new password removes every passkey along with every session, so the owner adds theirs again after a reset.
 - ❌ Failed passkey attempts and wrong passwords share one lockout, so a stranger can lock both out for up to 15 minutes.
 
 ## Pros and Cons of the Options

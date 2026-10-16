@@ -236,6 +236,53 @@ test('the localhost passkey origin works only on a request that arrived as local
   }
 });
 
+test('a new password ends every session and every passkey, so a passkey made with a stolen cookie cannot sign back in', async () => {
+  const s = await start();
+  const thief = makeAuthenticator();
+  const { token } = await signIn(s);
+  const asked = (await request(s, 'POST', '/api/passkeys/options', { headers: as(token), json: { origin: s.origin } })).body();
+  const added = await request(s, 'POST', '/api/passkeys', { headers: as(token), json: thief.register({ challenge: asked.challenge, origin: s.origin }) });
+  assert.equal(added.body().passkeys.length, 1);
+  const ask = () => request(s, 'POST', '/passkey-options', { json: { origin: s.origin } }).then(res => res.body());
+  const { options } = await ask();
+  assert.ok(options);
+
+  writePassword(s.state, 'the password after the reset');
+
+  assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(token) })).status, 401);
+  const stale = await request(s, 'POST', '/passkey-login', { json: thief.assert({ challenge: options.challenge, origin: s.origin, signCount: 1 }) });
+  assert.equal(stale.status, 401);
+  assert.equal(stale.headers['set-cookie'], undefined);
+  assert.deepEqual(await ask(), { options: null, why: '' });
+
+  assert.equal((await request(s, 'POST', '/login', { form: { password: PASSWORD } })).status, 401);
+  const fresh = await request(s, 'POST', '/login', { form: { password: 'the password after the reset' }, headers: { 'user-agent': CHROME } });
+  assert.equal(fresh.status, 303);
+  assert.deepEqual((await request(s, 'GET', listUrl(s.origin), { headers: as(tokenIn(fresh.headers['set-cookie'][0])) })).body().passkeys, []);
+});
+
+test('a passkey still arriving when the password is changed is refused rather than added afterwards', async () => {
+  const s = await start();
+  const thief = makeAuthenticator();
+  const { token } = await signIn(s);
+  const asked = (await request(s, 'POST', '/api/passkeys/options', { headers: as(token), json: { origin: s.origin } })).body();
+  const text = JSON.stringify(thief.register({ challenge: asked.challenge, origin: s.origin }));
+  const half = Math.floor(text.length / 2);
+
+  const held = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: '/api/passkeys', headers: { host: `localhost:${s.port}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(text), ...as(token) } });
+  const status = new Promise((resolve, reject) => {
+    held.on('response', res => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+    held.on('error', reject);
+  });
+  held.write(text.slice(0, half));
+  await new Promise(resolve => setTimeout(resolve, 200));
+  writePassword(s.state, 'the password after the reset');
+  held.end(text.slice(half));
+
+  assert.equal(await status, 401);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.state, 'passkeys.json'), 'utf8')).passkeys, []);
+});
+
 test('wrong passwords and refused passkeys count toward one lockout', async () => {
   const s = await start();
   for (let i = 0; i < 5; i++) assert.equal((await request(s, 'POST', '/login', { form: { password: 'nope' } })).status, 401);
