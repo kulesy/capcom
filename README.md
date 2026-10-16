@@ -27,7 +27,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
 - **Images.** Paste a screenshot anywhere on the page, drop image files onto it, or pick them with the +, and
-  each attaches as a thumbnail above the text, with a cross to take it off again. PNG, JPEG, GIF and WebP, up to 10 to a message,
+  each attaches as a thumbnail above the text, with a cross to take it off again and a click to look at it in the viewer. PNG, JPEG, GIF and WebP, up to 10 to a message,
   and a message may be images alone. Before it sends, the page scales anything over 2000 pixels on its long
   edge down and keeps each image under 3.75 MB, so that even as base64 it is under the 5 MB the API takes. It
   keeps PNG and falls back to JPEG only when a PNG is too big. The CLI then re-encodes any image over about
@@ -37,16 +37,22 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the prompt box, because the field would drop it. A message sent while Claude works can carry images too,
   and the CLI holds it until the running tool finishes, as it does a text
   message. Every message in a transcript that carries images shows them as thumbnails that open in the viewer
-  on click, including messages sent from Desktop or a terminal.
+  on click, including messages sent from Desktop or a terminal. The pictures Claude gets back from its tools,
+  such as a browser screenshot or an image file it reads, show the same way under the call that returned them.
 - **The image viewer** opens when you click or tap a thumbnail in a transcript, one still being sent included,
-  and shows the picture scaled to fit the screen. Esc, the cross at the top right or a click outside the picture
+  a picture a tool returned to Claude, or a picture attached to the message you are writing. It shows the
+  picture scaled to fit the screen. Esc, the cross at the top right or a click outside the picture
   closes it. The left and right arrow keys, the arrows under the picture or a swipe step through the other
-  pictures in that chat in the order the thread shows them, with a count such as "2 of 5" between the arrows.
+  pictures in that chat in the order the thread shows them, those you sent and those Claude's tools returned
+  together, with a count such as "2 of 5" between the arrows. Pictures attached to the box you are writing step
+  among themselves only.
   Actual size shows the picture at its own pixel size and scrolls to the rest of it, where a swipe pans instead
   of stepping, and Fit to screen goes back. The link at the top opens the picture on its own in a new tab.
   While the viewer is open, Tab stays among its controls, the page behind does not scroll or take keys, and
-  Esc closes the viewer without stopping a running chat. Closing it puts focus back on the thumbnail of the
-  picture you last saw. Only pictures the page has loaded count, so earlier ones join once you press Load earlier.
+  Esc closes the viewer without stopping a running chat. Closing it puts focus back on the thumbnail you
+  clicked, however far you stepped, so you stay where you were reading. If that thumbnail has gone, as when a
+  message still being sent has arrived, focus goes to the same picture's new thumbnail, or else to the nearest
+  thumbnail you can see. Only pictures the page has loaded count, so earlier ones join once you press Load earlier.
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
@@ -79,7 +85,12 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   routine's title, beside Desktop's runs of the same routine.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
-  call. A thought among the calls folds into the row, as in "Thought, ran 2 commands".
+  call. A thought among the calls folds into the row, as in "Thought, ran 2 commands". A call that returned
+  pictures to Claude, such as a screenshot, shows them as thumbnails under its row, and under the group's row
+  while the group is folded, so they need no tap to see. A row shows up to four. When there are more, the
+  fourth thumbnail is dimmed with a count such as "+7" for the pictures that have no thumbnail of their own, and
+  a click on it opens the viewer at that picture. Each thumbnail opens the viewer. A picture a tool returned in
+  a form the page cannot draw still shows as "[image]" in the call's output.
 - **Live work.** While Claude works, its thinking streams into a Thinking block above the status line.
   The block folds into a Thought row when the thought ends, and a tap opens it again. Each tool call shows
   as soon as it starts. The status line names the step, such as "Running npm test", "Reading
@@ -98,9 +109,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   text meant for Claude alone sit behind a Details toggle. Only known kinds of message become notices, so
   text you type that mentions a tag stays your message.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
-  running somewhere else, in Desktop or a terminal, update as their file grows. The images in a message are
-  not part of what the page loads. Each message names them, and the page fetches each one from
-  `api/sessions/<id>/images/<ref>` when it draws the thumbnail. The viewer uses the same address, so the
+  running somewhere else, in Desktop or a terminal, update as their file grows. The images in a message, and
+  the pictures a tool returned to Claude, are not part of what the page loads. Each message or tool result names
+  them, and the page fetches each one from `api/sessions/<id>/images/<ref>` when it draws the thumbnail, which
+  for a strip of Claude's pictures is when the thumbnail scrolls near the screen. The viewer uses the same address, so the
   browser reuses what the thumbnail loaded, and the viewer loads the pictures either side of the one on screen ahead of time.
 
 ## Tools
