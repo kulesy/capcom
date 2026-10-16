@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
 import { readAfter, readBefore, readHead, readImage } from '../lib/transcripts.mjs';
 
@@ -197,7 +198,7 @@ test('a tool result lists the pictures the page can draw and keeps its text, mar
   assert.equal(mixed.output, 'Took a screenshot.\n[image]');
   assert.deepEqual(mixed.images, [{ ref: '0.r0.u1', type: 'image/png' }]);
   assert.equal(alone.output, '', 'a picture that is listed leaves no placeholder behind');
-  assert.deepEqual(alone.images, [{ ref: '0.r1.u1', type: 'image/jpeg' }]);
+  assert.deepEqual(alone.images, [{ ref: '0.r2.u1', type: 'image/jpeg' }], 'the bitmap before it took the number r1');
   assert.equal(words.output, 'Only words.');
   assert.equal(plain.output, 'A plain string.');
   assert.equal('images' in words || 'images' in plain, false, 'a result with no picture carries no list');
@@ -216,6 +217,30 @@ test('pictures are numbered across every result on a line, and the live path rea
   assert.deepEqual(b.images.map(i => i.ref), [`${at}.r2.u2`]);
   const live = readAfter(t, at, '/work', 8000);
   assert.deepEqual(resultsOf(live.items).flatMap(r => r.images.map(i => i.ref)), [`${at}.r0.u2`, `${at}.r1.u2`, `${at}.r2.u2`]);
+});
+
+test('a tool picture the page cannot draw still takes its number, so adding a type later moves no ref', () => {
+  const BMP = [66, 77, 1];
+  const PNG = [1, 1, 1];
+  const t = file('undrawn-number', [line('u1', [toolResult('toolu_1', [picture(BMP, 'image/bmp'), picture(PNG)])])]);
+  const refs = () => resultsOf(itemsOf(t)).flatMap(r => (r.images || []).map(i => i.ref));
+  const bytes = ref => { const got = readImage(t, ref); return got && [...got.bytes]; };
+  assert.deepEqual(refs(), ['0.r1.u1'], 'the PNG is the second image block of the result');
+  assert.equal(readImage(t, '0.r0.u1'), null, 'the bitmap has a number but cannot be drawn');
+  assert.deepEqual(bytes('0.r1.u1'), PNG);
+  IMAGE_TYPES.push('image/bmp');
+  try {
+    assert.deepEqual(refs(), ['0.r0.u1', '0.r1.u1'], 'a type added later gives the bitmap r0');
+    assert.deepEqual(bytes('0.r1.u1'), PNG, 'and the address a browser cached still names the same picture');
+    assert.deepEqual(bytes('0.r0.u1'), BMP);
+  } finally { IMAGE_TYPES.pop(); }
+});
+
+test('a sent picture is numbered among the drawable types only, as it has been since the first browsers cached its address', () => {
+  const t = file('sent-numbers', [line('u1', [picture([66, 77], 'image/bmp'), picture([2, 2, 2])])]);
+  const sent = itemsOf(t).find(i => i.kind === 'user');
+  assert.deepEqual(sent.images, [{ ref: '0.0.u1', type: 'image/png' }], 'the PNG is picture 0 because the bitmap is not counted');
+  assert.deepEqual([...readImage(t, '0.0.u1').bytes], [2, 2, 2]);
 });
 
 const TOOL_A = [0, 1, 2, 250, 255];
