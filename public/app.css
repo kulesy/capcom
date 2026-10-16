@@ -612,6 +612,37 @@ button.thumb:hover { border-color: var(--rule-strong); }
 
 .group-tools > :is(.tool, .think) + :is(.tool, .think) { margin-top: 0.2rem; }
 
+.shots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 6rem));
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.2rem 0.5rem;
+}
+
+.tool-group > .shots { margin-left: 1.6rem; }
+
+.tool-group > details[open] ~ .shots { display: none; }
+
+.shots .thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+}
+
+.shots .thumb img { position: absolute; inset: 0; }
+
+.thumb.more img { opacity: 0.35; }
+
+.more-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 600 1rem/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
 .think-sum {
   color: var(--ink-quiet);
   overflow: hidden;

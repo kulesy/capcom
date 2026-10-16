@@ -2,17 +2,31 @@
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
 import { clip, lf, modelLabel, pre, preview, tilde, toolLabel } from './format.js';
-import { imageKey } from './gallery.js';
+import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
 import { Fragment, html, memo, useState } from './html.js';
 import { summarize } from './thread.js';
 import { Widget } from './widget.js';
 
 const STATUS_LABEL = { pending: 'running', ok: 'ok', failed: 'failed', denied: 'denied' };
 
-const ToolRow = memo(function ToolRow({ t }) {
+// A folded group shows its rows' pictures too, so they need no opening to see. CSS hides the group's copy while it is open,
+// because the rows then show their own.
+function ToolPictures({ shots, url, onOpen }) {
+  if (!shots.length) return null;
+  const more = overflow(shots.length);
+  return html`<div class="shots">${shots.slice(0, TILES).map(({ img, tool }, n) => {
+    const key = imageKey(img);
+    const last = more > 0 && n === TILES - 1;
+    return html`<button class=${last ? 'thumb more' : 'thumb'} type="button" key=${key} data-image=${key} aria-haspopup="dialog" aria-label=${tileLabel(n, shots.length, tool)} onClick=${e => onOpen(key, e.currentTarget)}>
+      <img src=${url(img.ref)} alt=${fromTool(tool)} loading="lazy" />${last ? html`<span class="more-count" aria-hidden="true">+${more}</span>` : null}</button>`;
+  })}</div>`;
+}
+
+const ToolRow = memo(function ToolRow({ t, imageUrl, onImage }) {
   const input = pre(t.name === 'Bash' ? t.input?.command || '' : JSON.stringify(t.input ?? {}, null, 2));
   return html`<li class="tool" data-status=${t.status}><details data-k=${t.id}><summary><span class="tool-name">${toolLabel(t.name)}</span><span class="tool-sum">${t.summary || ''}</span><span class="tool-status">${STATUS_LABEL[t.status] || t.status}</span></summary>
-    <pre class="tool-io">${input}</pre>${t.output ? html`<pre class="tool-io">${pre(t.output)}</pre>` : null}</details></li>`;
+    <pre class="tool-io">${input}</pre>${t.output ? html`<pre class="tool-io">${pre(t.output)}</pre>` : null}</details>
+    <${ToolPictures} shots=${toolShots([t])} url=${imageUrl} onOpen=${onImage} /></li>`;
 });
 
 const SystemNotice = memo(function SystemNotice({ n }) {
@@ -38,12 +52,13 @@ const ThinkRow = memo(function ThinkRow({ t }) {
   return html`<li class="think"><${Thought} text=${t.text} name="Thought" /></li>`;
 });
 
-const ToolGroup = memo(function ToolGroup({ rows }) {
+const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage }) {
   const g = summarize(rows);
   return html`<li class="tool-group" data-status=${g.status}><details data-k=${`g:${rows[0].key}`}><summary><span class="group-sum">${g.title}</span>
     <span class="group-meta">${g.edited ? html`<span class="add">+${g.added}</span> <span class="del">-${g.removed}</span>` : null}<span class="tool-status">${g.note}</span></span></summary>
-    <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} />` : html`<${ToolRow} key=${r.key} t=${r} />`))}</ul></details></li>`;
-}, (a, b) => sameRows(a.rows, b.rows));
+    <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} />` : html`<${ToolRow} key=${r.key} t=${r} imageUrl=${imageUrl} onImage=${onImage} />`))}</ul></details>
+    <${ToolPictures} shots=${toolShots(rows)} url=${imageUrl} onOpen=${onImage} /></li>`;
+}, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && sameRows(a.rows, b.rows));
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
 function ChipCard({ t, chip, cwd, onChip }) {
@@ -80,7 +95,7 @@ function Thumbs({ images, url, onOpen }) {
   })}</div>`;
 }
 
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip
+const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
@@ -93,10 +108,10 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onI
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;
     if (/__show_widget$/.test(i.name) && i.input?.widget_code) return html`<${Widget} t=${i} />`;
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;
-    return html`<${ToolRow} t=${i} />`;
+    return html`<${ToolRow} t=${i} imageUrl=${imageUrl} onImage=${onImage} />`;
   }
   if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} />`;
-  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} />`;
+  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} />`;
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;
