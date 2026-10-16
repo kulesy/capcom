@@ -9,8 +9,7 @@ export const isDataUrl = src => src.startsWith('data:');
 
 export const fromTool = label => `Image from ${label}`;
 
-// Every picture in the chat in the order the thread shows them: saved messages and what the tools returned, then the
-// messages still being sent.
+// The chat's pictures in the order the transcript draws them, so Previous and Next follow the page.
 export function threadImages(items, sending, url) {
   const out = [];
   for (const message of [...items, ...sending]) {
@@ -20,10 +19,8 @@ export function threadImages(items, sending, url) {
   return out;
 }
 
-// The pictures being composed, each named by its file.
 export const draftImages = images => images.map(img => ({ key: imageKey(img), src: img.src, alt: img.name }));
 
-// The pictures of some tool calls in thread order, each with the name of the tool that returned it.
 export const toolShots = tools => tools.flatMap(t => (t.images || []).map(img => ({ img, tool: toolLabel(t.name) })));
 
 export const TILES = 4;
@@ -56,13 +53,11 @@ export const position = (index, total) => `${index + 1} of ${total}`;
 
 const SWIPE = 48;
 
-// Sideways and long enough steps; a tap that slid, or a mostly vertical drag, does not. Swiping left shows the next one.
 export function swipeStep(dx, dy) {
   if (Math.abs(dx) < SWIPE || Math.abs(dx) < 1.5 * Math.abs(dy)) return 0;
   return dx < 0 ? 1 : -1;
 }
 
-// Where Tab goes among `count` controls from the one at `at`, wrapping at both ends. -1 is focus on none of them.
 export const tabTarget = (count, at, back) => (at < 0 ? (back ? count - 1 : 0) : (at + (back ? count - 1 : 1)) % count);
 
 // A browser will not open a data URL in a new tab, so a picture still being sent opens from a blob instead.
