@@ -87,3 +87,64 @@ test('Claude is asked for thinking summaries, and what it streams reaches the pa
   assert.equal(chat.status().think, null);
   chat.stop();
 });
+
+const holdingCli = dir => {
+  const cli = path.join(dir, 'holding-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  const [state, id, rest] = m.message.content.split(' ');",
+    "  if (state === 'start') return out({ type: 'system', subtype: 'init', session_id: id, model: 'stub' });",
+    "  out({ type: 'system', subtype: 'peer_message_hold', state, message_uuid: id, lane: 'socket', from: 'uds:/tmp/cc-socks/1.sock', from_name: 'Worker', ...JSON.parse(rest || '{}') });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  return cli;
+};
+
+test('a message the CLI holds for another session shows as held with its cause and is gone once released, and it is never an approval', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const chat = await startChat({ cwd: dir, mode: 'acceptEdits', text: 'start sess-hold-1', images: [], claude: holdingCli(dir), chrome: false, chips: null });
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+
+  chat.send('held m1 {"cause":"mode-mismatch"}', []);
+  await until(() => chat.status().holds.length === 1);
+  assert.deepEqual(chat.status().holds.map(({ id, from, cause }) => ({ id, from, cause })), [{ id: 'm1', from: 'Worker', cause: 'mode-mismatch' }]);
+  assert.deepEqual(chat.status().pending, [], 'there is nothing to allow or deny');
+  assert.equal(chat.state, 'working', 'a hold does not make the chat wait for the owner');
+
+  chat.send('held m1 {"cause":"no-mode-asserted"}', []);
+  chat.send('released m1', []);
+  await until(() => chat.status().holds.length === 0);
+  assert.deepEqual(heard.filter(e => e.type.startsWith('hold')).map(e => [e.type, e.data.id, e.data.cause ?? e.data.state]), [
+    ['hold', 'm1', 'mode-mismatch'],
+    ['hold', 'm1', 'no-mode-asserted'],
+    ['hold-ended', 'm1', 'released'],
+  ]);
+  chat.stop();
+});
+
+test('a hold that is dropped says how it ended, one the page never saw still ends, and a sender cannot pass off its name or id', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const chat = await startChat({ cwd: dir, mode: 'acceptEdits', text: 'start sess-hold-2', images: [], claude: holdingCli(dir), chrome: false, chips: null });
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+
+  chat.send('dropped m2 {"outcome":"expired"}', []);
+  chat.send('reopened m3', []);
+  chat.send(`held ${'i'.repeat(300)} {"from_name":"A\\u202eB\\nC"}`, []);
+  await until(() => chat.status().holds.length === 1);
+  assert.deepEqual(heard.filter(e => e.type === 'hold-ended').map(e => e.data), [{ id: 'm2', from: 'Worker', state: 'dropped', outcome: 'expired' }]);
+  assert.equal(heard.some(e => e.data?.id === 'm3'), false, 'a state the page cannot draw is ignored');
+  const [held] = chat.status().holds;
+  assert.deepEqual([held.id.length, held.from], [100, 'A B C']);
+
+  chat.stop();
+  await until(() => !chat.status().running);
+  assert.deepEqual(chat.status().holds, [], 'a hold does not outlive the process that was holding it');
+});
