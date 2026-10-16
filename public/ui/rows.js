@@ -2,6 +2,7 @@
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
 import { clip, lf, modelLabel, pre, preview, tilde, toolLabel } from './format.js';
+import { imageKey } from './gallery.js';
 import { Fragment, html, memo, useState } from './html.js';
 import { summarize } from './thread.js';
 import { Widget } from './widget.js';
@@ -69,11 +70,14 @@ function ChipCard({ t, chip, cwd, onChip }) {
     <div class="chip-actions">${actions}</div></li>`;
 }
 
-// The pictures in a message. One from the transcript opens full size in a new tab. One still being sent has no address yet.
-function Thumbs({ images, url }) {
-  return html`<div class="thumbs">${images.map((img, n) => img.src
-    ? html`<span class="thumb" key=${n}><img src=${img.src} alt="Attached image" /></span>`
-    : html`<a class="thumb" key=${img.ref} href=${url(img.ref)} target="_blank" rel="noopener"><img src=${url(img.ref)} alt="Attached image" loading="lazy" /></a>`)}</div>`;
+// The pictures in a message. Each opens in the viewer. One from the transcript loads from its address, and one still being sent from the page's own copy.
+function Thumbs({ images, url, onOpen }) {
+  return html`<div class="thumbs">${images.map((img, n) => {
+    const key = imageKey(img);
+    const label = images.length > 1 ? `View attached image ${n + 1} of ${images.length}` : 'View attached image';
+    return html`<button class="thumb" type="button" key=${key} data-image=${key} aria-label=${label} aria-haspopup="dialog" onClick=${e => onOpen(key, e.currentTarget)}>
+      <img src=${img.src ?? url(img.ref)} alt="Attached image" loading=${img.src ? undefined : 'lazy'} /></button>`;
+  })}</div>`;
 }
 
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip
@@ -81,8 +85,8 @@ const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl }) {
-  if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} />` : null}${i.text ? lf(i.text) : null}</li>`;
+export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage }) {
+  if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? lf(i.text) : null}</li>`;
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;

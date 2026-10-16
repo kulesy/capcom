@@ -1,10 +1,11 @@
 import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
-import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
+import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
+import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
 function parseRoute(hash) {
@@ -93,7 +94,8 @@ function App() {
   const id = route.name === 'session' ? route.id : null;
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
-  return html`<div class="app" id="app" data-view=${view}>
+  return html`<${Fragment}>
+  <div class="app" id="app" data-view=${view}>
     <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
@@ -104,7 +106,9 @@ function App() {
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
     </main>
     ${finding ? html`<${Spotlight} ix=${ix} onClose=${() => setFinding(false)} />` : null}
-  </div>`;
+  </div>
+  <${ViewerHost} />
+<//>`;
 }
 
 document.getElementById('boot').remove();

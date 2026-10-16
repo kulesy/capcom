@@ -1,9 +1,11 @@
 import { md } from '../md.mjs';
 import { duration, tokenCount } from './format.js';
-import { html, useLayoutEffect, useMemo, useRef } from './html.js';
+import { threadImages } from './gallery.js';
+import { html, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from './html.js';
 import { useClock, useFields, useStick, useStore } from './hooks.js';
 import { isChip, Row, Thought } from './rows.js';
 import { activity, display } from './thread.js';
+import { closeViewer, openViewer } from './viewer.js';
 
 // Claude's thinking as it is written. It is open while it grows and folds once the block ends.
 function LiveThink({ think }) {
@@ -49,12 +51,20 @@ export function Transcript({ ctrl }) {
     ctrl.loadEarlier();
   };
 
+  // The viewer steps through the pictures as the thread holds them when one is clicked, and closes with the chat.
+  const viewImage = useCallback((key, from) => {
+    const { items: saved, sending: unsent } = ctrl.store.get();
+    const images = threadImages(saved, unsent, ctrl.imageUrl);
+    openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from);
+  }, [ctrl]);
+  useEffect(() => closeViewer, []);
+
   return html`<div class="transcript" id="transcript" ref=${box}>
     ${ctrl.draft ? html`<p class="quiet pad" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
     <button class="button earlier" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
     <ol class="items" id="items">
-      ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} />`)}
-      ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} />`)}
+      ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} />`)}
+      ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} onImage=${viewImage} />`)}
     </ol>
     <${Live} ctrl=${ctrl} box=${box} />
   </div>`;
