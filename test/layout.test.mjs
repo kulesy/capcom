@@ -88,7 +88,8 @@ test('a project is added after the others, with an id like a group has, and its 
 test('a name must be text with something in it and no more than 80 characters, and a refused name writes nothing', () => {
   const f = folder(WITH_PROJECTS);
   const before = fs.readFileSync(f.file, 'utf8');
-  for (const bad of [undefined, null, 5, {}, ['a'], '', '   ', '\n\t', '\u0000\u0007', 'x'.repeat(81), '🙂'.repeat(81)]) {
+  const invisible = ['\u200B', ' \u2060 \u00AD ', '\u3164', '\uFEFF', '\u200D', '\uFE0F', '\u2800', '\u202E', '\u2066\u2069'];
+  for (const bad of [undefined, null, 5, {}, ['a'], '', '   ', '\n\t', '\u0000\u0007', ...invisible, 'x'.repeat(81), '🙂'.repeat(81)]) {
     for (const edit of [l => l.addProject(bad), l => l.renameProject('cp-a', bad), l => l.addGroup(bad), l => l.addGroup(bad, 'cp-a')]) {
       assert.throws(() => edit(f.layout), { status: 400 }, JSON.stringify(bad));
     }
@@ -96,6 +97,15 @@ test('a name must be text with something in it and no more than 80 characters, a
   assert.equal(fs.readFileSync(f.file, 'utf8'), before);
   assert.equal(f.layout.addProject('x'.repeat(80)).name.length, 80);
   assert.equal([...f.layout.addProject('🙂'.repeat(80)).name].length, 80);
+});
+
+test('a name keeps the invisible characters that make up an emoji and loses the ones that reorder the text around it', () => {
+  const f = folder(WITH_PROJECTS);
+  for (const name of ['\u{1F469}\u200D\u{1F4BB} Dev', '\u{1F6E2}\uFE0F Pump', '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F} Wales', '\u05E9\u05DC\u05D5\u05DD\u200F']) {
+    assert.equal(f.layout.addProject(name).name, name, name);
+  }
+  assert.equal(f.layout.addProject('abc\u202Edef\u2066 ghi\u2069').name, 'abcdef ghi');
+  assert.equal(f.layout.renameProject('cp-a', '\u202Bnotes\u202C').name, 'notes');
 });
 
 test('renaming a project changes its name and nothing else', () => {

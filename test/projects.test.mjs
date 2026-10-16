@@ -117,6 +117,8 @@ test('a refused edit says why and writes nothing', async () => {
     ['project/add', {}, 400, /Give it a name/],
     ['project/add', { name: '   ' }, 400, /Give it a name/],
     ['project/add', { name: 7 }, 400, /Give it a name/],
+    ['project/add', { name: '\u200B\u2060' }, 400, /Give it a name/],
+    ['group/add', { name: '\u3164' }, 400, /Give it a name/],
     ['project/add', { name: 'x'.repeat(81) }, 400, /80 characters/],
     ['project/rename', { id: 'cp-x', name: '' }, 400, /Give it a name/],
     ['project/rename', { id: 'cp-none', name: 'Fine' }, 404, /Unknown project/],
