@@ -210,27 +210,31 @@ test('refuses a signature from a key that is not the one added', () => {
   refuses(() => r.passkeys.authenticate(answer), 401, /Signature does not match/);
 });
 
-test('refuses a counter that goes backwards or stands still, once both sides count', () => {
+test('refuses a counter that goes backwards, stands still or falls to zero, once the passkey has counted', () => {
   const r = rig();
   const a = makeAuthenticator();
   add(r, a);
   signIn(r, a, { signCount: 5 });
   refuses(() => signIn(r, a, { signCount: 3 }), 401, /counter did not increase/);
   refuses(() => signIn(r, a, { signCount: 5 }), 401, /counter did not increase/);
+  refuses(() => signIn(r, a, { signCount: 0 }), 401, /counter did not increase/);
+  assert.equal(JSON.parse(fs.readFileSync(r.file, 'utf8')).passkeys[0].signCount, 5);
   signIn(r, a, { signCount: 6 });
   assert.equal(JSON.parse(fs.readFileSync(r.file, 'utf8')).passkeys[0].signCount, 6);
 });
 
-test('accepts a passkey that never counts, and keeps the highest count it has seen', () => {
+test('accepts a passkey that never counts, and one that starts counting after signing in at zero', () => {
   const r = rig();
   const zero = makeAuthenticator();
   add(r, zero);
   for (let i = 0; i < 3; i++) signIn(r, zero, { signCount: 0 });
+  signIn(r, zero, { signCount: 7 });
+  refuses(() => signIn(r, zero, { signCount: 0 }), 401, /counter did not increase/);
   const counting = makeAuthenticator(-8);
   add(r, counting);
   signIn(r, counting, { signCount: 4 });
-  signIn(r, counting, { signCount: 0 });
   refuses(() => signIn(r, counting, { signCount: 4 }), 401, /counter did not increase/);
+  signIn(r, counting, { signCount: 5 });
 });
 
 test('refuses a passkey it does not know, or one made for another RP ID', () => {
