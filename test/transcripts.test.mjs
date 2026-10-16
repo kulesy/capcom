@@ -45,6 +45,7 @@ const file = (name, entries) => {
 const user = content => ({ type: 'user', timestamp: '2026-10-16T01:00:00.000Z', message: { role: 'user', content } });
 const queued = (prompt, commandMode) => ({ type: 'attachment', timestamp: '2026-10-16T01:00:01.000Z', attachment: { type: 'queued_command', commandMode, prompt } });
 const itemsOf = (t, limit = 8000) => readBefore(t, t.size, t.size, '/work', limit).items;
+const assistant = (id, content) => ({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id, role: 'assistant', content } });
 
 test('a finished task is a green notice with its summary, and the ids, output file, note and result behind the details', () => {
   const n = noticeFrom(AGENT);
@@ -112,9 +113,9 @@ test('a command run with ! shows the command and what it printed, escapes undone
   assert.deepEqual([out.title, out.text, out.output], ['Command output', undefined, 'sudo: a password is required']);
 });
 
-test('a message from another session shows its text and keeps the sender in the details; one written for Claude alone is all details', () => {
+test('a message from another session names its sender and shows its text; one written for Claude alone is all details', () => {
   const m = noticeFrom('<cross-session-message from="uds:/tmp/cc.sock" from-name="Write the rule" from-mode="bypass">\nI will stop my dev server soon.\n</cross-session-message>');
-  assert.equal(m.title, 'Message from another session');
+  assert.equal(m.title, 'Message from Write the rule');
   assert.equal(m.text, 'I will stop my dev server soon.');
   assert.deepEqual(m.details, [{ label: 'From', value: 'uds:/tmp/cc.sock' }, { label: 'From name', value: 'Write the rule' }, { label: 'From mode', value: 'bypass' }]);
   const idle = noticeFrom('<side-sessions-event>None of the sessions you started is working now.</side-sessions-event>');
@@ -149,6 +150,95 @@ test('a notice from a sidechain or a meta entry is not shown', () => {
   assert.deepEqual(itemsOf(t).map(i => i.kind), ['user']);
 });
 
+const ADDRESS = 'uds:/tmp/cc-socks/22680.sock';
+const peer = (body, extra = {}) => ({
+  ...user(`Another Claude session sent a message:\n<cross-session-message from="${ADDRESS}" from-name="Worker" from-mode="prompting">\n${body}\n</cross-session-message>\n\nThis came from another Claude session, not from your user.`),
+  isMeta: true,
+  origin: { kind: 'peer', from: ADDRESS, verifiedPeerPid: 22680, msg_id: 'm1', name: 'Worker', fromMode: 'prompting', body },
+  promptSource: 'system',
+  turnOrigin: 'peer',
+  ...extra,
+});
+
+test('a message that arrived from another session is a notice that names its sender, with the sender\'s address and mode behind the details', () => {
+  const t = file('peer', [user('first prompt'), peer('Please run the tests.'), user('thanks')]);
+  const items = itemsOf(t);
+  assert.deepEqual(items.map(i => [i.kind, i.title || i.text]), [['user', 'first prompt'], ['system', 'Message from Worker'], ['user', 'thanks']]);
+  assert.equal(items[1].text, 'Please run the tests.', 'the text is the sender\'s own, not the CLI\'s wrapper round it');
+  assert.deepEqual(items[1].details, [{ label: 'From', value: ADDRESS }, { label: 'From name', value: 'Worker' }, { label: 'From mode', value: 'prompting' }]);
+  assert.equal(items[1].at, '2026-10-16T01:00:00.000Z');
+});
+
+test('a sender cannot redraw its own line: breaks, bidi marks and zero-width characters go, a long name is cut, and markup stays plain text', () => {
+  const name = `Boss\n‮evil​ <img src=x onerror=alert(1)> ${'x'.repeat(100)}`;
+  const t = file('peer-name', [peer('hi', { origin: { kind: 'peer', from: `${ADDRESS}‮`, name, fromMode: 'bypass', body: 'hi' } })]);
+  const [n] = itemsOf(t);
+  const shown = n.title.slice('Message from '.length, -3);
+  assert.equal(shown.startsWith('Boss evil <img src=x onerror=alert(1)> xxx'), true);
+  assert.equal([...shown].length, 60);
+  assert.equal(n.title.endsWith('...'), true);
+  for (const text of [n.title, ...n.details.map(d => d.value)]) assert.doesNotMatch(text, /[\n‮​]/u);
+  assert.equal(n.details[1].value.length > 100, true, 'the details keep the whole name');
+});
+
+test('a message with no sender name, or no text, is still a notice', () => {
+  const t = file('peer-bare', [peer('', { origin: { kind: 'peer', from: ADDRESS, body: '' } })]);
+  const [n] = itemsOf(t);
+  assert.deepEqual([n.title, n.text, n.details], ['Message from another session', undefined, [{ label: 'From', value: ADDRESS }]]);
+});
+
+test('a message from another session saved without the meta flag is a notice too, and one from a sidechain is not shown', () => {
+  const t = file('peer-plain', [peer('plain', { isMeta: undefined }), peer('inside a subagent', { isSidechain: true })]);
+  assert.deepEqual(itemsOf(t).map(i => [i.kind, i.text]), [['system', 'plain']]);
+});
+
+const SENT = '(recipient: uds:/tmp/cc-socks/25507.sock; msg_id: 3ee60c05-9fba-4a30-84ee-08978a954153)';
+const report = text => ({ ...user(`[Cross-session delivery notice] ${text}`), isMeta: true, promptSource: 'system', turnOrigin: 'system' });
+
+test('what the CLI tells a sender about its message is a notice: held, delivered, denied, expired, refused or dropped', () => {
+  const t = file('reports', [
+    report(`Your message to another session was held by that session ${SENT}. NOT delivered: its Claude has not seen it. Do not resend.`),
+    report(`Your message to another session was approved and released to that session ${SENT}.`),
+    report(`Your message to another session was denied by the recipient user ${SENT}. Not delivered to that session's Claude.`),
+    report(`Your message to another session was not approved before expiry ${SENT}. Not delivered to that session's Claude, and nothing is waiting there.`),
+    report(`Your message to another session was refused ${SENT}: that session is not accepting cross-session messages. Not delivered.`),
+    report(`Do not resend now: one of your messages to another session was dropped at that session's inbox and NOT delivered (you sent faster than that session accepts). Treat them as unsent.`),
+    report(`Do not resend now: 3 of your messages to another session were dropped at that session's inbox and NOT delivered (its queue of undelivered peer messages was full). Treat them as unsent.`),
+  ]);
+  const items = itemsOf(t);
+  assert.deepEqual(items.map(i => [i.state, i.title]), [
+    [undefined, 'Message held by the other session'],
+    ['done', 'Message delivered'],
+    ['stopped', 'Message denied by the other session'],
+    ['failed', 'Message not delivered'],
+    ['failed', 'Message refused by the other session'],
+    ['failed', 'Message dropped by the other session'],
+    ['failed', '3 messages dropped by the other session'],
+  ]);
+  assert.equal(items[0].text, 'Not delivered yet. It waits for the other session\'s owner to approve it.');
+  assert.equal(items[5].text, 'You sent faster than that session accepts.');
+  assert.deepEqual(items[0].details.slice(0, 2), [{ label: 'Recipient', value: 'uds:/tmp/cc-socks/25507.sock' }, { label: 'Message', value: '3ee60c05-9fba-4a30-84ee-08978a954153' }]);
+  assert.equal(items[0].details.at(-1).label, 'Also sent to Claude', 'the CLI\'s own wording stays behind the details');
+});
+
+test('a meta entry that is neither a peer message nor a delivery report stays hidden, and so does a delivery report typed by a person', () => {
+  const t = file('meta', [
+    { ...user('Caveat: the messages below were generated by the user while running local commands.'), isMeta: true },
+    { ...user('[Cross-session delivery notice] Your message to another session was teleported (recipient: x).'), isMeta: true },
+    user('[Cross-session delivery notice] Your message to another session was approved and released to that session.'),
+    { ...assistant('msg_9', [{ type: 'text', text: 'hello' }]), isMeta: true },
+  ]);
+  assert.deepEqual(itemsOf(t).map(i => [i.kind, i.text]), [['user', '[Cross-session delivery notice] Your message to another session was approved and released to that session.']]);
+});
+
+test('the live path shows a message that arrives while a session is open, the same as a load does', () => {
+  const t = file('peer-live', [user('first prompt')]);
+  const from = t.size;
+  fs.appendFileSync(t.file, [peer('Are you there?'), report(`Your message to another session was approved and released to that session ${SENT}.`)].map(e => JSON.stringify(e)).join('\n') + '\n');
+  const r = readAfter(t, from, '/work', 8000);
+  assert.deepEqual(r.items.map(i => [i.kind, i.title]), [['system', 'Message from Worker'], ['system', 'Message delivered']]);
+});
+
 test('pasted text loses the CLI\'s paste tags and stays a message from the person', () => {
   const t = file('pasted', [user('<pasted_content id="3852">\nName: Ryon\n</pasted_content id="3852">'), user('see <pasted_content id="1">the log</pasted_content> please')]);
   assert.deepEqual(itemsOf(t).map(i => i.text), ['Name: Ryon', 'see the log please']);
@@ -158,8 +248,6 @@ test('a session whose first entry is a notice is titled by its first real prompt
   const t = file('head', [{ ...user(ORPHANS), cwd: '/work' }, { ...user('Fix the login bug'), cwd: '/work' }]);
   assert.equal(readHead(t).title, 'Fix the login bug');
 });
-
-const assistant = (id, content) => ({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id, role: 'assistant', content } });
 
 test('a thinking block that has text is a thinking item beside the reply it belongs to, and a redacted one shows nothing', () => {
   const t = file('thinking', [
