@@ -39,8 +39,8 @@ function Viewer({ images, start, from }) {
     const app = document.getElementById('app');
     const controls = () => [...el.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]')];
     const onKey = e => {
-      if (e.altKey || e.isComposing) return;
-      if (e.ctrlKey || e.metaKey) { e.stopPropagation(); return; }
+      if (e.isComposing) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) { e.stopPropagation(); return; }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeViewer(); }
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); step(e.key === 'ArrowLeft' ? -1 : 1); }
       else if (e.key === 'Tab') {
