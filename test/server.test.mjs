@@ -103,6 +103,24 @@ test('a signed-out visitor gets the sign-in page and its scripts, and a 401 from
   }
 });
 
+test('a picture a tool returned is served by its r ref to a signed-in browser and to nobody else', async () => {
+  const s = await start();
+  const folder = path.join(path.dirname(s.state), '.claude', 'projects', '-work');
+  fs.mkdirSync(folder, { recursive: true });
+  const bytes = 'plain bytes so the test can read them back as text';
+  const result = { type: 'tool_result', tool_use_id: 'toolu_1', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from(bytes).toString('base64') } }] };
+  fs.writeFileSync(path.join(folder, 'sess-1.jsonl'), `${JSON.stringify({ type: 'user', uuid: 'u1', message: { role: 'user', content: [result] } })}\n`);
+  const url = ref => `/api/sessions/sess-1/images/${ref}`;
+  assert.equal((await request(s, 'GET', url('0.r0.u1'))).status, 401);
+  const { token } = await signIn(s);
+  const got = await request(s, 'GET', url('0.r0.u1'), { headers: as(token) });
+  assert.equal(got.status, 200);
+  assert.equal(got.headers['content-type'], 'image/png');
+  assert.equal(got.headers['cache-control'], 'private, max-age=31536000, immutable');
+  assert.equal(got.text, bytes);
+  for (const ref of ['0.r0.u2', '0.0.u1', '0.r1.u1']) assert.equal((await request(s, 'GET', url(ref), { headers: as(token) })).status, 404, ref);
+});
+
 test('renew sends the cookie again at most once a day, and pushes the expiry 90 days out', async () => {
   const s = await start();
   const { token } = await signIn(s);

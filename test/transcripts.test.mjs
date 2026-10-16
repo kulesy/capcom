@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { noticeFrom } from '../lib/notices.mjs';
-import { readAfter, readBefore, readHead } from '../lib/transcripts.mjs';
+import { readAfter, readBefore, readHead, readImage } from '../lib/transcripts.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-transcripts-test-'));
 
@@ -177,4 +177,97 @@ test('a thinking block that has text is a thinking item beside the reply it belo
 test('a long thinking summary is cut at the output limit', () => {
   const t = file('long-thinking', [assistant('msg_2', [{ type: 'thinking', thinking: 'y'.repeat(30) }])]);
   assert.equal(itemsOf(t, 10)[0].text, `${'y'.repeat(10)}\n... (20 more characters)`);
+});
+
+const picture = (bytes, media_type = 'image/png') => ({ type: 'image', source: { type: 'base64', media_type, data: Buffer.from(bytes).toString('base64') } });
+const toolResult = (id, content) => ({ type: 'tool_result', tool_use_id: id, content });
+const line = (uuid, content) => ({ ...user(content), uuid });
+// Where the second entry of a file starts, which is the number its refs begin with.
+const startOfSecond = first => Buffer.byteLength(JSON.stringify(first)) + 1;
+const resultsOf = items => items.filter(i => i.kind === 'result');
+
+test('a tool result lists the pictures the page can draw and keeps its text, marking only a picture it cannot draw', () => {
+  const t = file('tool-pictures', [line('u1', [
+    toolResult('toolu_1', [{ type: 'text', text: 'Took a screenshot.' }, picture([1, 2, 3]), picture([4, 5, 6], 'image/bmp')]),
+    toolResult('toolu_2', [picture([7, 8, 9], 'image/jpeg')]),
+    toolResult('toolu_3', [{ type: 'text', text: 'Only words.' }]),
+    toolResult('toolu_4', 'A plain string.'),
+  ])]);
+  const [mixed, alone, words, plain] = resultsOf(itemsOf(t));
+  assert.equal(mixed.output, 'Took a screenshot.\n[image]');
+  assert.deepEqual(mixed.images, [{ ref: '0.r0.u1', type: 'image/png' }]);
+  assert.equal(alone.output, '', 'a picture that is listed leaves no placeholder behind');
+  assert.deepEqual(alone.images, [{ ref: '0.r1.u1', type: 'image/jpeg' }]);
+  assert.equal(words.output, 'Only words.');
+  assert.equal(plain.output, 'A plain string.');
+  assert.equal('images' in words || 'images' in plain, false, 'a result with no picture carries no list');
+});
+
+test('pictures are numbered across every result on a line, and the live path reads them the same way', () => {
+  const first = line('u0', 'hello');
+  const second = line('u2', [
+    toolResult('toolu_a', [picture([1]), { type: 'text', text: 'A' }, picture([2])]),
+    toolResult('toolu_b', [{ type: 'text', text: 'B' }, picture([3])]),
+  ]);
+  const t = file('numbering', [first, second]);
+  const at = startOfSecond(first);
+  const [a, b] = resultsOf(itemsOf(t));
+  assert.deepEqual(a.images.map(i => i.ref), [`${at}.r0.u2`, `${at}.r1.u2`]);
+  assert.deepEqual(b.images.map(i => i.ref), [`${at}.r2.u2`]);
+  const live = readAfter(t, at, '/work', 8000);
+  assert.deepEqual(resultsOf(live.items).flatMap(r => r.images.map(i => i.ref)), [`${at}.r0.u2`, `${at}.r1.u2`, `${at}.r2.u2`]);
+});
+
+const TOOL_A = [0, 1, 2, 250, 255];
+const TOOL_B = [9, 8, 7, 128];
+const SENT_0 = [10, 11, 12, 200];
+const SENT_1 = [13, 14, 15, 201];
+
+test('readImage gives back the picture a ref names, an r ref the tool\'s and a plain one the user\'s, on a line that holds both', () => {
+  const first = line('u0', 'hello');
+  const second = line('u1', [
+    toolResult('toolu_a', [{ type: 'text', text: 'A' }, picture(TOOL_A)]),
+    picture(SENT_0),
+    toolResult('toolu_b', [picture(TOOL_B, 'image/jpeg')]),
+    picture(SENT_1, 'image/webp'),
+  ]);
+  const t = file('mixed-line', [first, second]);
+  const at = startOfSecond(first);
+  const items = itemsOf(t);
+  const sent = items.find(i => i.kind === 'user' && i.images);
+  assert.deepEqual(sent.images, [{ ref: `${at}.0.u1`, type: 'image/png' }, { ref: `${at}.1.u1`, type: 'image/webp' }], 'a sent picture is still named by its plain number');
+  assert.deepEqual(resultsOf(items).flatMap(r => r.images.map(i => i.ref)), [`${at}.r0.u1`, `${at}.r1.u1`]);
+  const bytes = ref => { const got = readImage(t, ref); return got && [got.type, [...got.bytes]]; };
+  assert.deepEqual(bytes(`${at}.r0.u1`), ['image/png', TOOL_A]);
+  assert.deepEqual(bytes(`${at}.r1.u1`), ['image/jpeg', TOOL_B]);
+  assert.deepEqual(bytes(`${at}.0.u1`), ['image/png', SENT_0]);
+  assert.deepEqual(bytes(`${at}.1.u1`), ['image/webp', SENT_1]);
+  assert.equal(readImage(t, `${at}.r2.u1`), null, 'there is no third tool picture');
+  assert.equal(readImage(t, `${at}.2.u1`), null, 'and no third sent one');
+});
+
+test('readImage gives nothing for the wrong uuid, a ref that is badly formed, a line that is not a user entry, or a picture of the other kind', () => {
+  const first = line('u0', 'hello');
+  const second = line('u1', [toolResult('toolu_a', [picture(TOOL_A)])]);
+  const third = line('u2', [picture(SENT_0)]);
+  const queuedWithPicture = { ...queued([{ type: 'text', text: 'redirect' }, picture(SENT_1)], 'prompt'), uuid: 'u3' };
+  const notUser = { type: 'assistant', uuid: 'u4', message: { role: 'assistant', content: [toolResult('toolu_z', [picture(TOOL_B)])] } };
+  const t = file('refusals', [first, second, third, queuedWithPicture, notUser]);
+  const at2 = startOfSecond(first);
+  const at3 = at2 + Buffer.byteLength(JSON.stringify(second)) + 1;
+  const at4 = at3 + Buffer.byteLength(JSON.stringify(third)) + 1;
+  const at5 = at4 + Buffer.byteLength(JSON.stringify(queuedWithPicture)) + 1;
+  assert.notEqual(readImage(t, `${at2}.r0.u1`), null);
+  assert.notEqual(readImage(t, `${at3}.0.u2`), null);
+  assert.notEqual(readImage(t, `${at4}.0.u3`), null, 'a queued message\'s picture is still reached by its plain ref');
+  assert.equal(readImage(t, `${at2}.r0.u9`), null, 'wrong uuid, tool picture');
+  assert.equal(readImage(t, `${at3}.0.u9`), null, 'wrong uuid, sent picture');
+  assert.equal(readImage(t, `${at2}.0.u1`), null, 'a plain ref never reaches a tool picture');
+  assert.equal(readImage(t, `${at3}.r0.u2`), null, 'an r ref never reaches a sent picture');
+  assert.equal(readImage(t, `${at4}.r0.u3`), null, 'an r ref never reaches a queued message');
+  assert.equal(readImage(t, `${at5}.r0.u4`), null, 'an r ref reads only a user entry, whatever else holds a tool_result');
+  assert.equal(readImage(t, `${at2 + 1}.r0.u1`), null, 'an offset that is not the start of a line');
+  for (const bad of ['', undefined, null, 'abc', `${at2}`, `${at2}.u1`, `${at2}.r.u1`, `${at2}.R0.u1`, `${at2}.rr0.u1`, `${at2}.r-1.u1`, `${at2}.r0.u1.x`, `${at2}.r0`, `-1.r0.u1`, `${at2}.r0.u 1`, `${at2}.r0.u1/..`]) {
+    assert.equal(readImage(t, bad), null, String(bad));
+  }
 });
