@@ -62,7 +62,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **The list** shows routines first, then pinned sessions, your projects with their groups, your other
   groups, the sessions started here, ungrouped ones and terminal sessions. A group lists its sessions by
   title, A to Z, with the titles that start with an emoji first, and numbers in number order. Every other
-  section lists its newest session first.
+  section lists its newest session first. A project or a group shows when it is empty, so one that was
+  just made can be found and filled. The other sections show only when they hold a session.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
@@ -73,14 +74,14 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   for those: Capcom reads it on every refresh, and shows the error at the top of the list if it cannot.
 - **Projects** are an optional level above groups, so the list can run projects, then groups, then
   sessions. A group belongs to at most one project, and one that belongs to none stays at the top level.
-  Pinned stays above everything. Project and group headers fold, and the browser remembers which are
-  folded. The + at the top of the list makes a project, or a group at the top level. The dots at the end
-  of a project's header open its menu: New group here, Rename and Delete project. Delete asks first, then
-  moves the project's groups to the top level, and no group or session is deleted. The dots on a group's
-  header move it into a project, between projects or back to the top level, and show only when there is
-  somewhere to move it. A right click or the menu key on a header opens the same menu. Every step is a
-  menu, so a phone can do all of them. A name runs to 80 characters at most, and two projects may share
-  one.
+  Routines and Pinned stay above the projects. Project and group headers fold, and the browser remembers
+  which are folded. The + at the top of the list makes a project, or a group at the top level. The dots at
+  the end of a project's header open its menu: New group here, Rename and Delete project. Delete asks
+  first, then moves the project's groups to the top level, and no group or session is deleted. The dots on
+  a group's header move it into a project, between projects or back to the top level, and show only when
+  there is somewhere to move it. A right click or the menu key on a header opens the same menu. Every step
+  is a menu, so a phone can do all of them. A name runs to 80 characters at most, and two projects may
+  share one.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
   search laid out like Desktop's. Chips pick what to look through: All, Sessions, Routines and Archived,
   and the left and right arrows move between them from either end of the text. With nothing typed, All

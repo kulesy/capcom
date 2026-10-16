@@ -45,7 +45,7 @@ Chosen option: "One optional level of projects above groups", because it gives t
 - ✅ Deleting a project cannot lose a group, a session or a pin.
 - ❌ A group still cannot be renamed, deleted or reordered from the page. Those mean editing `layout.json`.
 - ❌ Projects do not nest, and neither a project nor a group can be dragged.
-- ❌ A Capcom from before this change drops `projects` the next time it moves or pins a session, so the groups fall back to the top level. Checked by running that version's layout module on a scratch file.
+- ❌ A Capcom from before this change drops `projects` and `unarchived` the next time it moves or pins a session, so the groups fall back to the top level and the sessions that a message brought back return to the archive. Checked by running that version's layout module on a scratch file.
 
 ## Pros and Cons of the Options
 
