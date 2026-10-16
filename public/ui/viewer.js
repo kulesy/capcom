@@ -62,12 +62,12 @@ function Viewer({ images, start, from }) {
       document.documentElement.classList.remove('viewing');
       app?.removeAttribute('inert');
       app?.removeAttribute('aria-hidden');
-      // Focus goes back to where the person clicked, not to the picture they stepped to, which could scroll the thread away
-      // from what they were reading. A message still being sent has a new thumbnail by now, so if the clicked one is gone
-      // the thumbnail at the same place in the thread, then the nearest one, takes it.
+      // Focus goes back to where the person clicked, not to the picture they stepped to. If that thumbnail is gone, as
+      // when a message still being sent was saved, the one at the same place in the thread takes it, else the nearest.
       const found = [...document.querySelectorAll('[data-image]')];
       const onScreen = found.filter(isOnScreen);
-      const near = onScreen[nearestThumb(onScreen.map(t => t.dataset.image), [...new Set(found.map(t => t.dataset.image))], start)];
+      const thread = [...new Set(found.map(t => t.dataset.image))];
+      const near = onScreen[nearestThumb(onScreen.map(t => t.dataset.image), thread, start)];
       (isOnScreen(from) ? from : near || onScreen[onScreen.length - 1])?.focus();
     };
   }, []);
