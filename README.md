@@ -300,10 +300,13 @@ another computer, put a reverse proxy or a private network you trust in front of
 It works when mounted under a sub-path such as `/chat`. Every URL in the page is relative, and the
 page adds its own trailing slash. The proxy must strip the prefix before the request reaches Capcom.
 
-If the proxy ends https, it should send `X-Forwarded-Proto: https`, which nginx does with
-`proxy_set_header X-Forwarded-Proto $scheme;`. Capcom then adds `Secure` to the sign-in cookie. It believes
-that header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached Capcom some other
-way could not switch `Secure` on. Capcom listens on 127.0.0.1 only, so the test passes for every connection today.
+If the proxy ends https, it must send `X-Forwarded-Proto: https`, which nginx does with
+`proxy_set_header X-Forwarded-Proto $scheme;`. Capcom then adds `Secure` to the sign-in cookie. It also takes a
+write only when the page's address, in the `Origin` header, matches the `Host` and the scheme of the request.
+A proxy that ends https and leaves the header out, or that does not pass the original `Host` on
+(`proxy_set_header Host $host;` in nginx), gets a 403 on every write, sign-in included. Capcom believes the
+header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached Capcom some other way
+could not switch `Secure` on. Capcom listens on 127.0.0.1 only, so the test passes for every connection today.
 An http address keeps working, because it sends no such header. The cookie is also `HttpOnly` and
 `SameSite=Strict`, so a link to Capcom on another website shows the sign-in page. Sign in again, or open the
 address from the address bar.

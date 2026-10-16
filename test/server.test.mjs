@@ -96,6 +96,52 @@ test('a password sign-in sets a year-long cookie, adds Secure only behind an htt
   assert.doesNotMatch((await signIn(s, { 'x-forwarded-proto': 'http' })).cookie, /Secure/);
 });
 
+test('a write must come from this host over the scheme it arrived on, on an http mount and behind a loopback https proxy', async () => {
+  const s = await start();
+  const here = `localhost:${s.port}`;
+  const attempt = ({ host = here, origin, proto }) => request(s, 'POST', '/login', {
+    form: { password: PASSWORD },
+    headers: { 'user-agent': CHROME, host, ...(origin && { origin }), ...(proto && { 'x-forwarded-proto': proto }) },
+  });
+  const proxy = { host: 'capcom.example.test', proto: 'https' };
+  const cases = [
+    ['http, no Origin', {}, 303],
+    ['http, same origin', { origin: `http://${here}` }, 303],
+    ['http, an https Origin for the same host', { origin: `https://${here}` }, 403],
+    ['http, another port', { origin: `http://localhost:${s.port + 1}` }, 403],
+    ['http, another host', { origin: 'http://evil.example' }, 403],
+    ['http, an opaque origin', { origin: 'null' }, 403],
+    ['http, port 80 written out', { host: 'capcom.example.test', origin: 'http://capcom.example.test:80' }, 303],
+    ['https proxy, no Origin', proxy, 303],
+    ['https proxy, same origin', { ...proxy, origin: 'https://capcom.example.test' }, 303],
+    ['https proxy, port 443 written out in the Origin', { ...proxy, origin: 'https://capcom.example.test:443' }, 303],
+    ['https proxy, port 443 written out in the Host', { ...proxy, host: 'capcom.example.test:443', origin: 'https://capcom.example.test' }, 303],
+    ['https proxy, an http Origin for the same host', { ...proxy, origin: 'http://capcom.example.test' }, 403],
+    ['https proxy, an http Origin with port 80', { ...proxy, origin: 'http://capcom.example.test:80' }, 403],
+    ['https proxy, another host', { ...proxy, origin: 'https://evil.example' }, 403],
+    ['a proxy that says http, an https Origin', { ...proxy, proto: 'http', origin: 'https://capcom.example.test' }, 403],
+  ];
+  for (const [label, input, status] of cases) {
+    const res = await attempt(input);
+    assert.equal(res.status, status, label);
+    if (status === 403) assert.equal(res.headers['set-cookie'], undefined, label);
+    else assert.equal(/; Secure$/.test(res.headers['set-cookie'][0]), input.proto === 'https', label);
+  }
+
+  const hostless = await new Promise(resolve => {
+    const socket = net.connect(s.port, '127.0.0.1', () => socket.write('POST /login HTTP/1.0\r\nOrigin: http://undefined\r\nContent-Length: 0\r\n\r\n'));
+    let text = '';
+    socket.on('data', chunk => { text += chunk; });
+    socket.on('close', () => resolve(text));
+  });
+  assert.match(hostless, /^HTTP\/1\.[01] 403 /);
+
+  const { token } = await signIn(s);
+  const renew = origin => request(s, 'POST', '/renew', { headers: { ...as(token), origin }, json: {} });
+  assert.equal((await renew(`http://${here}`)).status, 200);
+  assert.equal((await renew(`https://${here}`)).status, 403);
+});
+
 test('a signed-out visitor gets the sign-in page and its scripts, and a 401 from everything else', async () => {
   const s = await start();
   const page = await request(s, 'GET', '/');
