@@ -207,7 +207,7 @@ test('what the CLI tells a sender about its message is a notice: held, delivered
   ]);
   const items = itemsOf(t);
   assert.deepEqual(items.map(i => [i.state, i.title]), [
-    [undefined, 'Message held by the other session'],
+    ['waiting', 'Message held by the other session'],
     ['done', 'Message delivered'],
     ['stopped', 'Message denied by the other session'],
     ['failed', 'Message not delivered'],
