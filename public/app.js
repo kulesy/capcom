@@ -1,6 +1,7 @@
 import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
 import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
+import { useRenewal } from './ui/renew.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
 
@@ -22,6 +23,7 @@ function App() {
   now.current = { ix };
   const latest = useRef(0);
   const writing = useRef(0);
+  useRenewal();
 
   // Only the newest request counts, so a slow answer cannot put an older list back.
   const loadIndex = useCallback(async () => {
