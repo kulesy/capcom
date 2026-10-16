@@ -181,6 +181,15 @@ test('a sender cannot redraw its own line: breaks, bidi marks and zero-width cha
   assert.equal(n.details[1].value.length > 100, true, 'the details keep the whole name');
 });
 
+test('a message that arrives while Claude is mid-turn is a queued attachment with the bare tag, and shows the same notice', () => {
+  const tag = `<cross-session-message from="${ADDRESS}" from-name="Late sender" from-mode="bypass">\nThe deploy window moved to 5pm.\n</cross-session-message>`;
+  const t = file('peer-queued', [user('first prompt'), queued(tag, 'prompt'), user('thanks')]);
+  const items = itemsOf(t);
+  assert.deepEqual(items.map(i => [i.kind, i.title || i.text]), [['user', 'first prompt'], ['system', 'Message from Late sender'], ['user', 'thanks']]);
+  assert.equal(items[1].text, 'The deploy window moved to 5pm.');
+  assert.deepEqual(items[1].details, [{ label: 'From', value: ADDRESS }, { label: 'From name', value: 'Late sender' }, { label: 'From mode', value: 'bypass' }]);
+});
+
 test('a message with no sender name, or no text, is still a notice', () => {
   const t = file('peer-bare', [peer('', { origin: { kind: 'peer', from: ADDRESS, body: '' } })]);
   const [n] = itemsOf(t);
