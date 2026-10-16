@@ -176,8 +176,9 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     const message = { text, images };
     store.set(s => ({ sending: [...s.sending, message], notice: '', jump: s.jump + 1 }));
     try {
-      const status = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }) });
+      const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }) });
       if (!closed) store.set({ status });
+      if (unarchived) refreshIndex();
       return true;
     } catch (err) {
       if (!closed) store.set(s => ({ sending: s.sending.filter(m => m !== message), notice: `Not sent: ${err.message}` }));

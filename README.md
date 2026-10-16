@@ -77,7 +77,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   shows recent sessions and a New session action. Typing filters by title, folder, branch or routine.
   The up and down arrows and Enter open a result, and Esc closes it. Archived sessions stay out of the
   list and turn up here, under their own chip, most recently archived first, and after the live
-  matches in any search.
+  matches in any search. Sending a message to an archived session brings it back into the list, in the group
+  or pin it had, and the open page shows it at once. Desktop's record stays archived, so Capcom remembers the
+  change in `layout.json`.
 - **Keyboard in the list.** The up and down arrows move through the section headers and sessions, Home
   and End jump to either end, and left and right fold a section or a routine's runs. Enter opens the
   focused session. With no chat open, up or down steps into the list.
@@ -267,8 +269,8 @@ node server.mjs
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
-live work tracker, the messages the CLI holds, the thread display, the sign-in and the passkey checks, with
-Node's own test runner. The
+live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
+session list and what a message does to it, the sign-in and the passkey checks, with Node's own test runner. The
 password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
 browser out and removes every passkey. Until one is set, Capcom refuses every request.
 

@@ -72,9 +72,11 @@ function buildIndex({ archived = false } = {}) {
   // Groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its sessions loose.
   const groupIds = new Set(own.groups.map(g => g.id));
   const pins = new Set(own.pinned);
+  const unarchived = new Set(own.unarchived);
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
+    if (unarchived.has(r.id)) r.archived = false;
   }
 
   const visible = [...rows.values()].filter(r => archived || !r.archived);
@@ -286,6 +288,17 @@ function ensureChat(id, row, { mode } = {}) {
   return chat;
 }
 
+// The message is already sent by now, so a layout that cannot be written is logged, not reported as a failed send.
+function unarchive(id) {
+  try {
+    layout.unarchive(id);
+    return true;
+  } catch (e) {
+    console.error(`Could not unarchive ${id}: ${e.message}`);
+    return false;
+  }
+}
+
 function events(req, res, id) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
   const write = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -488,7 +501,8 @@ async function api(req, res, u) {
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
     chat.send(body.text || '', images);
-    return send(res, 200, chat.status());
+    const unarchived = row.archived && unarchive(id);
+    return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
   }
   const chat = getChat(id);
   if (action === 'mode') {
