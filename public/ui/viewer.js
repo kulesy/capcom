@@ -26,6 +26,8 @@ function Viewer({ images, start, from }) {
   const press = useRef({ backdrop: false, swipe: null });
   const [at, setAt] = useState(start);
   const [actual, setActual] = useState(false);
+  const actualNow = useRef(actual);
+  actualNow.current = actual;
   const [seen, setSeen] = useState({});
   const total = images.length;
   const image = images[at];
@@ -42,7 +44,11 @@ function Viewer({ images, start, from }) {
       if (e.isComposing) return;
       if (e.altKey || e.ctrlKey || e.metaKey) { e.stopPropagation(); return; }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeViewer(); }
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); step(e.key === 'ArrowLeft' ? -1 : 1); }
+      // At Actual size the arrows are left to the browser so the stage scrolls; the ref is because this listener is added once.
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.stopPropagation();
+        if (!actualNow.current) { e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1); }
+      }
       else if (e.key === 'Tab') {
         e.preventDefault();
         const list = controls();
