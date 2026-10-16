@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { LIFETIME_S, makeAuth, overHttps, sessionCookie, writePassword } from '../lib/auth.mjs';
+import { makeAuth, overHttps, sessionCookie, writePassword } from '../lib/auth.mjs';
 import { deviceLabel } from '../lib/device.mjs';
 
 const DAY = 24 * 3600_000;
-const YEAR = 365 * DAY;
+const IDLE = 90 * DAY;
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-auth-test-'));
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const SAFARI = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
@@ -28,11 +28,18 @@ function rig() {
 
 const withCookie = token => ({ headers: { cookie: `theme=dark; capcom=${token}; other=1` } });
 
-test('a cookie lasts a year and keeps the flags it always had', () => {
-  assert.equal(LIFETIME_S, 31_536_000);
-  assert.equal(sessionCookie('abc', LIFETIME_S, false), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=31536000');
-  assert.equal(sessionCookie('abc', LIFETIME_S, true), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=31536000; Secure');
+test('the cookie keeps its flags, and lasts as long as the token has left', () => {
+  assert.equal(sessionCookie('abc', 60, false), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=60');
+  assert.equal(sessionCookie('abc', 60, true), 'capcom=abc; HttpOnly; SameSite=Lax; Max-Age=60; Secure');
   assert.equal(sessionCookie('', 0, false), 'capcom=; HttpOnly; SameSite=Lax; Max-Age=0');
+
+  const r = rig();
+  const token = r.auth.issue(CHROME);
+  assert.equal(r.auth.cookie(token, false), `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=7776000`);
+  assert.equal(r.auth.cookie(token, true), `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=7776000; Secure`);
+  r.tick(30 * DAY + 400);
+  assert.equal(r.auth.cookie(token, false), `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=5184000`);
+  assert.equal(r.auth.cookie('f'.repeat(64), false), `capcom=${'f'.repeat(64)}; HttpOnly; SameSite=Lax; Max-Age=0`);
 });
 
 test('believes X-Forwarded-Proto only from a loopback peer', () => {
@@ -56,7 +63,7 @@ test('a sign-in gets a token with when it was made, last used, when it ends and 
   assert.deepEqual(record, {
     created: '2026-10-16T09:00:00.000Z',
     used: '2026-10-16T09:00:00.000Z',
-    expires: new Date(r.now() + YEAR).toISOString(),
+    expires: new Date(r.now() + IDLE).toISOString(),
     device: 'Chrome 141 on macOS',
   });
   assert.equal(fs.statSync(r.file).mode & 0o777, 0o600);
@@ -69,16 +76,25 @@ test('turns away a cookie that is not a token it issued', () => {
   assert.equal(r.auth.check({ headers: {} }), null);
 });
 
-test('stops at a year when the token is never used, and a day short of it still works', () => {
+test('stops 90 days after the last use, and a day short of it still works', () => {
   const r = rig();
-  const token = r.auth.issue(CHROME);
-  r.tick(YEAR - DAY);
-  assert.equal(r.auth.check(withCookie(token)), token);
+  const unused = r.auth.issue(CHROME);
+  const used = r.auth.issue(CHROME);
+  r.tick(80 * DAY);
+  r.auth.touch(used, CHROME);
+  r.tick(9 * DAY);
+  assert.equal(r.auth.check(withCookie(unused)), unused);
+  assert.equal(r.auth.check(withCookie(used)), used);
   r.tick(DAY + 1);
-  assert.equal(r.auth.check(withCookie(token)), null);
+  assert.equal(r.auth.check(withCookie(unused)), null);
+  assert.equal(r.auth.check(withCookie(used)), used);
+  r.tick(80 * DAY - 2);
+  assert.equal(r.auth.check(withCookie(used)), used);
+  r.tick(2);
+  assert.equal(r.auth.check(withCookie(used)), null);
 });
 
-test('using a token pushes its end a year out, written and re-sent at most once a day', () => {
+test('using a token pushes its end 90 days out, written and re-sent at most once a day', () => {
   const r = rig();
   const token = r.auth.issue(CHROME);
   const written = fs.readFileSync(r.file, 'utf8');
@@ -90,7 +106,7 @@ test('using a token pushes its end a year out, written and re-sent at most once 
   r.tick(1000);
   r.auth.touch(token, CHROME);
   assert.equal(r.saved()[token].used, new Date(r.now()).toISOString());
-  assert.equal(r.saved()[token].expires, new Date(r.now() + YEAR).toISOString());
+  assert.equal(r.saved()[token].expires, new Date(r.now() + IDLE).toISOString());
   assert.equal(r.saved()[token].created, '2026-10-16T09:00:00.000Z');
   assert.equal(r.auth.cookieDue(token), true);
   assert.equal(r.auth.cookieDue(token), false);
@@ -100,16 +116,57 @@ test('using a token pushes its end a year out, written and re-sent at most once 
   assert.equal(r.auth.cookieDue(token), false);
 });
 
-test('a token used every few days outlives its first year, and one left alone does not', () => {
+test('a token used every few days outlives 90 days, and one left alone does not', () => {
   const r = rig();
   const used = r.auth.issue(CHROME);
   const idle = r.auth.issue(CHROME);
-  for (let day = 0; day < 400; day += 3) {
+  for (let day = 0; day < 240; day += 3) {
     r.tick(3 * DAY);
     if (r.auth.check(withCookie(used))) r.auth.touch(used, CHROME);
   }
   assert.equal(r.auth.check(withCookie(used)), used);
   assert.equal(r.auth.check(withCookie(idle)), null);
+});
+
+test('each use pushes the end 90 days out until 365 days after sign-in comes first, and the cookie lasts what is left', () => {
+  const r = rig();
+  const made = r.now();
+  const token = r.auth.issue(CHROME);
+  for (const [day, ends] of [[55, 145], [110, 200], [165, 255], [220, 310], [275, 365], [330, 365]]) {
+    r.tick(55 * DAY);
+    assert.equal(r.auth.check(withCookie(token)), token, `day ${day}`);
+    r.auth.touch(token, CHROME);
+    assert.equal(r.saved()[token].expires, new Date(made + ends * DAY).toISOString(), `used on day ${day}`);
+    assert.equal(r.auth.cookie(token, false), `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=${(ends - day) * 86400}`, `cookie on day ${day}`);
+  }
+});
+
+test('a token used every few days still ends 365 days after it was made, even if it was used the day before', () => {
+  const r = rig();
+  const token = r.auth.issue(CHROME);
+  for (let day = 3; day <= 360; day += 3) {
+    r.tick(3 * DAY);
+    assert.equal(r.auth.check(withCookie(token)), token, `day ${day}`);
+    r.auth.touch(token, CHROME);
+  }
+  r.tick(4 * DAY);
+  assert.equal(r.auth.check(withCookie(token)), token);
+  r.auth.touch(token, CHROME);
+  r.tick(DAY - 1);
+  assert.equal(r.auth.check(withCookie(token)), token);
+  r.tick(2);
+  assert.equal(r.auth.check(withCookie(token)), null);
+});
+
+test('a record with no readable creation time renews on the 90 day rule instead of failing', () => {
+  const r = rig();
+  const token = r.auth.issue(CHROME);
+  const record = r.saved();
+  delete record[token].created;
+  fs.writeFileSync(r.file, JSON.stringify(record));
+  r.tick(2 * DAY);
+  r.auth.touch(token, CHROME);
+  assert.equal(r.saved()[token].expires, new Date(r.now() + IDLE).toISOString());
 });
 
 test('keeps the first browser label, and fills one in where there was none', () => {
@@ -132,14 +189,18 @@ test('signs out no one when it reads the old token file, and moves them to the n
   const auth = makeAuth(dir, { now: () => t });
   assert.equal(auth.check(withCookie(live)), live);
   assert.equal(auth.check(withCookie(lapsed)), null);
+  assert.equal(makeAuth(dir, { now: () => now + 20 * DAY - 1 }).check(withCookie(live)), live);
+  assert.equal(makeAuth(dir, { now: () => now + 20 * DAY }).check(withCookie(live)), null);
 
   auth.touch(live, SAFARI);
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'tokens.json'), 'utf8'));
-  assert.deepEqual(saved[live], { created: new Date(now - 10 * DAY).toISOString(), used: new Date(now).toISOString(), expires: new Date(now + YEAR).toISOString(), device: 'Safari 18 on iPhone' });
+  assert.deepEqual(saved[live], { created: new Date(now - 10 * DAY).toISOString(), used: new Date(now).toISOString(), expires: new Date(now + IDLE).toISOString(), device: 'Safari 18 on iPhone' });
   assert.equal(auth.cookieDue(live), true);
 
-  t += 30 * DAY;
+  t += 80 * DAY;
   assert.equal(makeAuth(dir, { now: () => t }).check(withCookie(live)), live);
+  t += 10 * DAY;
+  assert.equal(makeAuth(dir, { now: () => t }).check(withCookie(live)), null);
 });
 
 test('forgets a token that is revoked', () => {
@@ -156,7 +217,7 @@ test('forgets a token that is revoked', () => {
 test('drops expired tokens from the file the next time one is issued', () => {
   const r = rig();
   const old = r.auth.issue(CHROME);
-  r.tick(YEAR + DAY);
+  r.tick(IDLE + DAY);
   const fresh = r.auth.issue(CHROME);
   assert.deepEqual(Object.keys(r.saved()), [fresh]);
   assert.equal(r.auth.check(withCookie(old)), null);

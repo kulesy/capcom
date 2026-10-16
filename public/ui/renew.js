@@ -1,5 +1,5 @@
 // Asks the server to send the sign-in cookie again. It answers with one at most once a day, so a tab or an installed app
-// that stays open for months keeps its year. The reply must come from a URL directly under the mount, never under /api.
+// that stays open for months stays signed in, up to the 365 day cap. The reply must come from a URL directly under the mount, never under /api.
 import { api } from './api.js';
 import { useEffect } from './html.js';
 

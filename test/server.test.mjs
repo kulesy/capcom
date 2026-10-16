@@ -15,7 +15,7 @@ import { makeAuthenticator } from './authenticator.mjs';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PASSWORD = 'a long password for the tests';
 const DAY = 24 * 3600_000;
-const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Max-Age=31536000$/;
+const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Max-Age=\d+$/;
 const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const HTTPS = { 'x-forwarded-proto': 'https' };
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-'));
@@ -67,6 +67,8 @@ function request(s, method, url, { headers = {}, json, form } = {}) {
 const as = token => ({ cookie: `capcom=${token}`, 'user-agent': CHROME });
 const tokenIn = cookie => /^capcom=([0-9a-f]{64});/.exec(cookie)[1];
 const listUrl = origin => `/api/passkeys?origin=${encodeURIComponent(origin)}`;
+const maxAge = cookie => Number(/; Max-Age=(\d+)/.exec(cookie)[1]);
+const closeTo = (seconds, days) => Math.abs(seconds - days * 86400) <= 5;
 
 async function signIn(s, headers) {
   const res = await request(s, 'POST', '/login', { form: { password: PASSWORD }, headers: { 'user-agent': CHROME, ...headers } });
@@ -81,7 +83,7 @@ function rewriteTokens(s, change) {
   fs.writeFileSync(s.tokens, JSON.stringify(tokens));
 }
 
-test('a password sign-in sets a year-long cookie, adds Secure only behind an https proxy, and lands on the signed-in page', async () => {
+test('a password sign-in sets a 90 day cookie, adds Secure only behind an https proxy, and lands on the signed-in page', async () => {
   const s = await start();
   const wrong = await request(s, 'POST', '/login', { form: { password: 'not it' } });
   assert.equal(wrong.status, 401);
@@ -91,8 +93,11 @@ test('a password sign-in sets a year-long cookie, adds Secure only behind an htt
   const plain = await signIn(s);
   assert.equal(plain.res.headers.location, './?signed-in');
   assert.match(plain.cookie, COOKIE);
+  assert.ok(closeTo(maxAge(plain.cookie), 90), plain.cookie);
 
-  assert.match((await signIn(s, HTTPS)).cookie, /; Max-Age=31536000; Secure$/);
+  const secure = (await signIn(s, HTTPS)).cookie;
+  assert.match(secure, /; Secure$/);
+  assert.ok(closeTo(maxAge(secure), 90), secure);
   assert.doesNotMatch((await signIn(s, { 'x-forwarded-proto': 'http' })).cookie, /Secure/);
 });
 
@@ -158,7 +163,7 @@ test('a signed-out visitor gets the sign-in page and its scripts, and a 401 from
   }
 });
 
-test('renew sends the cookie again at most once a day, and pushes the expiry a year out', async () => {
+test('renew sends the cookie again at most once a day, and pushes the expiry 90 days out', async () => {
   const s = await start();
   const { token } = await signIn(s);
   const renew = headers => request(s, 'POST', '/renew', { headers: { ...as(token), ...headers }, json: {} });
@@ -173,15 +178,31 @@ test('renew sends the cookie again at most once a day, and pushes the expiry a y
   });
   const due = await renew();
   assert.equal(due.status, 200);
-  assert.equal(due.headers['set-cookie'][0], `capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+  assert.match(due.headers['set-cookie'][0], new RegExp(`^capcom=${token}; HttpOnly; SameSite=Lax; Max-Age=\\d+$`));
+  assert.ok(closeTo(maxAge(due.headers['set-cookie'][0]), 90), due.headers['set-cookie'][0]);
   const record = JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token];
-  assert.ok(Date.parse(record.expires) - Date.now() > 364 * DAY);
+  assert.ok(Math.abs(Date.parse(record.expires) - Date.now() - 90 * DAY) < 60_000);
   assert.ok(Date.now() - Date.parse(record.used) < 60_000);
 
   assert.equal((await renew()).headers['set-cookie'], undefined);
 
   rewriteTokens(s, tokens => { tokens[token].used = new Date(Date.now() - 2 * DAY).toISOString(); });
-  assert.match((await renew(HTTPS)).headers['set-cookie'][0], /; Max-Age=31536000; Secure$/);
+  assert.match((await renew(HTTPS)).headers['set-cookie'][0], /; Max-Age=\d+; Secure$/);
+});
+
+test('renew stops pushing the expiry past 365 days after sign-in, and the cookie then lasts only what is left', async () => {
+  const s = await start();
+  const { token } = await signIn(s);
+  const made = Date.now() - 300 * DAY;
+  rewriteTokens(s, tokens => {
+    tokens[token].created = new Date(made).toISOString();
+    tokens[token].used = new Date(Date.now() - 2 * DAY).toISOString();
+    tokens[token].expires = new Date(Date.now() + 80 * DAY).toISOString();
+  });
+  const due = await request(s, 'POST', '/renew', { headers: as(token), json: {} });
+  assert.equal(due.status, 200);
+  assert.ok(closeTo(maxAge(due.headers['set-cookie'][0]), 65), due.headers['set-cookie'][0]);
+  assert.equal(JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token].expires, new Date(made + 365 * DAY).toISOString());
 });
 
 test('signing out clears the cookie, with Secure behind an https proxy, and ends that session', async () => {
@@ -205,7 +226,7 @@ test('a token file in the old shape keeps its browsers signed in, and an expired
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(live) })).status, 200);
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(expired) })).status, 401);
   const record = JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[live];
-  assert.ok(Date.parse(record.expires) - Date.now() > 364 * DAY);
+  assert.ok(Math.abs(Date.parse(record.expires) - Date.now() - 90 * DAY) < 60_000);
   assert.ok(Date.parse(record.created) < Date.now());
   assert.equal(record.device, 'Chrome 141 on macOS');
 });
@@ -250,7 +271,8 @@ test('a passkey is added by a signed-in browser and signs a signed-out one in', 
   const { options: forwards } = await ask();
   const proxied = await post(a.assert({ challenge: forwards.challenge, origin: s.origin, signCount: 2 }), HTTPS);
   assert.equal(proxied.status, 200);
-  assert.match(proxied.headers['set-cookie'][0], /; Max-Age=31536000; Secure$/);
+  assert.match(proxied.headers['set-cookie'][0], /; Max-Age=\d+; Secure$/);
+  assert.ok(closeTo(maxAge(proxied.headers['set-cookie'][0]), 90), proxied.headers['set-cookie'][0]);
 
   assert.deepEqual(await ask('https://elsewhere.example'), { options: null, why: 'Passkeys are not set up for this address.' });
   assert.equal((await request(s, 'POST', '/passkey-options', { form: { origin: s.origin } })).status, 400);

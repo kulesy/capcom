@@ -76,5 +76,5 @@ Chosen option: "Capcom's own checks on `node:crypto`, with a list of allowed ori
 
 ## Links
 
-- [Protect Capcom with a password, a local-only bind and a private network](20261007-password-sign-in-and-local-bind.md), amended 2026-10-16 for the year-long sign-in
+- [Protect Capcom with a password, a local-only bind and a private network](20261007-password-sign-in-and-local-bind.md), amended 2026-10-16 for the longer sign-in
 - [Build Capcom on Node's standard library and plain browser files](20261007-no-dependencies-no-build-step.md)

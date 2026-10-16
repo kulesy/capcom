@@ -210,8 +210,9 @@ live work tracker, the thread display, the sign-in and the passkey checks, with 
 password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
 browser out and removes every passkey. Until one is set, Capcom refuses every request.
 
-A browser that signs in stays signed in for a year after it last used Capcom. Each day it is used, Capcom
-pushes the expiry a year out and sends the cookie again. Every sign-in records when it was made, when it was
+A browser that signs in stays signed in while it is used at least every 90 days, for up to a year from the
+sign-in. Each day it is used, Capcom pushes the expiry 90 days out, but never past a year after the sign-in,
+and sends the cookie again with the time that is left. Every sign-in records when it was made, when it was
 last used and a short device label such as "Chrome 155 on macOS".
 
 Passkeys are the second way in. A passkey signs you in with a fingerprint, face or screen lock, and the
@@ -332,8 +333,8 @@ or start a session, and keeps 1 MB on every other route.
 The password, and any passkey you add, is the only thing between that address and a shell on this machine.
 Anyone who signs in can run commands as you. Capcom locks sign-in for 15 minutes after ten failed tries with
 the password or a passkey. Pick a long password and keep the address private. A lost phone stays signed in
-for a year after its last use, so set a new password with `npm run set-password`, which signs every browser
-out and removes every passkey.
+until 90 days after its last use, or a year after its sign-in if that comes first, so set a new password with
+`npm run set-password`, which signs every browser out and removes every passkey.
 
 ## License
 

@@ -11,7 +11,7 @@ import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
-import { LIFETIME_S, makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
+import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
@@ -373,7 +373,7 @@ async function passkeySignIn(req, res, u, { secure, agent }) {
     if (e instanceof PasskeyError) auth.fail();
     return passkeyRefusal(res, e);
   }
-  return send(res, 200, { ok: true }, 'application/json', { 'set-cookie': sessionCookie(auth.issue(agent), LIFETIME_S, secure) });
+  return send(res, 200, { ok: true }, 'application/json', { 'set-cookie': auth.cookie(auth.issue(agent), secure) });
 }
 
 // Having no passkey to offer is an ordinary answer, so it is a 200 and the sign-in page's console stays clean.
@@ -543,7 +543,7 @@ const server = http.createServer(async (req, res) => {
       if (!result.ok) return send(res, 401, loginPage(result.locked ? 'Too many tries. Wait 15 minutes.' : 'That password did not match.'), 'text/html; charset=utf-8');
       // No Path, so behind a reverse proxy that mounts Capcom under a sub-path the cookie stays scoped to that path.
       // Every reply that sets it (login, passkey-login, renew, logout) must therefore sit directly under the mount, never under /api.
-      return send(res, 303, '', 'text/plain', { location: './?signed-in', 'set-cookie': sessionCookie(auth.issue(agent), LIFETIME_S, secure) });
+      return send(res, 303, '', 'text/plain', { location: './?signed-in', 'set-cookie': auth.cookie(auth.issue(agent), secure) });
     }
     if (req.method === 'POST' && (u.pathname === '/passkey-options' || u.pathname === '/passkey-login')) return await passkeySignIn(req, res, u, { secure, agent });
     const token = auth.check(req);
@@ -553,7 +553,7 @@ const server = http.createServer(async (req, res) => {
     }
     auth.touch(token, agent);
     if (u.pathname === '/renew' && req.method === 'POST') {
-      return send(res, 200, { ok: true }, 'application/json', auth.cookieDue(token) ? { 'set-cookie': sessionCookie(token, LIFETIME_S, secure) } : {});
+      return send(res, 200, { ok: true }, 'application/json', auth.cookieDue(token) ? { 'set-cookie': auth.cookie(token, secure) } : {});
     }
     if (u.pathname === '/logout' && req.method === 'POST') {
       auth.revoke(token);
