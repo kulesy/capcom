@@ -36,6 +36,14 @@ test('a group that thought says so first, then what its calls did', () => {
   assert.equal(summarize([tool('Bash', { status: 'pending' }), think('z')]).note, 'running');
 });
 
+test('sending a message to another session and looking up who can receive one are named in a group, not counted as other tools', () => {
+  const g = summarize([tool('ListAgents'), tool('SendMessage', { input: { to: 'Worker' } }), tool('SendMessage', { input: { to: 'Worker' } })]);
+  assert.equal(g.title, 'Looked up other sessions, sent 2 messages');
+  assert.equal(summarize([tool('SendMessage', { status: 'denied' })]).note, '1 denied');
+  assert.deepEqual(activity({ tools: [{ name: 'SendMessage', summary: 'to Worker: Run the tests' }] }), { doing: 'Sending a message', detail: 'to Worker: Run the tests' });
+  assert.deepEqual(activity({ tools: [{ name: 'ListAgents', summary: 'other sessions' }] }), { doing: 'Looking up other sessions', detail: 'other sessions' });
+});
+
 test('the status line names the one tool running, with what it works on', () => {
   assert.deepEqual(activity({ tools: [{ name: 'Bash', summary: 'npm test' }] }), { doing: 'Running', detail: 'npm test' });
   assert.deepEqual(activity({ tools: [{ name: 'Read', summary: 'lib/runner.mjs' }] }), { doing: 'Reading', detail: 'lib/runner.mjs' });

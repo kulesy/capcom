@@ -64,7 +64,7 @@ export function prepend({ items, orphans }, incoming) {
 // ---- grouped tool calls: Desktop's Normal view says what a run did instead of listing each call -----------
 
 const EDITS = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit'];
-const KIND_OF = { Read: 'read', NotebookRead: 'read', Grep: 'search', Glob: 'search', Bash: 'run', WebSearch: 'web', WebFetch: 'fetch', Agent: 'agent', Task: 'agent', Skill: 'skill', TodoWrite: 'todo' };
+const KIND_OF = { Read: 'read', NotebookRead: 'read', Grep: 'search', Glob: 'search', Bash: 'run', WebSearch: 'web', WebFetch: 'fetch', Agent: 'agent', Task: 'agent', Skill: 'skill', TodoWrite: 'todo', SendMessage: 'message', ListAgents: 'peers' };
 const KINDS = {
   read: n => `read ${plural(n, 'file')}`,
   search: n => `searched ${plural(n, 'time')}`,
@@ -75,10 +75,12 @@ const KINDS = {
   agent: n => `started ${plural(n, 'agent')}`,
   skill: n => `used ${plural(n, 'skill')}`,
   todo: () => 'updated the to-do list',
+  message: n => `sent ${plural(n, 'message')}`,
+  peers: () => 'looked up other sessions',
   chrome: n => `used Chrome ${plural(n, 'time')}`,
   other: n => `used ${plural(n, 'tool')}`,
 };
-const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Editing', web: 'Searching the web', fetch: 'Fetching', agent: 'Running an agent', skill: 'Using a skill', todo: 'Updating the to-do list', chrome: 'Using Chrome', other: 'Using' };
+const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Editing', web: 'Searching the web', fetch: 'Fetching', agent: 'Running an agent', skill: 'Using a skill', todo: 'Updating the to-do list', message: 'Sending a message', peers: 'Looking up other sessions', chrome: 'Using Chrome', other: 'Using' };
 const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || ((name || '').startsWith(CHROME) ? 'chrome' : 'other'));
 
 // What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.

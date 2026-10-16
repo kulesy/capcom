@@ -239,6 +239,20 @@ test('the live path shows a message that arrives while a session is open, the sa
   assert.deepEqual(r.items.map(i => [i.kind, i.title]), [['system', 'Message from Worker'], ['system', 'Message delivered']]);
 });
 
+test('a send to another session reads as who it went to and what it said, on one line, and a lookup of other sessions says what it looks up', () => {
+  const t = file('sends', [
+    user('tell the worker'),
+    assistant('msg_1', [{ type: 'tool_use', id: 'toolu_1', name: 'ListAgents', input: {} }]),
+    assistant('msg_2', [{ type: 'tool_use', id: 'toolu_2', name: 'SendMessage', input: { to: 'Worker', message: 'Please run\nthe tests.', summary: '' } }]),
+    assistant('msg_3', [{ type: 'tool_use', id: 'toolu_3', name: 'SendMessage', input: { to: 'Worker', message: 'Long text', summary: 'Ask for the test results' } }]),
+  ]);
+  assert.deepEqual(itemsOf(t).filter(i => i.kind === 'tool').map(i => [i.name, i.summary]), [
+    ['ListAgents', 'other sessions'],
+    ['SendMessage', 'to Worker: Please run the tests.'],
+    ['SendMessage', 'to Worker: Ask for the test results'],
+  ]);
+});
+
 test('pasted text loses the CLI\'s paste tags and stays a message from the person', () => {
   const t = file('pasted', [user('<pasted_content id="3852">\nName: Ryon\n</pasted_content id="3852">'), user('see <pasted_content id="1">the log</pasted_content> please')]);
   assert.deepEqual(itemsOf(t).map(i => i.text), ['Name: Ryon', 'see the log please']);
