@@ -1,8 +1,8 @@
 # Capcom
 
 A browser chat client for every Claude Code session on this Mac: the ones started in Claude Desktop,
-the routine runs, and the ones started in a terminal. The list uses Capcom's own groups and pins, which start
-as a copy of Desktop's. It listens on http://localhost:4310.
+the routine runs, and the ones started in a terminal. The list uses Capcom's own projects, groups and pins.
+The groups and pins start as a copy of Desktop's. It listens on http://localhost:4310.
 
 The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
 
@@ -59,18 +59,28 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the running tool finishes and adjusts before its next step.
 - **New sessions** start with Ctrl+N: an empty chat with a folder picker above the prompt box (the home
   folder, or a recent one). The first message starts the session in that folder.
-- **The list** shows routines first, then pinned sessions, your groups, the sessions started here, ungrouped
-  ones and terminal sessions. A group lists its sessions by title, A to Z, with the titles that start with an
-  emoji first, and numbers in number order. Every other section lists its newest session first.
+- **The list** shows routines first, then pinned sessions, your projects with their groups, your other
+  groups, the sessions started here, ungrouped ones and terminal sessions. A group lists its sessions by
+  title, A to Z, with the titles that start with an emoji first, and numbers in number order. Every other
+  section lists its newest session first.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
   the layout starts empty and it tries again on each later start. Drag a row onto a group to move it there,
   onto Pinned to pin it, or onto Ungrouped, Started here or Terminal and other to take it out of its group.
   Routines is not a place to drop. A mouse drags after a few pixels of movement, a finger after a long
-  press, and Esc cancels. There is no screen yet to create, rename, delete or reorder groups. Edit
-  `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of the list if
-  it cannot.
+  press, and Esc cancels. There is no screen yet to rename, delete or reorder groups. Edit `layout.json`
+  for those: Capcom reads it on every refresh, and shows the error at the top of the list if it cannot.
+- **Projects** are an optional level above groups, so the list can run projects, then groups, then
+  sessions. A group belongs to at most one project, and one that belongs to none stays at the top level.
+  Pinned stays above everything. Project and group headers fold, and the browser remembers which are
+  folded. The + at the top of the list makes a project, or a group at the top level. The dots at the end
+  of a project's header open its menu: New group here, Rename and Delete project. Delete asks first, then
+  moves the project's groups to the top level, and no group or session is deleted. The dots on a group's
+  header move it into a project, between projects or back to the top level, and show only when there is
+  somewhere to move it. A right click or the menu key on a header opens the same menu. Every step is a
+  menu, so a phone can do all of them. A name runs to 80 characters at most, and two projects may share
+  one.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
   search laid out like Desktop's. Chips pick what to look through: All, Sessions, Routines and Archived,
   and the left and right arrows move between them from either end of the text. With nothing typed, All
@@ -80,9 +90,11 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   matches in any search. Sending a message to an archived session brings it back into the list, in the group
   or pin it had, and the open page shows it at once. Desktop's record stays archived, so Capcom remembers the
   change in `layout.json`.
-- **Keyboard in the list.** The up and down arrows move through the section headers and sessions, Home
-  and End jump to either end, and left and right fold a section or a routine's runs. Enter opens the
-  focused session. With no chat open, up or down steps into the list.
+- **Keyboard in the list.** The up and down arrows move through the project and section headers and the
+  sessions, Home and End jump to either end, and left and right fold a project, a section or a routine's
+  runs. Enter opens the focused session. With no chat open, up or down steps into the list. Tab reaches the
+  dots on a header, and Enter or Space on them opens the menu. In a menu the up and down arrows, Home and
+  End move between items, Esc closes it, and Tab leaves it.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.
@@ -270,9 +282,10 @@ node server.mjs
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
 live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
-session list and what a message does to it, the sign-in and the passkey checks, with Node's own test runner. The
-password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every
-browser out and removes every passkey. Until one is set, Capcom refuses every request.
+project and group routes, the session list and what a message does to it, the sign-in and the passkey checks,
+with Node's own test runner. The password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and
+setting a new one signs every browser out and removes every passkey. Until one is set, Capcom refuses every
+request.
 
 A browser that signs in stays signed in while it is used at least every 90 days, for up to a year from the
 sign-in. Each day it is used, Capcom pushes the expiry 90 days out, but never past a year after the sign-in,

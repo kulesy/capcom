@@ -28,7 +28,7 @@ Where should the groups and pins live, and how does the layout Desktop holds tod
 
 Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because it is the only option the owner can change from Capcom, and after the first start it does not depend on Desktop's files.
 
-- `layout.json` in Capcom's state folder holds the groups (an id and a name), the group each session is in, keyed by the CLI session id, the pinned sessions, and the sessions that a message has brought back from Desktop's archive. Capcom writes it to a temporary file and renames it over the old one. It reads the file on every list refresh, so a hand edit shows without a restart, and an unreadable file is reported at the top of the list and never written over.
+- `layout.json` in Capcom's state folder holds the projects (an id and a name), the groups (an id, a name and the project each is in, if any), the group each session is in, keyed by the CLI session id, the pinned sessions, and the sessions that a message has brought back from Desktop's archive. Capcom writes it to a temporary file and renames it over the old one. It reads the file on every list refresh, so a hand edit shows without a restart, and an unreadable file is reported at the top of the list and never written over.
 - The first time Capcom starts without a `layout.json`, it copies Desktop's groups, memberships and pins in, mapping Desktop's local session ids to CLI session ids, and records when. A session that Desktop shows as pinned and in a group is copied as pinned only. If Desktop's files cannot be read at that start, the layout starts empty and Capcom tries again on each later start. Anything the owner placed in Capcom before the copy keeps its place.
 - From then on Capcom's layout is the only source of groups and pins, and Desktop's later changes are ignored. Titles, folders, archive state and routines still come from Desktop's records, read only, except that a session brought back by a message (see the second amendment below) is not archived.
 - A session is in one place: a group, Pinned or neither. Pinning takes it out of its group, as in Desktop. Moving it into a group, or out of its group, takes it out of Pinned.
@@ -39,12 +39,14 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 
 **Amended 2026-10-16.** Sending a message to an archived session unarchives it. Desktop keeps the archive flag in its own record, which Capcom never writes, so `POST api/sessions/<id>/send` adds the session id to `unarchived` in `layout.json` and the list treats that session as not archived. It returns to the group, pin or routine it was in, because the layout keeps the places of archived sessions too. The reply carries `unarchived: true` so the open page reloads its list at once. If Desktop archives the session again, Capcom still shows it, as it ignores Desktop's later changes to groups and pins. If `layout.json` cannot be written, the message still goes through and the session stays archived. A Capcom from before this change does not know `unarchived` and drops it the next time it moves or pins a session, so the sessions that a message brought back return to the archive. Checked by running that version's layout module on a scratch file.
 
+**Amended 2026-10-16.** Groups can sit under projects, and projects and groups are made and changed from menus. `layout.json` gains `projects` and an optional `project` on each group. `POST api/layout/project/add`, `project/rename`, `project/remove`, `group/add` and `group/move` change them, and `GET api/sessions` carries them. See [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md).
+
 ### Consequences
 
 - ✅ The owner can move and pin sessions from Capcom, on a phone too, and Desktop cannot overwrite the result.
 - ✅ A Desktop update that moves its settings no longer takes the groups away.
 - ❌ Desktop's later changes to its groups and pins do not reach Capcom, so the two layouts drift apart from the first start.
-- ❌ Capcom has no screen yet to create, rename, delete or reorder groups. Until it has, the owner edits `layout.json`.
+- ❌ Capcom has no screen yet to rename, delete or reorder groups. Until it has, the owner edits `layout.json`. It creates groups and projects from menus (see the third amendment above).
 - ❌ Ungrouped, Started here and Terminal and other still show their newest 60 sessions each, so a session moved out of a group that is older than those may not show.
 
 ## Pros and Cons of the Options
