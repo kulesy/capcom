@@ -1,6 +1,6 @@
 // The image viewer: one picture of a chat over the page, with the others a step away. It sits beside the app so the
 // app can be made inert while it is open.
-import { dataUrlToBlob, isDataUrl, position, stepIndex, swipeStep, tabTarget } from './gallery.js';
+import { dataUrlToBlob, isDataUrl, nearestThumb, position, stepIndex, swipeStep, tabTarget } from './gallery.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { createStore } from './store.js';
@@ -18,6 +18,9 @@ const Next = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hid
 
 const isBackdrop = el => el.dataset?.backdrop !== undefined;
 
+// A thumbnail someone can see: not folded inside a closed group, and not hidden under an open one.
+const isOnScreen = el => !!el?.isConnected && el.getClientRects().length > 0 && !el.closest('details:not([open])');
+
 function Viewer({ images, start, from }) {
   const root = useRef(null);
   const press = useRef({ backdrop: false, swipe: null });
@@ -26,8 +29,6 @@ function Viewer({ images, start, from }) {
   const [seen, setSeen] = useState({});
   const total = images.length;
   const image = images[at];
-  const shown = useRef(at);
-  shown.current = at;
 
   const step = by => setAt(i => stepIndex(i, by, total));
 
@@ -61,10 +62,12 @@ function Viewer({ images, start, from }) {
       document.documentElement.classList.remove('viewing');
       app?.removeAttribute('inert');
       app?.removeAttribute('aria-hidden');
-      // Focus goes back to the last picture's thumbnail. One still being sent has a new thumbnail by now, or none if the
-      // send failed, so its place and then the nearest thumbnail are tried.
-      const thumbs = [...document.querySelectorAll('[data-image]')];
-      (thumbs.find(t => t.dataset.image === images[shown.current].key) || thumbs[Math.min(shown.current, thumbs.length - 1)] || (from?.isConnected ? from : null))?.focus();
+      // Focus goes back to where the person clicked, not to the picture they stepped to, which could scroll the thread away
+      // from what they were reading. A message still being sent has a new thumbnail by now, so if the clicked one is gone
+      // the same picture's, then the nearest one in the thread, takes it.
+      const onScreen = [...document.querySelectorAll('[data-image]')].filter(isOnScreen);
+      const near = onScreen[nearestThumb(onScreen.map(t => t.dataset.image), images.map(i => i.key), start)];
+      (isOnScreen(from) ? from : near || onScreen[onScreen.length - 1])?.focus();
     };
   }, []);
 
@@ -107,7 +110,7 @@ function Viewer({ images, start, from }) {
       <button class="icon-btn" type="button" aria-label="Close" title="Close (Esc)" onClick=${closeViewer}><${Close} /></button>
     </div>
     <div class="viewer-stage" data-backdrop data-size=${actual ? 'actual' : 'fit'} tabindex=${actual ? 0 : undefined} role=${actual ? 'group' : undefined} aria-label=${actual ? 'Image at actual size' : undefined}>
-      <img class="viewer-img" key=${image.key} src=${image.src} alt="Attached image" draggable=${false} data-state=${status || 'loading'}
+      <img class="viewer-img" key=${image.key} src=${image.src} alt=${image.alt} draggable=${false} data-state=${status || 'loading'}
         onLoad=${() => mark('ready')} onError=${() => mark('failed')} />
       ${note}
     </div>

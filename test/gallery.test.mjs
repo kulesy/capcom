@@ -1,7 +1,7 @@
 // Run with `npm test`. What the image viewer decides is plain functions on plain data, so it runs here without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dataUrlToBlob, imageKey, isDataUrl, position, stepIndex, swipeStep, tabTarget, threadImages } from '../public/ui/gallery.js';
+import { dataUrlToBlob, draftImages, fromTool, imageKey, isDataUrl, nearestThumb, overflow, position, stepIndex, swipeStep, tabTarget, threadImages, tileLabel, toolShots } from '../public/ui/gallery.js';
 
 const url = ref => `api/sessions/s1/images/${ref}`;
 
@@ -19,12 +19,73 @@ test('the viewer lists every picture in the thread in order, saved messages firs
   ];
   const sending = [{ text: 'three', images: [{ id: 4, name: 'c.png', src: 'data:image/png;base64,AA==' }] }];
   assert.deepEqual(threadImages(items, sending, url), [
-    { key: '1.0.a', src: 'api/sessions/s1/images/1.0.a' },
-    { key: '1.1.a', src: 'api/sessions/s1/images/1.1.a' },
-    { key: '9.0.b', src: 'api/sessions/s1/images/9.0.b' },
-    { key: 'local:4', src: 'data:image/png;base64,AA==' },
+    { key: '1.0.a', src: 'api/sessions/s1/images/1.0.a', alt: 'Attached image' },
+    { key: '1.1.a', src: 'api/sessions/s1/images/1.1.a', alt: 'Attached image' },
+    { key: '9.0.b', src: 'api/sessions/s1/images/9.0.b', alt: 'Attached image' },
+    { key: 'local:4', src: 'data:image/png;base64,AA==', alt: 'Attached image' },
   ]);
   assert.deepEqual(threadImages([], [], url), []);
+});
+
+test('the pictures tools returned are listed in thread order among the messages around them, each named for where it came from', () => {
+  const shot = ref => ({ ref, type: 'image/png' });
+  const items = [
+    { kind: 'user', text: 'look', images: [shot('1.0.a')] },
+    { kind: 'tool', id: 't1', name: 'mcp__claude-in-chrome__computer', images: [shot('5.r0.b')] },
+    { kind: 'tool', id: 't2', name: 'Bash' },
+    { kind: 'tool', id: 't3', name: 'Read', images: [shot('9.r0.c'), shot('9.r1.c')] },
+    { kind: 'assistant', text: 'seen' },
+    { kind: 'user', text: 'and this', images: [shot('12.0.d')] },
+  ];
+  const sending = [{ text: 'sent', images: [{ id: 2, name: 'e.png', src: 'data:image/png;base64,AA==' }] }];
+  assert.deepEqual(threadImages(items, sending, url).map(i => [i.key, i.alt]), [
+    ['1.0.a', 'Attached image'],
+    ['5.r0.b', 'Image from computer'],
+    ['9.r0.c', 'Image from Read'],
+    ['9.r1.c', 'Image from Read'],
+    ['12.0.d', 'Attached image'],
+    ['local:2', 'Attached image'],
+  ]);
+  assert.equal(threadImages(items, [], url)[1].src, 'api/sessions/s1/images/5.r0.b');
+  assert.equal(fromTool('Read'), 'Image from Read');
+});
+
+test('the pictures being composed are listed by their data URLs and named by their files', () => {
+  const images = [{ id: 3, name: 'one.png', src: 'data:image/png;base64,AA==' }, { id: 5, name: 'two.jpg', src: 'data:image/jpeg;base64,AQ==' }];
+  assert.deepEqual(draftImages(images), [
+    { key: 'local:3', src: 'data:image/png;base64,AA==', alt: 'one.png' },
+    { key: 'local:5', src: 'data:image/jpeg;base64,AQ==', alt: 'two.jpg' },
+  ]);
+  assert.deepEqual(draftImages([]), []);
+});
+
+test('a strip lists the pictures of its tool calls in order, naming the tool for each and skipping thinking and calls with none', () => {
+  const [a, b, c] = ['1.r0.u', '1.r1.u', '4.r0.u'].map(ref => ({ ref, type: 'image/png' }));
+  const rows = [{ kind: 'thinking', text: 'hm' }, { kind: 'tool', name: 'Read', images: [a, b] }, { kind: 'tool', name: 'Bash' }, { kind: 'tool', name: 'mcp__claude-in-chrome__browser_batch', images: [c] }];
+  assert.deepEqual(toolShots(rows), [{ img: a, tool: 'Read' }, { img: b, tool: 'Read' }, { img: c, tool: 'browser batch' }]);
+  assert.deepEqual(toolShots([{ kind: 'tool', name: 'Bash' }]), []);
+});
+
+test('up to four pictures get a tile each, and past four the last tile stands for itself and every picture after it', () => {
+  assert.deepEqual([0, 1, 3, 4, 5, 6, 10].map(overflow), [0, 0, 0, 0, 2, 3, 7]);
+  const labels = total => Array.from({ length: Math.min(total, 4) }, (_, n) => tileLabel(n, total, 'Read'));
+  assert.deepEqual(labels(1), ['View image from Read']);
+  assert.deepEqual(labels(2), ['View image 1 of 2 from Read', 'View image 2 of 2 from Read']);
+  assert.deepEqual(labels(4), ['View image 1 of 4 from Read', 'View image 2 of 4 from Read', 'View image 3 of 4 from Read', 'View image 4 of 4 from Read']);
+  assert.deepEqual(labels(10), ['View image 1 of 10 from Read', 'View image 2 of 10 from Read', 'View image 3 of 10 from Read', 'View 7 more images']);
+  assert.equal(labels(5)[3], 'View 2 more images');
+});
+
+test('closing the viewer goes to a thumbnail for the picture opened, else the nearest picture in the thread, else nowhere', () => {
+  const keys = ['a', 'b', 'c', 'd', 'e', 'f'];
+  assert.equal(nearestThumb(['a', 'c', 'e'], keys, 2), 1, 'the same picture');
+  assert.equal(nearestThumb(['e', 'c', 'c'], keys, 2), 1, 'the first of two for the same picture, in page order');
+  assert.equal(nearestThumb(['a', 'e', 'f'], keys, 2), 0, 'a is 2 away and e is 2 away, so the earlier thumbnail wins');
+  assert.equal(nearestThumb(['a', 'f'], keys, 4), 1, 'f is 1 away');
+  assert.equal(nearestThumb(['x', 'f', 'y'], keys, 0), 1, 'a thumbnail whose picture is not in the thread is passed over');
+  assert.equal(nearestThumb(['x', 'y'], keys, 0), -1);
+  assert.equal(nearestThumb([], keys, 3), -1);
+  assert.equal(nearestThumb(['a'], [], 0), -1);
 });
 
 test('stepping stops at the first and the last picture instead of wrapping', () => {

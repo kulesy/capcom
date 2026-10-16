@@ -1,18 +1,53 @@
 // What the image viewer steps through, and the small decisions it makes. Plain functions on plain data, so they run
 // without a browser.
+import { toolLabel } from './format.js';
 
 // A transcript image is named by its ref. One still being sent has no ref yet, so it goes by the id the page gave it.
 export const imageKey = img => img.ref ?? `local:${img.id}`;
 
 export const isDataUrl = src => src.startsWith('data:');
 
-// Every picture in the chat in the order the thread shows them: saved messages first, then the ones still being sent.
+export const fromTool = label => `Image from ${label}`;
+
+// Every picture in the chat in the order the thread shows them: saved messages and what the tools returned, then the
+// messages still being sent.
 export function threadImages(items, sending, url) {
   const out = [];
   for (const message of [...items, ...sending]) {
-    for (const img of message.images || []) out.push({ key: imageKey(img), src: img.src ?? url(img.ref) });
+    const alt = message.kind === 'tool' ? fromTool(toolLabel(message.name)) : 'Attached image';
+    for (const img of message.images || []) out.push({ key: imageKey(img), src: img.src ?? url(img.ref), alt });
   }
   return out;
+}
+
+// The pictures being composed, each named by its file.
+export const draftImages = images => images.map(img => ({ key: imageKey(img), src: img.src, alt: img.name }));
+
+// The pictures of some tool calls in thread order, each with the name of the tool that returned it.
+export const toolShots = tools => tools.flatMap(t => (t.images || []).map(img => ({ img, tool: toolLabel(t.name) })));
+
+export const TILES = 4;
+
+// With more pictures than tiles the last tile stands for itself and every picture after it; this is how many that is.
+export const overflow = total => (total > TILES ? total - (TILES - 1) : 0);
+
+export function tileLabel(n, total, tool) {
+  if (overflow(total) && n === TILES - 1) return `View ${overflow(total)} more images`;
+  return total > 1 ? `View image ${n + 1} of ${total} from ${tool}` : `View image from ${tool}`;
+}
+
+// Which thumbnail on screen gets focus when the viewer closes. `shown` holds their keys in page order and `keys` the
+// thread's pictures. One for the picture opened wins, else the one nearest to it in the thread, else -1.
+export function nearestThumb(shown, keys, start) {
+  const same = shown.indexOf(keys[start]);
+  if (same !== -1) return same;
+  let best = -1;
+  let gap = Infinity;
+  shown.forEach((key, n) => {
+    const at = keys.indexOf(key);
+    if (at !== -1 && Math.abs(at - start) < gap) { best = n; gap = Math.abs(at - start); }
+  });
+  return best;
 }
 
 export const stepIndex = (index, by, total) => Math.min(Math.max(index + by, 0), total - 1);
