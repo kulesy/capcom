@@ -282,10 +282,10 @@ node server.mjs
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
 live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
-project and group routes, the session list and what a message does to it, the sign-in and the passkey checks,
-with Node's own test runner. The password is kept only as a scrypt hash in `~/.config/capcom/auth.json`, and
-setting a new one signs every browser out and removes every passkey. Until one is set, Capcom refuses every
-request.
+project and group routes, the arrow-key and move rules of the sidebar tree, the session list and what a message
+does to it, the sign-in and the passkey checks, with Node's own test runner. The password is kept only as a
+scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser out and removes every
+passkey. Until one is set, Capcom refuses every request.
 
 A browser that signs in stays signed in while it is used at least every 90 days, for up to a year from the
 sign-in. Each day it is used, Capcom pushes the expiry 90 days out, but never past a year after the sign-in,

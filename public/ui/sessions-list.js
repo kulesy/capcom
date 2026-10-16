@@ -8,6 +8,7 @@ import { useLocal } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
+import { moveTargets, nextStop } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
@@ -127,28 +128,29 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
 // routine's runs. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
 const STOPS = '.group-head, a.row[data-id]';
 
+// A header's menu button and a routine's fold button belong to the header or row beside them, so the arrows carry on from there.
+function stopBeside(el) {
+  if (el?.matches?.('.more')) return el.closest('.bar')?.querySelector('.group-head');
+  if (el?.matches?.('.runs-toggle')) return el.closest('.routine')?.querySelector('a.row');
+  return el;
+}
+
 function walk(e, box) {
-  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.matches?.('input, textarea')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form, .confirm')) return;
   const stops = [...box.querySelectorAll(STOPS)];
-  const at = stops.indexOf(document.activeElement);
-  const go = el => { if (!el) return; e.preventDefault(); el.focus(); el.scrollIntoView({ block: 'nearest' }); };
-  if (at < 0) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') go(box.querySelector('a.row[aria-current="page"]') || stops[0]);
-    return;
-  }
+  const at = stops.indexOf(stopBeside(document.activeElement));
+  const go = el => { e.preventDefault(); el.focus(); el.scrollIntoView({ block: 'nearest' }); };
+  const to = nextStop(stops.length, at, e.key, Math.max(stops.indexOf(box.querySelector('a.row[aria-current="page"]')), 0));
+  if (to >= 0) return go(stops[to]);
   const here = stops[at];
-  if (e.key === 'ArrowDown') go(stops[at + 1]);
-  else if (e.key === 'ArrowUp') go(stops[at - 1]);
-  else if (e.key === 'Home') go(stops[0]);
-  else if (e.key === 'End') go(stops[stops.length - 1]);
-  else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    const opening = e.key === 'ArrowRight';
-    const fold = here.matches('.group-head') ? here : here.closest('.routine')?.querySelector('.runs-toggle');
-    if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
-    else if (!opening) {
-      const section = here.closest('.group, .project');
-      go((here.matches('.group-head') ? section?.parentElement?.closest('.project') : section)?.querySelector('.group-head'));
-    }
+  if (!here || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+  const opening = e.key === 'ArrowRight';
+  const fold = here.matches('.group-head') ? here : here.closest('.routine')?.querySelector('.runs-toggle');
+  if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
+  else if (!opening) {
+    const section = here.closest('.group, .project');
+    const parent = (here.matches('.group-head') ? section?.parentElement?.closest('.project') : section)?.querySelector('.group-head');
+    if (parent) go(parent);
   }
 }
 
@@ -225,6 +227,7 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
 
   async function moveGroup(g, project) {
     if (await change('api/layout/group/move', { id: g.id, project }) && project) expand(project);
+    setBack(headOf(g.id));
   }
 
   async function addGroup(name, project) {
@@ -238,7 +241,7 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     shown,
     pop,
     groupMenu: g => {
-      const to = [...(g.project ? [{ label: 'Move to top level', project: null }] : []), ...ix.projects.filter(p => p.id !== g.project).map(p => ({ label: `Move to ${p.name}`, project: p.id }))];
+      const to = moveTargets(ix.projects, g);
       return to.length ? { label: `Move ${g.name}`, items: to.map(t => ({ label: t.label, run: () => moveGroup(g, t.project) })) } : null;
     },
     projectMenu: p => ({
