@@ -120,7 +120,7 @@ function walk(e, box) {
   }
 }
 
-export function SessionList({ ix, error, current, place, onFind }) {
+export function SessionList({ ix, error, current, place, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
@@ -165,12 +165,14 @@ export function SessionList({ ix, error, current, place, onFind }) {
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
     <div role="status">${note ? html`<p class="problem" id="moveNote">${note}</p>` : null}</div>
+    ${banner}
     <div class="sections" id="sections" ref=${box}>
       ${ix
         ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">
+      <a href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
   </nav>`;

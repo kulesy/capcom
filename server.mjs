@@ -12,11 +12,13 @@ import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readI
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { LIFETIME_S, makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
+import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 
 const auth = makeAuth(cfg.stateDir);
+const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
 const chips = makeChips(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -261,6 +263,11 @@ function sameOrigin(req) {
   try { return new URL(origin).host === req.headers.host; } catch { return false; }
 }
 
+// A JSON body, or null when it is not JSON or is too large.
+async function readJson(req, limit) {
+  try { return JSON.parse(await readBody(req, limit) || '{}') || {}; } catch { return null; }
+}
+
 function indexPage() {
   return page('index.html').replace(/\{\{station\}\}/g, () => esc(cfg.station)).replace(/\{\{home\}\}/g, () => esc(os.homedir()));
 }
@@ -335,9 +342,68 @@ async function routinesApi(req, res, parts) {
   }
 }
 
+// The localhost origin is believed only on a request that reached Capcom as localhost. Sent through a proxy, a page on another
+// device could borrow it and have the owner approve a passkey prompt that was meant for that page.
+const localOrigin = `http://localhost:${cfg.port}`;
+const proxied = req => Object.keys(req.headers).some(name => name === 'forwarded' || name.startsWith('x-forwarded-'));
+function claimedOrigin(req, origin) {
+  return origin === localOrigin && (req.headers.host !== `localhost:${cfg.port}` || proxied(req)) ? null : origin;
+}
+
+// A passkey that the server refuses is a plain reply. Anything else is a bug and goes to the 500 handler.
+function passkeyRefusal(res, e) {
+  if (!(e instanceof PasskeyError)) throw e;
+  if (e.cause) console.error(`${e.message} (${e.cause.message})`);
+  return send(res, e.status, { error: e.message });
+}
+
+// The sign-in page asks for a challenge at passkey-options, signs it with a passkey, and sends the answer to passkey-login.
+// A refused answer counts toward the same lockout as a wrong password.
+async function passkeySignIn(req, res, u, { secure, agent }) {
+  const body = await readJson(req, 100_000);
+  if (!body) return send(res, 400, { error: 'Send JSON.' });
+  if (u.pathname === '/passkey-options') return passkeyOptions(req, res, body);
+  if (auth.locked()) return send(res, 429, { error: 'Too many tries. Wait 15 minutes.' });
+  try {
+    passkeys.authenticate(body);
+  } catch (e) {
+    if (e instanceof PasskeyError) auth.fail();
+    return passkeyRefusal(res, e);
+  }
+  return send(res, 200, { ok: true }, 'application/json', { 'set-cookie': sessionCookie(auth.issue(agent), LIFETIME_S, secure) });
+}
+
+// Having no passkey to offer is an ordinary answer, so it is a 200 and the sign-in page's console stays clean.
+function passkeyOptions(req, res, body) {
+  try {
+    return send(res, 200, { options: passkeys.authenticationOptions(claimedOrigin(req, body.origin)) });
+  } catch (e) {
+    if (!(e instanceof PasskeyError) || e.status >= 500) throw e;
+    return send(res, 200, { options: null, why: e.status === 404 ? '' : e.message });
+  }
+}
+
+// GET api/passkeys lists them. POST api/passkeys/options starts adding one, POST api/passkeys finishes it, and POST api/passkeys/remove removes one.
+async function passkeysApi(req, res, parts, u) {
+  const step = parts[2];
+  if (req.method === 'GET' && !step) return send(res, 200, { available: passkeys.allowed(claimedOrigin(req, u.searchParams.get('origin'))), passkeys: passkeys.list() });
+  if (req.method !== 'POST' || parts.length > 3 || (step && !['options', 'remove'].includes(step))) return send(res, 404, { error: 'Not found' });
+  const body = await readJson(req, 100_000);
+  if (!body) return send(res, 400, { error: 'Send JSON.' });
+  try {
+    if (step === 'options') return send(res, 200, passkeys.registrationOptions(claimedOrigin(req, body.origin)));
+    if (step === 'remove') return passkeys.remove(String(body.id)) ? send(res, 200, { passkeys: passkeys.list() }) : send(res, 404, { error: 'No such passkey.' });
+    passkeys.register(body, req.headers['user-agent']);
+    return send(res, 200, { passkeys: passkeys.list() });
+  } catch (e) {
+    return passkeyRefusal(res, e);
+  }
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
+  if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const { rows, ...index } = buildIndex({ archived: u.searchParams.get('archived') === '1' });
     return send(res, 200, index);
@@ -469,9 +535,10 @@ const server = http.createServer(async (req, res) => {
       const result = auth.verify(password);
       if (!result.ok) return send(res, 401, loginPage(result.locked ? 'Too many tries. Wait 15 minutes.' : 'That password did not match.'), 'text/html; charset=utf-8');
       // No Path, so behind a reverse proxy that mounts Capcom under a sub-path the cookie stays scoped to that path.
-      // Every reply that sets it (login, renew, logout) must therefore sit directly under the mount, never under /api.
-      return send(res, 303, '', 'text/plain', { location: './', 'set-cookie': sessionCookie(auth.issue(agent), LIFETIME_S, secure) });
+      // Every reply that sets it (login, passkey-login, renew, logout) must therefore sit directly under the mount, never under /api.
+      return send(res, 303, '', 'text/plain', { location: './?signed-in', 'set-cookie': sessionCookie(auth.issue(agent), LIFETIME_S, secure) });
     }
+    if (req.method === 'POST' && (u.pathname === '/passkey-options' || u.pathname === '/passkey-login')) return await passkeySignIn(req, res, u, { secure, agent });
     const token = auth.check(req);
     if (!token) {
       if (u.pathname.startsWith('/api/') || u.pathname === '/renew') return send(res, 401, { error: 'Signed out.' });

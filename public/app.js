@@ -1,16 +1,17 @@
 import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
 import { html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
+import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
 
-// #/ is the list, #/s/<id> a session and #/new an empty chat for a session not started yet.
+// #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
 function parseRoute(hash) {
   try {
     if (hash.startsWith('#/s/')) return { name: 'session', id: decodeURIComponent(hash.slice(4)) };
   } catch {}
-  return { name: hash === '#/new' ? 'new' : 'list' };
+  return { name: hash === '#/new' ? 'new' : hash === '#/passkeys' ? 'passkeys' : 'list' };
 }
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
   now.current = { ix };
   const latest = useRef(0);
   const writing = useRef(0);
+  const [offering, stopOffering] = usePasskeyOffer();
   useRenewal();
 
   // Only the newest request counts, so a slow answer cannot put an older list back.
@@ -92,12 +94,14 @@ function App() {
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} onFind=${() => setFinding(true)} />
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+      banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
         <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>
       </section>
-      ${view === 'chat' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
     </main>
     ${finding ? html`<${Spotlight} ix=${ix} onClose=${() => setFinding(false)} />` : null}
   </div>`;

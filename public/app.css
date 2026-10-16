@@ -1094,6 +1094,88 @@ kbd + kbd { margin-left: 0.2rem; }
 
 .gate-card input { width: 100%; border: 1px solid var(--rule); border-radius: 0.6rem; background: var(--raised); padding: 0.6rem 0.75rem; }
 
+.gate-card .hint { font-size: 0.875rem; }
+
+.list-foot a { color: var(--ink-quiet); text-decoration: none; }
+
+.list-foot a:hover, .list-foot a[aria-current="page"] { color: var(--ink); }
+
+.button.danger { border-color: var(--bad); color: var(--bad-text); }
+
+.offer {
+  margin: 0 1rem 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.75rem;
+  background: var(--raised);
+}
+
+.offer h2 { margin: 0; font-size: 0.9375rem; line-height: 1.35; }
+
+.offer-text { margin: 0.25rem 0 0; font-size: 0.875rem; color: var(--ink-quiet); }
+
+.offer .notice { margin: 0.5rem 0 0; }
+
+.offer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 0.65rem; }
+
+.passkeys-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+.passkeys-inner { max-width: 36rem; margin-inline: auto; }
+
+.passkey-lead { margin: 0; }
+
+.passkey-list { list-style: none; margin: 1.25rem 0 0; padding: 0; border-top: 1px solid var(--rule); }
+
+.passkey {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.passkey-info { min-width: 0; flex: 1 1 14rem; }
+
+.passkey-name { margin: 0; font-weight: 600; }
+
+.passkey-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.9rem;
+  margin: 0.1rem 0 0;
+  font: 400 0.75rem/1.5 var(--mono);
+  color: var(--ink-quiet);
+}
+
+.passkey-ask { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; font-size: 0.875rem; }
+
+.passkey-none { margin: 1.25rem 0 0; padding: 0.85rem 0; border-block: 1px solid var(--rule); color: var(--ink-quiet); }
+
+.passkey-add { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-top: 1.25rem; }
+
+.passkey-add .button:disabled { opacity: 0.5; cursor: default; }
+
+.passkey-why { margin: 0; font-size: 0.875rem; }
+
+.passkeys-inner .notice { margin: 0.85rem 0 0; }
+
+.passkey-status { margin: 0.85rem 0 0; font-size: 0.875rem; color: var(--ok-text); }
+
+.passkey-fine { margin: 1.5rem 0 0; font-size: 0.8125rem; }
+
+@media (pointer: coarse) {
+  .offer-actions .button, .passkey-add .button, .passkey-ask .button { min-height: 2.75rem; }
+
+  .offer-actions .link, .passkey .link, .list-foot .link, .list-foot a { padding-block: 0.5rem; }
+}
+
 @media (min-width: 56rem) {
   .app { grid-template-columns: 22rem minmax(0, 1fr); }
 
