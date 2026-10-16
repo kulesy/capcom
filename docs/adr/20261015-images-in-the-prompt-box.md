@@ -1,6 +1,6 @@
 # Send pasted images as content blocks and show transcript images through an endpoint
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-17
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: prompt-box, images, transcripts, stream-json
@@ -33,6 +33,8 @@ Chosen option: "Scale in the browser, send base64 in the request, and serve tran
 - **Reading.** An item for a user message carries `images: [{ ref, type }]`, and `GET api/sessions/<id>/images/<ref>` returns the bytes with the right content type. A ref is the byte offset of the transcript line, the image's position among that message's images, and the entry's uuid. The endpoint reads that one line and refuses the ref when the uuid does not match, so a rewritten file cannot show the wrong image. That also lets the browser keep each image for good.
 - **Mid-turn.** The CLI saves a message queued while Claude works as a `queued_command` attachment. With images, its prompt is a list of content blocks instead of a string. The reader handles both. Checked on CLI 2.1.300.
 - **Sending bubble.** While a message is on its way, its bubble shows the attached images from the browser's own copy. The transcript's copy replaces it when the line arrives.
+
+**Amended 2026-10-17.** The pictures a tool returns to Claude show too, such as a browser screenshot or an image file it reads. They sit in the `tool_result` blocks of a user line, so the item for a tool's result carries `images: [{ ref, type }]` as a user message does, and the page copies them onto the tool's own item. Their refs read `<offset>.r<n>.<uuid>`, where `n` counts the pictures across every result on the line. A ref on a user message keeps its form, because the browser keeps each image for a year and a ref has to name the same picture for ever. A picture the page cannot draw still reads "[image]" in the tool's output.
 
 ### Consequences
 
