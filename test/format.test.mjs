@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { duration, holdCause, holdEnd, preview, tokenCount } from '../public/ui/format.js';
+import { duration, groupHolds, holdCause, holdEnd, preview, tokenCount } from '../public/ui/format.js';
 
 test('a timer reads in seconds, then minutes and seconds, then hours and minutes', () => {
   assert.deepEqual([0, 999, 1000, 59_999, 60_000, 65_000, 3_599_000, 3_600_000, 3_725_000].map(duration), ['0s', '0s', '1s', '59s', '1m 00s', '1m 05s', '59m 59s', '1h 00m', '1h 02m']);
@@ -31,8 +31,30 @@ test('every reason the CLI gives for holding a message, and every way a hold end
 });
 
 test('a reason or outcome from a newer CLI, or one a sender made up, falls back to a general sentence and is never shown as sent', () => {
-  assert.equal(holdCause('<img src=x>'), 'The CLI is holding it for approval.');
-  assert.equal(holdCause(undefined), 'The CLI is holding it for approval.');
-  assert.equal(holdEnd('<b>x</b>'), 'The CLI dropped it.');
-  assert.equal(holdEnd(''), 'The CLI dropped it.');
+  assert.equal(holdCause('<img src=x>'), 'The CLI gave a reason Capcom does not know.');
+  assert.equal(holdCause(undefined), 'The CLI gave a reason Capcom does not know.');
+  assert.equal(holdEnd('<b>x</b>'), 'The CLI ended the hold without delivering.');
+  assert.equal(holdEnd(''), 'The CLI ended the hold without delivering.');
+});
+
+test('messages held for the same reason from the same sender make one group, and only the newest groups show', () => {
+  const list = [
+    { id: 'a', from: 'Worker', cause: 'mode-mismatch' },
+    { id: 'b', from: 'Docs', cause: 'mode-mismatch' },
+    { id: 'c', from: 'Worker', cause: 'mode-mismatch' },
+    { id: 'd', from: 'Worker', cause: 'bypass-default' },
+    { id: 'e', from: 'Tests', cause: 'mode-mismatch' },
+  ];
+  const all = groupHolds(list, h => h.cause, 10);
+  assert.deepEqual(all.groups.map(g => [g.from, g.why, g.ids]), [
+    ['Worker', 'mode-mismatch', ['a', 'c']],
+    ['Docs', 'mode-mismatch', ['b']],
+    ['Worker', 'bypass-default', ['d']],
+    ['Tests', 'mode-mismatch', ['e']],
+  ]);
+  assert.equal(all.hidden, 0);
+  const newest = groupHolds(list, h => h.cause, 2);
+  assert.deepEqual(newest.groups.map(g => g.ids), [['d'], ['e']]);
+  assert.equal(newest.hidden, 3, 'a, b and c are in the groups left out');
+  assert.deepEqual(groupHolds([], h => h.cause, 3), { groups: [], hidden: 0 });
 });

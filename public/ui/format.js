@@ -77,12 +77,23 @@ const HOLD_CAUSES = {
   'invalid-setting': 'A Claude Code settings file has a "crossSessionInbound" value the CLI does not recognise, so it holds every message.',
 };
 const HOLD_ENDS = {
-  expired: 'Nobody approved it, so Claude never saw it.',
-  refused: 'The CLI began refusing messages from other sessions while it waited.',
-  dropped: 'The CLI let it through, then discarded it (a rate limit, a repeat or a full queue).',
-  discarded: 'This chat ended while it was held.',
+  expired: 'Nobody approved in time, so none of it reached Claude.',
+  refused: 'The CLI began refusing messages from other sessions before anyone approved.',
+  dropped: 'Let through by the CLI, then discarded (a rate limit, a repeat or a full queue).',
+  discarded: 'This chat ended before anyone approved.',
 };
 
 // Why the CLI holds a message from another session, and how a hold ends without the message arriving.
-export const holdCause = cause => HOLD_CAUSES[cause] || 'The CLI is holding it for approval.';
-export const holdEnd = outcome => HOLD_ENDS[outcome] || 'The CLI dropped it.';
+export const holdCause = cause => HOLD_CAUSES[cause] || 'The CLI gave a reason Capcom does not know.';
+export const holdEnd = outcome => HOLD_ENDS[outcome] || 'The CLI ended the hold without delivering.';
+
+// One group per sender and reason; the newest `shown` are returned, and `hidden` counts the messages in the rest.
+export function groupHolds(list, whyOf, shown) {
+  const by = new Map();
+  for (const h of list) {
+    const key = `${h.from}\n${whyOf(h)}`;
+    by.set(key, { key, from: h.from, why: whyOf(h), ids: [...(by.get(key)?.ids || []), h.id] });
+  }
+  const groups = [...by.values()].slice(-shown);
+  return { groups, hidden: list.length - groups.reduce((n, g) => n + g.ids.length, 0) };
+}

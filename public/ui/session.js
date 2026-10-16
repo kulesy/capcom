@@ -22,6 +22,9 @@ const thought = (shown, d) => (d.done
   ? (shown?.id === d.id ? { ...shown, done: true } : shown)
   : { id: d.id, done: false, text: (shown?.id === d.id ? shown.text : '') + d.text });
 
+// The CLI holds at most 100 messages at once, so keeping that many counts a burst that ended together in full.
+const ENDED_KEPT = 100;
+
 export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
@@ -103,7 +106,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('hold', h => store.set(s => ({ status: { ...s.status, holds: [...(s.status?.holds || []).filter(x => x.id !== h.id), h] } })));
     on('hold-ended', d => store.set(s => ({
       status: { ...s.status, holds: (s.status?.holds || []).filter(x => x.id !== d.id) },
-      ...(d.state === 'dropped' && { holdsEnded: [...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-3) }),
+      ...(d.state === 'dropped' && { holdsEnded: [...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-ENDED_KEPT) }),
     })));
     on('mode', d => patchStatus({ mode: d.mode }));
     on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
@@ -193,7 +196,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
-  const dismissHold = id => store.set(s => ({ holdsEnded: s.holdsEnded.filter(d => d.id !== id) }));
+  const dismissHold = ids => store.set(s => ({ holdsEnded: s.holdsEnded.filter(d => !ids.includes(d.id)) }));
 
   // A 409 means the chip was settled somewhere else, and the error carries its current state for the card to show.
   async function chip(action, tool, folder) {
