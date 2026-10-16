@@ -36,8 +36,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   text into another field. An image pasted alone into a field, such as a question's answer box, attaches to
   the prompt box, because the field would drop it. A message sent while Claude works can carry images too,
   and the CLI holds it until the running tool finishes, as it does a text
-  message. Every message in a transcript that carries images shows them as thumbnails that open full size on
-  click, including messages sent from Desktop or a terminal.
+  message. Every message in a transcript that carries images shows them as thumbnails that open in the viewer
+  on click, including messages sent from Desktop or a terminal.
+- **The image viewer** opens when you click or tap a thumbnail in a transcript, one still being sent included,
+  and shows the picture scaled to fit the screen. Esc, the cross at the top right or a click outside the picture
+  closes it. The left and right arrow keys, the arrows under the picture or a swipe step through the other
+  pictures in that chat in the order the thread shows them, with a count such as "2 of 5" between the arrows.
+  Actual size shows the picture at its own pixel size and scrolls to the rest of it, where a swipe pans instead
+  of stepping, and Fit to screen goes back. The link at the top opens the picture on its own in a new tab.
+  While the viewer is open, Tab stays among its controls, the page behind does not scroll or take keys, and
+  Esc closes the viewer without stopping a running chat. Closing it puts focus back on the thumbnail of the
+  picture you last saw. Only pictures the page has loaded count, so earlier ones join once you press Load earlier.
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
@@ -91,7 +100,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
   running somewhere else, in Desktop or a terminal, update as their file grows. The images in a message are
   not part of what the page loads. Each message names them, and the page fetches each one from
-  `api/sessions/<id>/images/<ref>` when it draws the thumbnail.
+  `api/sessions/<id>/images/<ref>` when it draws the thumbnail. The viewer uses the same address, so the
+  browser reuses what the thumbnail loaded, and the viewer loads the pictures either side of the one on screen ahead of time.
 
 ## Tools
 
