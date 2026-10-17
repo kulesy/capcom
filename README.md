@@ -125,13 +125,16 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Held messages.** The CLI holds a message instead of delivering it when the two kinds of permission
   mode differ, when the sender does not say which kind it is in and this chat bypasses permission prompts,
   and for a few other reasons, such as the `crossSessionInbound` setting being `hold`. A held message
-  shows above the reply box as a card with an amber lamp. The card names the sender, gives the reason and
-  says Claude has seen none of it. Several messages from one sender for the same reason share one card
-  and a count, and a card that takes another message moves to the bottom, where the newest sits. When the
-  CLI gives up on a message, a grey card says why, and it stays until you press Dismiss. Cards are live
-  only. The CLI saves nothing about a held message, so a page opened later shows the messages still held
-  and none that ended. The amber cards go when the chat's process ends, and when a new process starts
-  after you stopped the chat.
+  shows above the reply box as a card with an amber lamp. The card names the sender and gives the reason,
+  and one line under the amber cards says Claude has seen none of it. Several messages from one sender
+  for the same reason share one card and a count, and a card that takes another message moves to the
+  bottom, where the newest sits. The box scrolls to its foot when the cards change, so the newest card is
+  in view on a phone. When the CLI gives up on a message, a grey card says why. It stays until you press
+  Dismiss or reload the page, and it is still there when you come back to the chat from another one.
+  Capcom remembers up to 100 undelivered messages for each chat, and the oldest go first. Cards are live
+  only. The CLI saves nothing about a held message, so Capcom learns that a hold ended only while the chat
+  is open, and a page opened later shows the messages still held and none that ended. The amber cards go
+  when the chat's process ends, and when a new process starts after you stopped the chat.
 - **Approving a held message** cannot be done from Capcom. A terminal session shows its owner an approval
   dialog, which the CLI's code calls `peer_inbound_approval`. A chat run as Capcom runs it was not sent
   that dialog when checked on CLI 2.1.302, even after it declared it could show one. It gets only a note

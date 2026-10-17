@@ -25,6 +25,9 @@ const thought = (shown, d) => (d.done
 // The CLI holds at most 100 messages at once, so keeping that many counts a burst that ended together in full.
 const ENDED_KEPT = 100;
 
+// A chat's pane is built again each time the owner opens another chat, so the holds that ended undelivered wait here by chat id.
+const endedByChat = new Map();
+
 export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
@@ -33,7 +36,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
-    live: '', think: null, work: null, turnStart: 0, holdsEnded: [],
+    live: '', think: null, work: null, turnStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
@@ -46,6 +49,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // Once a turn ends the streamed text stays up until the transcript has the real message, so it never blinks out.
   let ended = false;
 
+  const keepEnded = holdsEnded => { endedByChat.set(id, holdsEnded); return { holdsEnded }; };
   const notice = text => store.set({ notice: text || '' });
   const patchStatus = patch => store.set(s => ({ status: { ...s.status, ...patch } }));
   const onVisible = () => { if (!document.hidden) fetchNew(); };
@@ -106,7 +110,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('hold', h => store.set(s => ({ status: { ...s.status, holds: [...(s.status?.holds || []).filter(x => x.id !== h.id), h] } })));
     on('hold-ended', d => store.set(s => ({
       status: { ...s.status, holds: (s.status?.holds || []).filter(x => x.id !== d.id) },
-      ...(d.state === 'dropped' && { holdsEnded: [...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-ENDED_KEPT) }),
+      ...(d.state === 'dropped' && keepEnded([...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-ENDED_KEPT))),
     })));
     on('mode', d => patchStatus({ mode: d.mode }));
     on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
@@ -196,7 +200,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
-  const dismissHold = ids => store.set(s => ({ holdsEnded: s.holdsEnded.filter(d => !ids.includes(d.id)) }));
+  const dismissHold = ids => store.set(s => keepEnded(s.holdsEnded.filter(d => !ids.includes(d.id))));
 
   // A 409 means the chip was settled somewhere else, and the error carries its current state for the card to show.
   async function chip(action, tool, folder) {
