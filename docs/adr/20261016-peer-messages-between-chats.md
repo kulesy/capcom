@@ -1,6 +1,6 @@
 # Show messages between chats by sender, and show a held message with no way to approve it
 
-- Status: Proposed
+- Status: Accepted
 - Deciders: Eli
 - Date: 2026-10-16
 - Tags: peer-messages, cross-session, notices, approvals, stream-json
