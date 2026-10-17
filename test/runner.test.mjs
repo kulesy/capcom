@@ -148,3 +148,31 @@ test('a hold that is dropped says how it ended, one the page never saw still end
   await until(() => !chat.status().running);
   assert.deepEqual(chat.status().holds, [], 'a hold does not outlive the process that was holding it');
 });
+
+test('a hold frame with no message_uuid is ignored, since its own uuid differs from the one that ends it and the hold would never clear', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const chat = await startChat({ cwd: dir, mode: 'acceptEdits', text: 'start sess-hold-3', images: [], claude: holdingCli(dir), chrome: false, chips: null });
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+
+  chat.send('held x {"message_uuid":null,"uuid":"frame-1"}', []);
+  chat.send('released x {"message_uuid":null,"uuid":"frame-2"}', []);
+  chat.send('held m4', []);
+  await until(() => chat.status().holds.some(h => h.id === 'm4'));
+  assert.deepEqual(chat.status().holds.map(h => h.id), ['m4']);
+  assert.deepEqual(heard.filter(e => e.type.startsWith('hold')).map(e => [e.type, e.data.id]), [['hold', 'm4']]);
+  chat.stop();
+});
+
+test('a hold of a process that was told to stop is gone once a message starts a new one', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const chat = await startChat({ cwd: dir, mode: 'acceptEdits', text: 'start sess-hold-4', images: [], claude: holdingCli(dir), chrome: false, chips: null });
+
+  chat.send('held m5', []);
+  await until(() => chat.status().holds.length === 1);
+  chat.stop();
+  chat.send('held m6', []);
+  await until(() => chat.status().holds.some(h => h.id === 'm6'));
+  assert.deepEqual(chat.status().holds.map(h => h.id), ['m6'], 'the old process\'s hold was not carried over');
+  chat.stop();
+});
