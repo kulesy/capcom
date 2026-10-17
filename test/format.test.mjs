@@ -37,6 +37,13 @@ test('a reason or outcome from a newer CLI, or one a sender made up, falls back 
   assert.equal(holdEnd(''), 'The CLI ended the hold without delivering.');
 });
 
+test('a name that every object inherits is no reason or outcome, and falls back to the general sentence', () => {
+  for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    assert.equal(holdCause(name), 'The CLI gave a reason Capcom does not know.');
+    assert.equal(holdEnd(name), 'The CLI ended the hold without delivering.');
+  }
+});
+
 test('messages held for the same reason from the same sender make one group, and only the newest groups show', () => {
   const list = [
     { id: 'a', from: 'Worker', cause: 'mode-mismatch' },
@@ -47,8 +54,8 @@ test('messages held for the same reason from the same sender make one group, and
   ];
   const all = groupHolds(list, h => h.cause, 10);
   assert.deepEqual(all.groups.map(g => [g.from, g.why, g.ids]), [
-    ['Worker', 'mode-mismatch', ['a', 'c']],
     ['Docs', 'mode-mismatch', ['b']],
+    ['Worker', 'mode-mismatch', ['a', 'c']],
     ['Worker', 'bypass-default', ['d']],
     ['Tests', 'mode-mismatch', ['e']],
   ]);
@@ -57,4 +64,11 @@ test('messages held for the same reason from the same sender make one group, and
   assert.deepEqual(newest.groups.map(g => g.ids), [['d'], ['e']]);
   assert.equal(newest.hidden, 3, 'a, b and c are in the groups left out');
   assert.deepEqual(groupHolds([], h => h.cause, 3), { groups: [], hidden: 0 });
+});
+
+test('a group that has just taken another message is the newest, so it is the last to be left out', () => {
+  const list = ['A', 'B', 'C', 'D', 'A'].map((from, i) => ({ id: `m${i}`, from, cause: 'mode-mismatch' }));
+  const { groups, hidden } = groupHolds(list, h => h.cause, 3);
+  assert.deepEqual(groups.map(g => [g.from, g.ids]), [['C', ['m2']], ['D', ['m3']], ['A', ['m0', 'm4']]]);
+  assert.equal(hidden, 1, 'only B is left out');
 });

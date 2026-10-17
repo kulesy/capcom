@@ -84,15 +84,17 @@ const HOLD_ENDS = {
 };
 
 // Why the CLI holds a message from another session, and how a hold ends without the message arriving.
-export const holdCause = cause => HOLD_CAUSES[cause] || 'The CLI gave a reason Capcom does not know.';
-export const holdEnd = outcome => HOLD_ENDS[outcome] || 'The CLI ended the hold without delivering.';
+export const holdCause = cause => (Object.hasOwn(HOLD_CAUSES, cause) ? HOLD_CAUSES[cause] : 'The CLI gave a reason Capcom does not know.');
+export const holdEnd = outcome => (Object.hasOwn(HOLD_ENDS, outcome) ? HOLD_ENDS[outcome] : 'The CLI ended the hold without delivering.');
 
-// One group per sender and reason; the newest `shown` are returned, and `hidden` counts the messages in the rest.
+// One group per sender and reason, placed by its newest message; the newest `shown` are returned, and `hidden` counts the messages in the rest.
 export function groupHolds(list, whyOf, shown) {
   const by = new Map();
   for (const h of list) {
     const key = `${h.from}\n${whyOf(h)}`;
-    by.set(key, { key, from: h.from, why: whyOf(h), ids: [...(by.get(key)?.ids || []), h.id] });
+    const ids = [...(by.get(key)?.ids || []), h.id];
+    by.delete(key);
+    by.set(key, { key, from: h.from, why: whyOf(h), ids });
   }
   const groups = [...by.values()].slice(-shown);
   return { groups, hidden: list.length - groups.reduce((n, g) => n + g.ids.length, 0) };

@@ -127,10 +127,11 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and for a few other reasons, such as the `crossSessionInbound` setting being `hold`. A held message
   shows above the reply box as a card with an amber lamp. The card names the sender, gives the reason and
   says Claude has seen none of it. Several messages from one sender for the same reason share one card
-  and a count. When the CLI gives up on a message, a grey card says why, and it stays until you press
-  Dismiss. Cards are live only. The CLI saves nothing about a held message, so a page opened later shows
-  the messages still held and none that ended. The amber cards go when the chat's process ends, and when a
-  new process starts after you stopped the chat.
+  and a count, and a card that takes another message moves to the bottom, where the newest sits. When the
+  CLI gives up on a message, a grey card says why, and it stays until you press Dismiss. Cards are live
+  only. The CLI saves nothing about a held message, so a page opened later shows the messages still held
+  and none that ended. The amber cards go when the chat's process ends, and when a new process starts
+  after you stopped the chat.
 - **Approving a held message** cannot be done from Capcom. A terminal session shows its owner an approval
   dialog, which the CLI's code calls `peer_inbound_approval`. A chat run as Capcom runs it was not sent
   that dialog when checked on CLI 2.1.302, even after it declared it could show one. It gets only a note
