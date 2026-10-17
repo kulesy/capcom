@@ -330,7 +330,10 @@ function events(req, res, id) {
 }
 
 async function editLayout(req, res, change) {
-  const body = JSON.parse(await readBody(req) || '{}') || {};
+  const body = await readJson(req);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
+  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   const { id } = body;
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
   if (!findRow(id)) return send(res, 404, { error: 'No session with that id on this Mac.' });
@@ -355,6 +358,8 @@ const STRUCTURE = new Map([
 async function editStructure(req, res, change) {
   const body = await readJson(req, 10_000);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  // A new password can land while the body is still arriving, so the session is checked again before the layout is written.
+  if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   try {
     return send(res, 200, change(body));
   } catch (e) {

@@ -2,6 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
+import { writePassword } from '../lib/auth.mjs';
 import { as, request, signIn, start } from './harness.mjs';
 
 const GROUPS = [{ id: 'cg-a', name: 'Reviewing' }, { id: 'cg-b', name: 'Backlog' }, { id: 'cg-c', name: 'Notes' }];
@@ -21,6 +23,27 @@ const onDisk = s => JSON.parse(fs.readFileSync(s.layout, 'utf8'));
 async function ready(mac) {
   const s = await start({ sessions: SESSIONS, groups: GROUPS, ...mac });
   return { s, ...(await signIn(s)) };
+}
+
+// The harness sends a body in one piece, so a POST that is still arriving is written by hand.
+async function postInParts(s, token, url, json, between) {
+  const text = JSON.stringify(json);
+  const half = Math.floor(text.length / 2);
+  const held = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: `/api/layout/${url}`, headers: { host: `localhost:${s.port}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(text), ...as(token) } });
+  const reply = new Promise((resolve, reject) => {
+    held.on('response', res => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: () => JSON.parse(body) }));
+    });
+    held.on('error', reject);
+  });
+  held.write(text.slice(0, half));
+  await new Promise(resolve => setTimeout(resolve, 200));
+  between();
+  held.end(text.slice(half));
+  return reply;
 }
 
 test('the list carries the projects in order, and says which project each group is in, with a gone project meaning the top level', async () => {
@@ -165,4 +188,26 @@ test('only a signed-in POST from this site changes anything, and a GET to these 
   }
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
   assert.equal((await post(s, token, 'project/add', { name: 'Fine' }, { origin: s.origin })).status, 200, 'the same origin is let through');
+});
+
+test('an edit still arriving when the password is changed is refused rather than written afterwards', async () => {
+  for (const [url, edit] of [['project/add', { name: 'Held' }], ['move', { id: 's1', group: 'cg-b' }]]) {
+    const { s, token } = await ready();
+    const before = fs.readFileSync(s.layout, 'utf8');
+    const reply = await postInParts(s, token, url, edit, () => writePassword(s.state, 'the password after the reset'));
+    assert.equal(reply.status, 401, url);
+    assert.deepEqual(reply.body(), { error: 'Signed out.' }, url);
+    assert.equal(fs.readFileSync(s.layout, 'utf8'), before, url);
+  }
+});
+
+test('move and pin refuse a body that is not JSON with a 400, as the project routes do, and write nothing', async () => {
+  const { s, token } = await ready();
+  const before = fs.readFileSync(s.layout, 'utf8');
+  for (const url of ['move', 'pin']) {
+    const res = await request(s, 'POST', `/api/layout/${url}`, { headers: as(token), form: { id: 's1', group: 'cg-b', pinned: 'true' } });
+    assert.equal(res.status, 400, url);
+    assert.match(res.body().error, /JSON/, url);
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
 });
