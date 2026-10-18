@@ -230,19 +230,22 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     return problem ? null : made;
   }
 
-  // Archives a session and says so with a way to undo it, or says why it could not. The row is gone at once, so the focus moves on.
+  // Archives a session and says so with a way to undo it, or says why it could not. The row is gone at once, so the focus moves on,
+  // and back to the row if it returns.
   async function archiveRow(id, title) {
     const ids = [...box.current.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id);
     const done = archive(id, true);
     setAfter(neighbour(ids, id));
     const { problem, stopped } = await done;
+    if (problem) setAfter(id);
     setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title } });
   }
 
-  // Takes an archive back. The row returns when the server's list arrives.
+  // Takes an archive back, and puts the focus on the row that returns. If the server refuses, the note keeps its Undo button to try again.
   async function undo({ id, title }) {
     const { problem } = await archive(id, false);
-    setNote(problem ? problemNote(problem) : { text: `Unarchived ${title}.` });
+    if (!problem) setAfter(id);
+    setNote(problem ? { ...problemNote(problem), undo: { id, title } } : { text: `Unarchived ${title}.` });
   }
 
   // The menu of a row, opened by a right click, the menu key or a long press. A chat Capcom is running is stopped as it is archived.
