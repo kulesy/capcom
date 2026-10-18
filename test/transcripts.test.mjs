@@ -554,17 +554,48 @@ test('split the file at any line and the pictures listed before it, then those t
   }
 });
 
-test('the same holds at every stage of loading earlier, the way the page loads a chat a chunk at a time, while each tool id is used once', () => {
-  const t = file('stages', CHAT);
-  const whole = asRead(t);
-  for (const chunk of [150, 400, 900]) {
-    let read = readBefore(t, t.size, chunk, '', 8000);
-    let thread = absorb(emptyThread(), read.items);
-    for (let stage = 0; ; stage++) {
-      assert.deepEqual([...drawn(listImages(t, read.start)), ...drawn(thread.items)], whole, `chunk ${chunk}, stage ${stage}, start ${read.start}`);
-      if (!read.start) break;
-      read = readBefore(t, read.start, chunk, '', 8000);
-      thread = prepend(thread, read.items);
+// A block copied whole, so toolu_x, its answer and a reply written on two lines each appear twice.
+const COPIED = [
+  use('toolu_x', 'Read'),
+  line('u1', [toolResult('toolu_x', [picture('copied')])]),
+  assistant('m_x', [{ type: 'text', text: 'It is the same file.' }]),
+  assistant('m_x', [{ type: 'text', text: 'Nothing changed.' }]),
+  line('u2', 'between the copies'),
+  use('toolu_x', 'Read'),
+  line('u1', [toolResult('toolu_x', [picture('copied')])]),
+  assistant('m_x', [{ type: 'text', text: 'It is the same file.' }]),
+  assistant('m_x', [{ type: 'text', text: 'Nothing changed.' }]),
+  line('u3', 'after the copy'),
+];
+// toolu_x answers twice with a picture each time, and toolu_y answers a second time without one.
+const TWICE = [
+  use('toolu_x', 'Read'),
+  line('u1', [toolResult('toolu_x', [picture('first answer')])]),
+  line('u2', [toolResult('toolu_x', [picture('second answer')])]),
+  use('toolu_y', 'Read'),
+  line('u3', [toolResult('toolu_y', [picture('only answer')])]),
+  line('u4', [toolResult('toolu_y', [{ type: 'text', text: 'and no picture' }])]),
+];
+const unkeyed = items => items.map(({ key, ...rest }) => rest);
+
+// The page's first chunk starts at a line, here each line in turn, and each Load earlier reads `chunk` bytes before it.
+test('the same holds at every stage of loading earlier, the way the page loads a chat a chunk at a time, and back at the start the thread is the one the whole file reads', () => {
+  for (const [name, entries] of [['stages', CHAT], ['stages-copied', COPIED], ['stages-twice', TWICE]]) {
+    const t = file(name, entries);
+    const whole = absorb(emptyThread(), readAfter(t, 0, '', 8000).items).items;
+    for (const open of lineStarts(t)) {
+      for (const chunk of [150, 400, 900]) {
+        let start = open;
+        let thread = absorb(emptyThread(), readAfter(t, open, '', 8000).items);
+        for (;;) {
+          assert.deepEqual([...drawn(listImages(t, start)), ...drawn(thread.items)], drawn(whole), `${name} opened at ${open}, chunk ${chunk}, start ${start}`);
+          if (!start) break;
+          const read = readBefore(t, start, chunk, '', 8000);
+          start = read.start;
+          thread = prepend(thread, read.items);
+        }
+        assert.deepEqual(unkeyed(thread.items), unkeyed(whole), `${name} opened at ${open}, chunk ${chunk}`);
+      }
     }
   }
 });
@@ -580,14 +611,7 @@ test('a call before the split whose result comes after it counts as before, and 
 });
 
 test('a second result for a call replaces the first one\'s pictures, and a result without pictures leaves them, as on a page that read the whole file', () => {
-  const t = file('twice', [
-    use('toolu_x', 'Read'),
-    line('u1', [toolResult('toolu_x', [picture('first answer')])]),
-    line('u2', [toolResult('toolu_x', [picture('second answer')])]),
-    use('toolu_y', 'Read'),
-    line('u3', [toolResult('toolu_y', [picture('only answer')])]),
-    line('u4', [toolResult('toolu_y', [{ type: 'text', text: 'and no picture' }])]),
-  ]);
+  const t = file('twice', TWICE);
   const at = lineStarts(t);
   assert.deepEqual(drawn(listImages(t)), [`${at[2]}.r0.u2`, `${at[4]}.r0.u3`]);
   assert.deepEqual(drawn(listImages(t)), asRead(t));

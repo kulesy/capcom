@@ -28,8 +28,9 @@ export function absorb({ items, orphans }, incoming) {
     if (item.kind === 'result') {
       toolAt ||= indexTools(list);
       const at = toolAt.get(item.toolId);
-      if (at === undefined) waiting.set(item.toolId, item);
-      else list[at] = settle(list[at], item);
+      if (at !== undefined) list[at] = settle(list[at], item);
+      // The results waiting on one id all go to one call, the last with that id before the loaded part, so they combine in order.
+      else waiting.set(item.toolId, waiting.has(item.toolId) ? settle(waiting.get(item.toolId), item) : item);
       continue;
     }
     const last = list[list.length - 1];
@@ -43,18 +44,10 @@ export function absorb({ items, orphans }, incoming) {
   return { items: list, orphans: waiting };
 }
 
-// Older items go in front. A tool whose result was waiting for them is settled, and a message cut in two by the chunk
-// boundary is joined again.
+// Older items go in front. The results still waiting come after them in the file, so they are absorbed after them and settle
+// the last call with their id, as a read of the whole file does. A message cut in two by the chunk boundary is joined again.
 export function prepend({ items, orphans }, incoming) {
-  const older = absorb({ items: [], orphans: new Map() }, incoming);
-  const waiting = new Map(orphans);
-  const list = older.items.map(item => {
-    const result = item.kind === 'tool' && waiting.get(item.id);
-    if (!result) return item;
-    waiting.delete(item.id);
-    return settle(item, result);
-  });
-  for (const [id, result] of older.orphans) waiting.set(id, result);
+  const { items: list, orphans: waiting } = absorb(absorb({ items: [], orphans: new Map() }, incoming), orphans.values());
   const seam = list[list.length - 1];
   if (seam?.kind === 'assistant' && items[0]?.kind === 'assistant' && items[0].msgId === seam.msgId) {
     list[list.length - 1] = { ...seam, text: `${seam.text}\n\n${items[0].text}` };

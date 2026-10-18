@@ -108,3 +108,30 @@ test('a chunk that holds both a tool and its result brings the pictures too, and
   assert.equal('images' in joined.items[1], false);
   assert.equal(joined.items.length, 3);
 });
+
+// toolu_1 is called twice, as when a block is copied, and toolu_2 answers twice, the second time with no picture.
+const REPEATS = [
+  call('toolu_1'), answer('toolu_1', { images: [shot('1.r0.u')] }),
+  call('toolu_1'), answer('toolu_1', { images: [shot('3.r0.u')] }),
+  call('toolu_2'), answer('toolu_2', { images: [shot('5.r0.u')] }), answer('toolu_2', { status: 'failed', output: 'no picture' }),
+];
+const unkeyed = items => items.map(({ key, ...rest }) => rest);
+
+test('where tool ids repeat, a thread opened at any point and loaded earlier, or grown by appends first, comes out as it does read whole', () => {
+  const whole = absorb(fresh(), REPEATS);
+  assert.deepEqual(whole.items.map(i => [i.id, i.status, i.output, i.images]), [
+    ['toolu_1', 'ok', 'done', [shot('1.r0.u')]],
+    ['toolu_1', 'ok', 'done', [shot('3.r0.u')]],
+    ['toolu_2', 'failed', 'no picture', [shot('5.r0.u')]],
+  ], 'a result settles the last call with its id before it, and one with no picture keeps the pictures the call has');
+  for (let a = 0; a <= REPEATS.length; a++) {
+    for (let b = a; b <= REPEATS.length; b++) {
+      const [first, middle, last] = [REPEATS.slice(0, a), REPEATS.slice(a, b), REPEATS.slice(b)];
+      const opened = absorb(fresh(), last);
+      const kept = structuredClone(opened);
+      assert.deepEqual(unkeyed(prepend(prepend(opened, middle), first).items), unkeyed(whole.items), `opened at ${b}, then loaded from ${a} and from 0`);
+      assert.deepEqual(opened, kept, `opened at ${b}, the thread Load earlier started from is not changed in place`);
+      assert.deepEqual(unkeyed(prepend(absorb(absorb(fresh(), middle), last), first).items), unkeyed(whole.items), `opened at ${a} up to ${b}, then appended to and loaded from 0`);
+    }
+  }
+});
