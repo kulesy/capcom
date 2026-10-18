@@ -40,7 +40,8 @@ async function postInParts(s, token, url, json, between) {
     held.on('error', reject);
   });
   held.write(text.slice(0, half));
-  await new Promise(resolve => setTimeout(resolve, 200));
+  // Once the server has answered a request sent after these headers, it has read them and passed the first sign-in check.
+  await index(s, token);
   between();
   held.end(text.slice(half));
   return reply;
