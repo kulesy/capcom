@@ -1,6 +1,6 @@
 // The transcript as a list of display items. These are plain functions on plain data: items are never changed in
 // place, so a row can tell by identity whether it needs to draw again.
-import { plural, toolLabel } from './format.js';
+import { fullToolLabel, plural } from './format.js';
 
 export const CHROME = 'mcp__claude-in-chrome__';
 
@@ -86,11 +86,11 @@ const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || ((nam
 // What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.
 export function activity(work) {
   const tools = work?.tools || [];
-  if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => toolLabel(t.name)))].join(', ') };
+  if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => fullToolLabel(t.name)))].join(', ') };
   if (tools.length) {
     const [t] = tools;
     const kind = toolKind(t.name);
-    return { doing: DOING[kind], detail: kind === 'other' ? [toolLabel(t.name), t.summary].filter(Boolean).join(': ') : t.summary };
+    return { doing: DOING[kind], detail: kind === 'other' ? [fullToolLabel(t.name), t.summary].filter(Boolean).join(': ') : t.summary };
   }
   return { doing: work?.thinking ? 'Thinking' : work?.writing ? 'Writing' : 'Working', detail: '' };
 }

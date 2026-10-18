@@ -39,7 +39,28 @@ export function modelLabel(m = '') {
 
 export const settingsLine = s => [modelLabel(s?.shownModel || s?.model || ''), s?.effort && `${s.effort} effort`].filter(Boolean).join(', ');
 
-export const toolLabel = name => name.replace(/^mcp__.+?__/, '').replace(/_/g, ' ');
+export const toolLabel = name => name.replace(/^mcp__.+__/, '').replace(/_/g, ' ');
+
+const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const CONNECTOR = 'connector';
+// Split at the last __, because a server's name can hold one, as in mcp__PowerPoint__By_Anthropic___add_slide.
+const serverId = name => /^mcp__(.+)__/.exec(name)?.[1] ?? '';
+
+// The MCP server a tool comes from as the page names it, or '' for a built-in tool or Capcom's own. Desktop names a claude.ai
+// connector by a UUID, the CLI starts its name with claude_ai_, and Desktop's app servers start with ccd_.
+export function serverLabel(name) {
+  const id = serverId(name);
+  if (/^claude[-_]in[-_]chrome$/i.test(id)) return 'Chrome';
+  if (/^ccd_/.test(id)) return 'Desktop';
+  if (id === 'capcom') return '';
+  if (UUID.test(id)) return CONNECTOR;
+  return id.replace(/^claude_ai_/, '').replace(/[_-]+/g, ' ').trim();
+}
+
+// Where a tool's output came from, worded for a sentence: its server, else the built-in tool itself.
+export const toolSource = name => (UUID.test(serverId(name)) ? `a ${CONNECTOR}` : serverLabel(name) || toolLabel(name));
+
+export const fullToolLabel = name => [serverLabel(name), toolLabel(name)].filter(Boolean).join(' ');
 
 // Text is shown as an HTML parser would show it: CR and CRLF become LF, and one LF right after <pre> is dropped.
 export const lf = text => String(text ?? '').replace(/\r\n?/g, '\n');

@@ -680,6 +680,8 @@ button.thumb:hover { border-color: var(--rule-strong); }
 
 .tool-name, .think-name { font-weight: 600; }
 
+.tool-server { font-weight: 400; color: var(--ink-quiet); }
+
 .tool-sum {
   font-family: var(--mono);
   color: var(--ink-quiet);

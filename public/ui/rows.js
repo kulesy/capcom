@@ -1,7 +1,7 @@
 // The rows of the transcript. Each is memoised, so a row draws again only when its own item changes.
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
-import { clip, lf, modelLabel, pre, preview, tilde, toolLabel } from './format.js';
+import { clip, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
 import { Fragment, html, memo, useState } from './html.js';
 import { summarize } from './thread.js';
@@ -14,18 +14,19 @@ const STATUS_LABEL = { pending: 'running', ok: 'ok', failed: 'failed', denied: '
 function ToolPictures({ shots, url, onOpen }) {
   if (!shots.length) return null;
   const more = overflow(shots.length);
-  return html`<div class="shots">${shots.slice(0, TILES).map(({ img, tool }, n) => {
+  return html`<div class="shots">${shots.slice(0, TILES).map(({ img, source }, n) => {
     const key = imageKey(img);
     const last = more > 0 && n === TILES - 1;
     // NOTE: [17 Oct 2026] EK - Keep loading before src. Preact sets props in template order and WebKit fetches the moment src is set.
-    return html`<button class=${last ? 'thumb more' : 'thumb'} type="button" key=${key} data-image=${key} aria-haspopup="dialog" aria-label=${tileLabel(n, shots.length, tool)} onClick=${e => onOpen(key, e.currentTarget)}>
-      <img loading="lazy" src=${url(img.ref)} alt=${fromTool(tool)} />${last ? html`<span class="more-count" aria-hidden="true">+${more}</span>` : null}</button>`;
+    return html`<button class=${last ? 'thumb more' : 'thumb'} type="button" key=${key} data-image=${key} aria-haspopup="dialog" aria-label=${tileLabel(n, shots.length, source)} onClick=${e => onOpen(key, e.currentTarget)}>
+      <img loading="lazy" src=${url(img.ref)} alt=${fromTool(source)} />${last ? html`<span class="more-count" aria-hidden="true">+${more}</span>` : null}</button>`;
   })}</div>`;
 }
 
 const ToolRow = memo(function ToolRow({ t, imageUrl, onImage }) {
   const input = pre(t.name === 'Bash' ? t.input?.command || '' : JSON.stringify(t.input ?? {}, null, 2));
-  return html`<li class="tool" data-status=${t.status}><details data-k=${t.id}><summary><span class="tool-name">${toolLabel(t.name)}</span><span class="tool-sum">${t.summary || ''}</span><span class="tool-status">${STATUS_LABEL[t.status] || t.status}</span></summary>
+  const server = serverLabel(t.name);
+  return html`<li class="tool" data-status=${t.status}><details data-k=${t.id}><summary><span class="tool-name">${server ? html`<span class="tool-server">${server}</span> ` : null}${toolLabel(t.name)}</span><span class="tool-sum">${t.summary || ''}</span><span class="tool-status">${STATUS_LABEL[t.status] || t.status}</span></summary>
     <pre class="tool-io">${input}</pre>${t.output ? html`<pre class="tool-io">${pre(t.output)}</pre>` : null}</details>
     <${ToolPictures} shots=${toolShots([t])} url=${imageUrl} onOpen=${onImage} /></li>`;
 });

@@ -1,5 +1,5 @@
 // The cards above the prompt box: what Claude is about to do, and its multiple-choice questions.
-import { clip, pre, toolLabel } from './format.js';
+import { clip, pre, toolLabel, toolSource } from './format.js';
 import { useStore } from './hooks.js';
 import { html, useState } from './html.js';
 import { CHROME } from './thread.js';
@@ -19,6 +19,8 @@ function chromeCard(tool, i) {
   return { title: `Chrome wants to use ${toolLabel(tool)}`, fields: Object.entries(i).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]) };
 }
 
+const capitalised = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+
 // Says exactly what is about to happen, so the answer is an informed one.
 function cardParts(p) {
   const i = p.input || {};
@@ -34,7 +36,7 @@ function cardParts(p) {
   if (p.tool?.startsWith(CHROME)) return chromeCard(p.tool.slice(CHROME.length), i);
   const mcp = p.tool?.match(/^mcp__(.+?)__(.+)$/);
   const fields = Object.entries(i).filter(([, v]) => v !== '' && v != null).slice(0, 8).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v, null, 2)]);
-  return { title: mcp ? `${mcp[1]} wants to use ${toolLabel(mcp[2])}` : `${p.label} wants to run`, fields };
+  return { title: mcp ? `${capitalised(toolSource(p.tool))} wants to use ${toolLabel(p.tool)}` : `${p.label} wants to run`, fields };
 }
 
 function Diff({ before, after }) {

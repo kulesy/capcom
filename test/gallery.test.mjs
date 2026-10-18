@@ -40,7 +40,7 @@ test('the pictures tools returned are listed in thread order among the messages 
   const sending = [{ text: 'sent', images: [{ id: 2, name: 'e.png', src: 'data:image/png;base64,AA==' }] }];
   assert.deepEqual(threadImages(items, sending, url).map(i => [i.key, i.alt]), [
     ['1.0.a', 'Attached image'],
-    ['5.r0.b', 'Image from computer'],
+    ['5.r0.b', 'Image from Chrome'],
     ['9.r0.c', 'Image from Read'],
     ['9.r1.c', 'Image from Read'],
     ['12.0.d', 'Attached image'],
@@ -48,6 +48,22 @@ test('the pictures tools returned are listed in thread order among the messages 
   ]);
   assert.equal(threadImages(items, [], url)[1].src, 'api/sessions/s1/images/5.r0.b');
   assert.equal(fromTool('Read'), 'Image from Read');
+  assert.equal(fromTool('a connector'), 'Image from a connector');
+});
+
+test('pictures from different servers are each named for their own source, in the viewer and on the tiles, so two tools that are both called computer are told apart', () => {
+  const shot = ref => ({ ref, type: 'image/png' });
+  const items = [
+    { kind: 'tool', id: 't1', name: 'mcp__claude-in-chrome__computer', images: [shot('1.r0.a')] },
+    { kind: 'tool', id: 't2', name: 'mcp__Claude_Browser__computer', images: [shot('2.r0.a')] },
+    { kind: 'tool', id: 't3', name: 'mcp__0d2c4b1a-9e8f-4a7b-8c6d-5e4f3a2b1c0d__read', images: [shot('3.r0.a')] },
+    { kind: 'tool', id: 't4', name: 'mcp__claude_ai_Google_Drive__download_file_content', images: [shot('4.r0.a')] },
+    { kind: 'tool', id: 't5', name: 'Read', images: [shot('5.r0.a')] },
+  ];
+  assert.deepEqual(threadImages(items, [], url).map(i => i.alt), ['Image from Chrome', 'Image from Claude Browser', 'Image from a connector', 'Image from Google Drive', 'Image from Read']);
+  assert.deepEqual(toolShots(items).map(s => s.source), ['Chrome', 'Claude Browser', 'a connector', 'Google Drive', 'Read']);
+  const shots = toolShots(items);
+  assert.deepEqual(shots.slice(0, 3).map((s, n) => tileLabel(n, shots.length, s.source)), ['View image 1 of 5, from Chrome', 'View image 2 of 5, from Claude Browser', 'View image 3 of 5, from a connector']);
 });
 
 test('the pictures being composed are listed by their data URLs and named by their files', () => {
@@ -59,10 +75,10 @@ test('the pictures being composed are listed by their data URLs and named by the
   assert.deepEqual(draftImages([]), []);
 });
 
-test('a strip lists the pictures of its tool calls in order, naming the tool for each and skipping thinking and calls with none', () => {
+test('a strip lists the pictures of its tool calls in order, naming where each came from and skipping thinking and calls with none', () => {
   const [a, b, c] = ['1.r0.u', '1.r1.u', '4.r0.u'].map(ref => ({ ref, type: 'image/png' }));
   const rows = [{ kind: 'thinking', text: 'hm' }, { kind: 'tool', name: 'Read', images: [a, b] }, { kind: 'tool', name: 'Bash' }, { kind: 'tool', name: 'mcp__claude-in-chrome__browser_batch', images: [c] }];
-  assert.deepEqual(toolShots(rows), [{ img: a, tool: 'Read' }, { img: b, tool: 'Read' }, { img: c, tool: 'browser batch' }]);
+  assert.deepEqual(toolShots(rows), [{ img: a, source: 'Read' }, { img: b, source: 'Read' }, { img: c, source: 'Chrome' }]);
   assert.deepEqual(toolShots([{ kind: 'tool', name: 'Bash' }]), []);
 });
 
@@ -70,10 +86,17 @@ test('up to four pictures get a tile each, and past four the last tile stands fo
   assert.deepEqual([0, 1, 3, 4, 5, 6, 10].map(overflow), [0, 0, 0, 0, 2, 3, 7]);
   const labels = total => Array.from({ length: Math.min(total, 4) }, (_, n) => tileLabel(n, total, 'Read'));
   assert.deepEqual(labels(1), ['View image from Read']);
-  assert.deepEqual(labels(2), ['View image 1 of 2 from Read', 'View image 2 of 2 from Read']);
-  assert.deepEqual(labels(4), ['View image 1 of 4 from Read', 'View image 2 of 4 from Read', 'View image 3 of 4 from Read', 'View image 4 of 4 from Read']);
-  assert.deepEqual(labels(10), ['View image 1 of 10 from Read', 'View image 2 of 10 from Read', 'View image 3 of 10 from Read', 'View 7 more images']);
+  assert.deepEqual(labels(2), ['View image 1 of 2, from Read', 'View image 2 of 2, from Read']);
+  assert.deepEqual(labels(4), ['View image 1 of 4, from Read', 'View image 2 of 4, from Read', 'View image 3 of 4, from Read', 'View image 4 of 4, from Read']);
+  assert.deepEqual(labels(10), ['View image 1 of 10, from Read', 'View image 2 of 10, from Read', 'View image 3 of 10, from Read', 'View 7 more images']);
   assert.equal(labels(5)[3], 'View 2 more images');
+});
+
+test('a tile names where its picture came from, and the tile that stands for the rest names no source', () => {
+  const labels = (total, source) => Array.from({ length: Math.min(total, 4) }, (_, n) => tileLabel(n, total, source));
+  assert.deepEqual(labels(1, 'Chrome'), ['View image from Chrome']);
+  assert.deepEqual(labels(2, 'a connector'), ['View image 1 of 2, from a connector', 'View image 2 of 2, from a connector']);
+  assert.deepEqual(labels(6, 'Claude Browser'), ['View image 1 of 6, from Claude Browser', 'View image 2 of 6, from Claude Browser', 'View image 3 of 6, from Claude Browser', 'View 3 more images']);
 });
 
 test('closing the viewer goes to a thumbnail for the picture opened, else the nearest picture in the thread, else nowhere', () => {

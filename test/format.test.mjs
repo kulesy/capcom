@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { duration, groupHolds, holdCause, holdEnd, preview, tokenCount } from '../public/ui/format.js';
+import { duration, fullToolLabel, groupHolds, holdCause, holdEnd, preview, serverLabel, tokenCount, toolLabel, toolSource } from '../public/ui/format.js';
 
 test('a timer reads in seconds, then minutes and seconds, then hours and minutes', () => {
   assert.deepEqual([0, 999, 1000, 59_999, 60_000, 65_000, 3_599_000, 3_600_000, 3_725_000].map(duration), ['0s', '0s', '1s', '59s', '1m 00s', '1m 05s', '59m 59s', '1h 00m', '1h 02m']);
@@ -16,6 +16,108 @@ test('a thinking preview is one plain line of the start of the text', () => {
   assert.equal(preview('**Checking the divisors**\n\nUp to `45` only.'), 'Checking the divisors Up to 45 only.');
   assert.equal(preview('## Plan\n- one'), 'Plan - one');
   assert.equal(preview('x'.repeat(300)).length, 160);
+});
+
+test('a tool label is the tool without its server, with spaces for underscores', () => {
+  const labels = {
+    'mcp__claude-in-chrome__computer': 'computer',
+    'mcp__Claude_Browser__browser_batch': 'browser batch',
+    'mcp__ccd_session__spawn_task': 'spawn task',
+    'mcp__0d2c4b1a-9e8f-4a7b-8c6d-5e4f3a2b1c0d__read': 'read',
+    'mcp__PowerPoint__By_Anthropic___add_slide': 'add slide',
+    'mcp___foo___tool': 'tool',
+    Read: 'Read',
+    Bash: 'Bash',
+  };
+  assert.deepEqual(Object.keys(labels).map(toolLabel), Object.values(labels));
+});
+
+test('a server is named as the page names it: Chrome for the extension, Desktop for its app servers, connector for a UUID, else its own name with spaces for separators', () => {
+  const servers = {
+    'mcp__claude-in-chrome__computer': 'Chrome',
+    'mcp__Claude_in_Chrome__browser_batch': 'Chrome',
+    'mcp__ccd_session__spawn_task': 'Desktop',
+    'mcp__ccd_turn__update_plan': 'Desktop',
+    'mcp__ccd_session_mgmt__list_sessions': 'Desktop',
+    'mcp__ccd_pr__get_status': 'Desktop',
+    'mcp__0d2c4b1a-9e8f-4a7b-8c6d-5e4f3a2b1c0d__read': 'connector',
+    'mcp__0D2C4B1A-9E8F-4A7B-8C6D-5E4F3A2B1C0D__read': 'connector',
+    'mcp__Claude_Browser__computer': 'Claude Browser',
+    'mcp__computer-use__screenshot': 'computer use',
+    'mcp__Claude_Code_iOS_Simulator__control': 'Claude Code iOS Simulator',
+    'mcp__claude_ai_Google_Drive__download_file_content': 'Google Drive',
+    'mcp__claude_ai_Gmail__search_threads': 'Gmail',
+    mcp__playwright__browser_take_screenshot: 'playwright',
+  };
+  assert.deepEqual(Object.keys(servers).map(serverLabel), Object.values(servers));
+});
+
+test('a built-in tool has no server', () => {
+  assert.deepEqual(['Read', 'Bash', 'WebFetch'].map(serverLabel), ['', '', '']);
+});
+
+test('a tool of Capcom itself has no server to name, so it reads like a built-in one', () => {
+  const name = 'mcp__capcom__show_widget';
+  assert.deepEqual([serverLabel(name), toolSource(name), fullToolLabel(name)], ['', 'show widget', 'show widget']);
+});
+
+test('a name is split from its tool at the last double underscore, so a server whose name holds one keeps its own words', () => {
+  const name = 'mcp__PowerPoint__By_Anthropic___add_slide';
+  assert.deepEqual([serverLabel(name), toolLabel(name), toolSource(name), fullToolLabel(name)], ['PowerPoint By Anthropic', 'add slide', 'PowerPoint By Anthropic', 'PowerPoint By Anthropic add slide']);
+});
+
+test('a server name of only separators is no server, and one with separators around it is trimmed', () => {
+  const bare = ['mcp_____tool', 'mcp__---__tool'];
+  assert.deepEqual(bare.map(serverLabel), ['', '']);
+  assert.deepEqual(bare.map(toolSource), ['tool', 'tool']);
+  assert.deepEqual(bare.map(fullToolLabel), ['tool', 'tool']);
+  assert.deepEqual(['mcp___foo___tool', 'mcp__-foo-__tool'].map(serverLabel), ['foo', 'foo']);
+});
+
+test('only the whole name claude-in-chrome is Chrome, and only a whole UUID is a connector', () => {
+  assert.deepEqual(['mcp__chrome-devtools__take_screenshot', 'mcp__claude-in-chrome-beta__computer', 'mcp__0d2c4b1a-9e8f__read'].map(serverLabel), ['chrome devtools', 'claude in chrome beta', '0d2c4b1a 9e8f']);
+});
+
+test('a server named like a property every object has keeps its own name', () => {
+  const names = ['constructor', 'toString', 'hasOwnProperty'];
+  assert.deepEqual(names.map(n => serverLabel(`mcp__${n}__x`)), names);
+  assert.deepEqual(names.map(n => toolSource(`mcp__${n}__x`)), names);
+  assert.deepEqual(names.map(n => fullToolLabel(`mcp__${n}__x`)), names.map(n => `${n} x`));
+});
+
+test('where output came from reads in a sentence: its server, a connector for a UUID, or the built-in tool itself', () => {
+  const sources = {
+    'mcp__claude-in-chrome__computer': 'Chrome',
+    'mcp__Claude_Browser__browser_batch': 'Claude Browser',
+    'mcp__computer-use__screenshot': 'computer use',
+    'mcp__0d2c4b1a-9e8f-4a7b-8c6d-5e4f3a2b1c0d__read': 'a connector',
+    'mcp__claude_ai_Google_Drive__download_file_content': 'Google Drive',
+    'mcp__ccd_turn__update_plan': 'Desktop',
+    Read: 'Read',
+    Bash: 'Bash',
+  };
+  assert.deepEqual(Object.keys(sources).map(toolSource), Object.values(sources));
+});
+
+test('a full tool label puts the server before the tool, and is the tool alone for a built-in one', () => {
+  const labels = {
+    'mcp__claude-in-chrome__computer': 'Chrome computer',
+    'mcp__Claude_Browser__computer': 'Claude Browser computer',
+    'mcp__0d2c4b1a-9e8f-4a7b-8c6d-5e4f3a2b1c0d__read': 'connector read',
+    'mcp__claude_ai_Gmail__search_threads': 'Gmail search threads',
+    'mcp__ccd_session__spawn_task': 'Desktop spawn task',
+    'mcp__ccd_turn__update_plan': 'Desktop update plan',
+    Read: 'Read',
+    Bash: 'Bash',
+  };
+  assert.deepEqual(Object.keys(labels).map(fullToolLabel), Object.values(labels));
+});
+
+test('a name that ends at its server, or has underscores around it, leaves no stray space', () => {
+  assert.equal(toolLabel('mcp__Claude_Browser__'), '');
+  assert.equal(fullToolLabel('mcp__Claude_Browser__'), 'Claude Browser');
+  assert.equal(toolSource('mcp__Claude_Browser__'), 'Claude Browser');
+  assert.equal(fullToolLabel('mcp__foo___tool'), 'foo tool');
 });
 
 // The causes and outcomes the CLI's peer_message_hold message lists (checked on CLI 2.1.301).

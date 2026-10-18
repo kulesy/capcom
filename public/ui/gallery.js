@@ -1,19 +1,19 @@
 // What the image viewer steps through, and the small decisions it makes. Plain functions on plain data, so they run
 // without a browser.
-import { toolLabel } from './format.js';
+import { toolSource } from './format.js';
 
 // A transcript image is named by its ref. One still being sent has no ref yet, so it goes by the id the page gave it.
 export const imageKey = img => img.ref ?? `local:${img.id}`;
 
 export const isDataUrl = src => src.startsWith('data:');
 
-export const fromTool = label => `Image from ${label}`;
+export const fromTool = source => `Image from ${source}`;
 
 // The chat's pictures in the order the transcript draws them, so Previous and Next follow the page.
 export function threadImages(items, sending, url) {
   const out = [];
   for (const message of [...items, ...sending]) {
-    const alt = message.kind === 'tool' ? fromTool(toolLabel(message.name)) : 'Attached image';
+    const alt = message.kind === 'tool' ? fromTool(toolSource(message.name)) : 'Attached image';
     for (const img of message.images || []) out.push({ key: imageKey(img), src: img.src ?? url(img.ref), alt });
   }
   return out;
@@ -21,16 +21,16 @@ export function threadImages(items, sending, url) {
 
 export const draftImages = images => images.map(img => ({ key: imageKey(img), src: img.src, alt: img.name }));
 
-export const toolShots = tools => tools.flatMap(t => (t.images || []).map(img => ({ img, tool: toolLabel(t.name) })));
+export const toolShots = tools => tools.flatMap(t => (t.images || []).map(img => ({ img, source: toolSource(t.name) })));
 
 export const TILES = 4;
 
 // With more pictures than tiles the last tile stands for itself and every picture after it; this is how many that is.
 export const overflow = total => (total > TILES ? total - (TILES - 1) : 0);
 
-export function tileLabel(n, total, tool) {
+export function tileLabel(n, total, source) {
   if (overflow(total) && n === TILES - 1) return `View ${overflow(total)} more images`;
-  return total > 1 ? `View image ${n + 1} of ${total} from ${tool}` : `View image from ${tool}`;
+  return total > 1 ? `View image ${n + 1} of ${total}, from ${source}` : `View image from ${source}`;
 }
 
 // Which thumbnail on screen takes focus when the viewer closes: one for the picture it opened on (`opened`), else the one now at

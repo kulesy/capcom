@@ -48,12 +48,18 @@ test('the status line names the one tool running, with what it works on', () => 
   assert.deepEqual(activity({ tools: [{ name: 'Bash', summary: 'npm test' }] }), { doing: 'Running', detail: 'npm test' });
   assert.deepEqual(activity({ tools: [{ name: 'Read', summary: 'lib/runner.mjs' }] }), { doing: 'Reading', detail: 'lib/runner.mjs' });
   assert.deepEqual(activity({ tools: [{ name: 'mcp__claude-in-chrome__navigate', summary: 'https://example.com' }] }), { doing: 'Using Chrome', detail: 'https://example.com' });
-  assert.deepEqual(activity({ tools: [{ name: 'mcp__visualize__show_widget', summary: '' }] }), { doing: 'Using', detail: 'show widget' });
+  assert.deepEqual(activity({ tools: [{ name: 'mcp__visualize__show_widget', summary: '' }] }), { doing: 'Using', detail: 'visualize show widget' });
+  assert.deepEqual(activity({ tools: [{ name: 'mcp__Claude_Browser__computer', summary: 'screenshot' }] }), { doing: 'Using', detail: 'Claude Browser computer: screenshot' });
 });
 
 test('several tools at once are counted and named once each', () => {
   const work = { tools: [{ name: 'Read', summary: 'a' }, { name: 'Read', summary: 'b' }, { name: 'Grep', summary: 'c' }] };
   assert.deepEqual(activity(work), { doing: 'Running 3 tools', detail: 'Read, Grep' });
+});
+
+test('several MCP tools at once are named with their servers, so two called computer are told apart', () => {
+  const work = { tools: [{ name: 'mcp__Claude_Browser__computer', summary: 'screenshot' }, { name: 'mcp__claude-in-chrome__computer', summary: 'screenshot' }, { name: 'mcp__Claude_Browser__computer', summary: 'zoom' }, { name: 'Read', summary: 'a' }] };
+  assert.deepEqual(activity(work), { doing: 'Running 4 tools', detail: 'Claude Browser computer, Chrome computer, Read' });
 });
 
 test('with no tool the status line says thinking, writing or just working', () => {
