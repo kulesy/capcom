@@ -53,7 +53,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Esc closes the viewer without stopping a running chat. Closing it puts focus back on the thumbnail you
   clicked, however far you stepped, so you stay where you were reading. If that thumbnail has gone, as when a
   message still being sent has arrived, focus goes to the same picture's new thumbnail, or else to the nearest
-  thumbnail you can see. Only pictures the page has loaded count, so earlier ones join once you press Load earlier.
+  thumbnail you can see. The count and the arrows take in every picture in the chat, those in history the page has
+  not loaded included, and an earlier picture shows without you scrolling up or pressing Load earlier.
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
@@ -170,6 +171,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   them, and the page fetches each one from `api/sessions/<id>/images/<ref>` when it draws the thumbnail, which
   for a strip of Claude's pictures is when the thumbnail scrolls near the screen. The viewer uses the same address, so the
   browser reuses what the thumbnail loaded, and the viewer loads the pictures either side of the one on screen ahead of time.
+  For the pictures before the part it has loaded, the page asks `api/sessions/<id>/images?before=<offset>` when the
+  viewer opens, and keeps the answer until Load earlier moves that offset. The answer names each picture by its ref
+  and type and carries no image data. The server builds the list in one pass over the transcript, keeps it, and
+  afterwards reads only the lines added since, so the first list for a 130 MB chat takes about 200 ms and later ones 1 ms.
 
 ## Tools
 

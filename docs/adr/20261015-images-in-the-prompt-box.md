@@ -1,6 +1,6 @@
 # Send pasted images as content blocks and show transcript images through an endpoint
 
-- Status: Accepted, amended 2026-10-17
+- Status: Accepted, amended 2026-10-17 and 2026-10-18
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: prompt-box, images, transcripts, stream-json
@@ -36,6 +36,8 @@ Chosen option: "Scale in the browser, send base64 in the request, and serve tran
 
 **Amended 2026-10-17.** The pictures a tool returns to Claude show too, such as a browser screenshot or an image file it reads. They sit in the `tool_result` blocks of a user line, so the item for a tool's result carries `images: [{ ref, type }]` as a user message does, and the page copies them onto the tool's own item. Their refs read `<offset>.r<n>.<uuid>`, where `n` counts every image block across the results on the line, whether the page can draw it or not, so a type added later moves no ref. A ref on a user message keeps its form, because the browser keeps each image for a year and a ref has to name the same picture for ever. A picture the page cannot draw still reads "[image]" in the tool's output.
 
+**Amended 2026-10-18.** The viewer steps through every picture in the chat, those in history the page has not loaded included. `GET api/sessions/<id>/images?before=<offset>` lists the pictures above the loaded part, in the order the thread draws them, as items that carry a kind, a tool's name and `images: [{ ref, type }]`. A tool's pictures sit at its call, as on the page, even when the results of parallel calls come back out of order. The server parses only the lines that hold a tool call or an image block, keeps the list for each file, and on a later ask reads only the lines added since. The page asks when the viewer opens and keeps the answer until Load earlier moves the offset. The list uses the refs the single-picture route already serves, so no ref changes meaning.
+
 ### Consequences
 
 - ✅ The messages the page loads carry no image data.
@@ -45,6 +47,10 @@ Chosen option: "Scale in the browser, send base64 in the request, and serve tran
 - ❌ The `queued_command` shape is observed, not documented. Recheck it after CLI updates.
 - ❌ The CLI re-encodes any image over about 0.5 MB before it reaches the API. On CLI 2.1.300 a 500 KB PNG went through unchanged and a 600 KB one did not. A large screenshot therefore reaches Claude re-encoded whatever Capcom sends, and Desktop's transcripts hold nothing over 656 KB of base64.
 - ❌ Capcom limits each image and the number of images, not their total. Ten images at the limit make a request of about 52 MB, and a proxy in front of Capcom has to allow that.
+- ✅ Previous carries on into history the page has not loaded, and each picture loads from its own address with no scrolling.
+- ❌ The first list for a large transcript blocks the server for one pass over the file, about 160 ms for 132 MB. Later lists for the same file take about 1 ms.
+- ❌ The server skips lines that do not contain `"tool_use"` or `"image"` as bytes. That holds because the CLI writes each line with `JSON.stringify`, which leaves letters unescaped. Recheck it after CLI updates.
+- ❌ When a call sits above the loaded part and its result lands after the page asked for the list, its pictures stay out of the count until Load earlier or a reload.
 
 ## Pros and Cons of the Options
 
