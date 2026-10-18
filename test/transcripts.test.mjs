@@ -811,3 +811,23 @@ test('a line that is not an object costs only itself, and a session file that st
   const head = readHead(t);
   assert.deepEqual([head.cwd, head.branch, head.title], ['/work', 'main', 'Fix the login bug']);
 });
+
+test('a block or line that is not an object leaves the whole chat\'s picture list as it is, and a tool whose name is not a string lists its pictures with an empty name', () => {
+  const spoil = bad => e => {
+    const c = e.message?.content;
+    if (!Array.isArray(c)) return e;
+    const blocks = c.map(b => (b.type === 'tool_result' && Array.isArray(b.content) ? { ...b, content: among(bad, b.content) } : b));
+    return { ...e, message: { ...e.message, content: among(bad, blocks) } };
+  };
+  // Each picture by what the page is told about it and the bytes its ref opens, neither of which depends on where its line starts.
+  const seen = t => listImages(t).map(({ images, ...item }) => ({ ...item, images: images.map(img => [img.type, readImage(t, img.ref)?.bytes.toString()]) }));
+  const clean = seen(file('list-clean', CHAT));
+  assert.equal(clean.flatMap(item => item.images).length, 7, 'every picture the thread draws from CHAT');
+  for (const [n, bad] of NOT_OBJECTS.entries()) {
+    const t = file(`list-not-objects-${n}`, CHAT.flatMap(e => [bad, spoil(bad)(e)]));
+    assert.deepEqual(seen(t), clean, String(bad));
+  }
+  const t = file('list-odd-name', [use('toolu_7', 7), line('u1', [toolResult('toolu_7', [picture('seven')])])]);
+  assert.deepEqual(listImages(t).map(item => [item.kind, item.name]), [['tool', '']]);
+  assert.equal(drawn(listImages(t)).length, 1, 'the page\'s threadImages takes the list as the server sends it');
+});
