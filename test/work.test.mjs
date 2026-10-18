@@ -174,3 +174,35 @@ test('a tool call whose input is null is named with no summary, whether it arriv
   t.feed(messageStart('msg_2'), toolStart(0, 'toolu_2', 'Bash'), toolInput(0, 'null'), blockStop(0));
   assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_1', name: 'Bash', summary: '' }, { id: 'toolu_2', name: 'Bash', summary: '' }]);
 });
+
+const COMPUTER = 'mcp__claude-in-chrome__computer';
+
+// A tool call as the CLI sends it: whole in a finished message, or as partial messages that end with its input as streamed JSON.
+const ARRIVALS = {
+  finished: (t, n, name, input) => t.feed({ type: 'assistant', message: { id: `msg_${n}`, content: [{ type: 'tool_use', id: `toolu_${n}`, name, input }] } }),
+  streamed: (t, n, name, input) => t.feed(messageStart(`msg_${n}`), toolStart(0, `toolu_${n}`, name), toolInput(0, JSON.stringify(input)), blockStop(0)),
+};
+
+test('a Chrome computer call whose coordinate is not a list is tracked with the summary it can give, whether it arrives finished or as streamed JSON', () => {
+  for (const [how, arrive] of Object.entries(ARRIVALS)) {
+    const t = turn();
+    t.work.begin();
+    [[512, 300], '[512, 300]', 512, { x: 512, y: 300 }].forEach((coordinate, n) => arrive(t, n, COMPUTER, { action: 'left_click', coordinate }));
+    assert.deepEqual(t.work.snapshot().tools.map(x => [x.id, x.summary]), [['toolu_0', 'left_click at 512,300'], ['toolu_1', 'left_click'], ['toolu_2', 'left_click'], ['toolu_3', 'left_click']], how);
+  }
+});
+
+test('a tool call whose name is not a string, or is missing, is tracked with an empty name, whether it arrives finished or as streamed JSON', () => {
+  for (const [how, arrive] of Object.entries(ARRIVALS)) {
+    const t = turn();
+    t.work.begin();
+    [7, undefined, null, ['Bash'], 'Bash'].forEach((name, n) => arrive(t, n, name, { command: 'ls' }));
+    assert.deepEqual(t.work.snapshot().tools, [
+      { id: 'toolu_0', name: '', summary: 'ls' },
+      { id: 'toolu_1', name: '', summary: 'ls' },
+      { id: 'toolu_2', name: '', summary: 'ls' },
+      { id: 'toolu_3', name: '', summary: 'ls' },
+      { id: 'toolu_4', name: 'Bash', summary: 'ls' },
+    ], how);
+  }
+});

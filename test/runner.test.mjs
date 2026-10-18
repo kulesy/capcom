@@ -177,7 +177,7 @@ test('a hold of a process that was told to stop is gone once a message starts a 
   chat.stop();
 });
 
-test('a block that is not an object in what the CLI streams costs only itself: the tool is tracked, the live text is cleared, and the turn ends normally', async t => {
+test('a null line, content that is not a list and blocks that are not objects cost only themselves: the tool is tracked, the live text is cleared, and the turn ends normally', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
   const cli = path.join(dir, 'odd-blocks-claude.mjs');
   fs.writeFileSync(cli, [
@@ -185,6 +185,7 @@ test('a block that is not an object in what the CLI streams costs only itself: t
     "import readline from 'node:readline';",
     "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
     "const odd = [null, 'text', 7, true, [{ type: 'text', text: 'inside' }]];",
+    "const notLists = ['text', { type: 'text', text: 'in an object' }, 7];",
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
     '  const m = JSON.parse(line);',
     "  if (m.type !== 'user') return;",
@@ -193,6 +194,8 @@ test('a block that is not an object in what the CLI streams costs only itself: t
     "  if (step === 'write') {",
     "    out({ type: 'system', subtype: 'status', status: 'requesting' });",
     "    out({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Look' } } });",
+    "    process.stdout.write('null\\n');",
+    "    for (const content of notLists) out({ type: 'assistant', message: { id: 'msg_0', role: 'assistant', content } });",
     "    return out({ type: 'assistant', message: { id: 'msg_1', role: 'assistant', content: [...odd, { type: 'text', text: 'Looking.' }, ...odd, { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }, ...odd] } });",
     '  }',
     "  if (step === 'answer') return out({ type: 'user', message: { role: 'user', content: [...odd, { type: 'tool_result', tool_use_id: 'toolu_1', content: [...odd, { type: 'text', text: 'ok' }] }, ...odd] } });",
@@ -216,6 +219,34 @@ test('a block that is not an object in what the CLI streams costs only itself: t
   await until(() => chat.status().work?.tools.length === 0);
 
   chat.send('finish', []);
+  await until(() => chat.state === 'idle');
+  assert.deepEqual(heard.filter(e => e.type === 'turn-end').map(e => e.data), [{ error: false, message: '', cost: 0.01 }]);
+  assert.deepEqual([chat.status().running, chat.status().lastError], [true, '']);
+});
+
+test('a line the CLI prints that is not an object costs only itself: the chat carries on, and the turn ends normally', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = path.join(dir, 'odd-lines-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  if (m.message.content === 'start') return out({ type: 'system', subtype: 'init', session_id: 'sess-odd-lines', model: 'stub' });",
+    "  for (const odd of ['null', '7', '\"text\"', 'true', '[]']) process.stdout.write(odd + '\\n');",
+    "  out({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0.01 });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  // A failed assertion must not leave the CLI running, or the test run never ends.
+  t.after(() => chat.stop());
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+
+  chat.send('go', []);
   await until(() => chat.state === 'idle');
   assert.deepEqual(heard.filter(e => e.type === 'turn-end').map(e => e.data), [{ error: false, message: '', cost: 0.01 }]);
   assert.deepEqual([chat.status().running, chat.status().lastError], [true, '']);

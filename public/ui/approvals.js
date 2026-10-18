@@ -6,7 +6,7 @@ import { CHROME } from './thread.js';
 
 const CHROME_FORMS = new Map(Object.entries({
   navigate: i => ['open a page', [['URL', i.url], ['Tab', i.tabId]]],
-  computer: i => [`${i.action || 'act'} on a page`, [['Action', i.action], ['Text', i.text], ['Where', i.coordinate?.join(', ') || i.ref], ['Tab', i.tabId]]],
+  computer: i => [`${i.action || 'act'} on a page`, [['Action', i.action], ['Text', i.text], ['Where', (Array.isArray(i.coordinate) && i.coordinate.join(', ')) || i.ref], ['Tab', i.tabId]]],
   javascript_tool: i => ['run JavaScript in a tab', [['Script', i.text], ['Tab', i.tabId]]],
   form_input: i => ['fill in a form field', [['Field', i.ref], ['Value', i.value === undefined ? '' : String(i.value)], ['Tab', i.tabId]]],
   find: i => ['search a page', [['Looking for', i.query], ['Tab', i.tabId]]],

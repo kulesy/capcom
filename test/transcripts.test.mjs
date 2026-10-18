@@ -745,8 +745,25 @@ test('a tool call whose input is null, or whose name is not a string, is still l
     { type: 'tool_use', id: 'toolu_3', name: 7, input: { command: 'ls' } },
     { type: 'tool_use', id: 'toolu_4', name: 'Bash', input: { command: 'pwd' } },
   ])]);
-  for (const items of bothReads(t)) assert.deepEqual(items.map(i => [i.id, i.summary]), [['toolu_1', ''], ['toolu_2', ''], ['toolu_3', 'ls'], ['toolu_4', 'pwd']]);
+  for (const items of bothReads(t)) {
+    assert.deepEqual(items.map(i => [i.id, i.name, i.summary]), [['toolu_1', 'Bash', ''], ['toolu_2', 'mcp__claude-in-chrome__navigate', ''], ['toolu_3', '', 'ls'], ['toolu_4', 'Bash', 'pwd']]);
+  }
   assert.equal(toolSummary('Read', null, '/work'), '', 'the same summary an approval card is given for a call with no input');
+});
+
+test('a tool call whose name is not a string, or is missing, is listed with an empty name, so the page can always label it', () => {
+  const call = (id, extra) => ({ type: 'tool_use', id, input: { command: 'ls' }, ...extra });
+  const t = file('odd-names', [assistant('msg_1', [call('toolu_1', { name: 7 }), call('toolu_2'), call('toolu_3', { name: null }), call('toolu_4', { name: ['Bash'] }), call('toolu_5', { name: 'Bash' })])]);
+  for (const items of bothReads(t)) assert.deepEqual(items.map(i => [i.id, i.name, i.summary]), [['toolu_1', '', 'ls'], ['toolu_2', '', 'ls'], ['toolu_3', '', 'ls'], ['toolu_4', '', 'ls'], ['toolu_5', 'Bash', 'ls']]);
+});
+
+test('a Chrome computer call whose coordinate is not a list is still listed, with the summary it can give', () => {
+  const computer = (id, coordinate) => ({ type: 'tool_use', id, name: 'mcp__claude-in-chrome__computer', input: { action: 'left_click', coordinate } });
+  const t = file('odd-coordinates', [assistant('msg_1', [computer('toolu_1', [512, 300]), computer('toolu_2', '[512, 300]'), computer('toolu_3', 512), computer('toolu_4', { x: 512, y: 300 })])]);
+  for (const items of bothReads(t)) {
+    assert.deepEqual(items.map(i => [i.id, i.summary]), [['toolu_1', 'left_click at 512,300'], ['toolu_2', 'left_click'], ['toolu_3', 'left_click'], ['toolu_4', 'left_click']]);
+  }
+  assert.equal(toolSummary('mcp__claude-in-chrome__computer', { action: 'left_click', coordinate: '[512, 300]' }, '/work'), 'left_click', 'the same summary an approval card is given');
 });
 
 test('a block that is not an object costs only itself in a message queued mid-turn, whose picture keeps the number it has without the block', () => {
