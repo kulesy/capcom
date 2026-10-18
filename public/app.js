@@ -46,20 +46,22 @@ function App() {
   useEffect(() => { loadIndex().then(() => setReady(true)); }, []);
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
+  // The old list goes back only while none has been drawn since, or it would undo that one. The reload puts the row back then.
   const place = useCallback(async (id, section) => {
     const before = now.current.ix;
     const guess = placeRow(before, id, section);
     if (guess === before) return '';
     const pin = section === 'pinned';
     const group = before.groups.some(g => g.id === section) ? section : null;
+    const mark = ++latest.current;
     setIx(guess);
-    shown.current = ++latest.current;
+    shown.current = mark;
     writing.current++;
     try {
       await api(pin ? 'api/layout/pin' : 'api/layout/move', pin ? { id, pinned: true } : { id, group });
       return '';
     } catch (e) {
-      setIx(before);
+      if (shown.current === mark) setIx(before);
       return `${pin ? 'Not pinned' : 'Not moved'}: ${e.message}`;
     } finally {
       writing.current--;
@@ -67,25 +69,26 @@ function App() {
     }
   }, []);
 
-  // Archiving takes the row out at once and puts it back if the server refuses. Unarchiving waits for the server's list, because the
-  // server says where the session lands. It resolves with { problem, stopped }: the reason when the server refuses, and whether it
-  // stopped a chat that was running.
+  // Archiving takes the row out at once and puts it back if the server refuses, while no other list has been drawn since. Unarchiving
+  // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped }: the reason
+  // when the server refuses, and whether it stopped a chat that was running. The server's list is drawn before it resolves.
   const archive = useCallback(async (id, archived) => {
     const before = now.current.ix;
+    const mark = archived ? ++latest.current : 0;
     if (archived) {
       setIx(withoutRow(before, id));
-      shown.current = ++latest.current;
+      shown.current = mark;
     }
     writing.current++;
     try {
       const reply = await api('api/layout/archive', { id, archived });
       return { problem: '', stopped: !!reply.stopped };
     } catch (e) {
-      if (archived) setIx(before);
+      if (archived && shown.current === mark) setIx(before);
       return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false };
     } finally {
       writing.current--;
-      loadIndex();
+      await loadIndex();
     }
   }, []);
 
