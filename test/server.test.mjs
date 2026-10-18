@@ -177,6 +177,47 @@ test('the pictures of a whole chat are listed with refs and never bytes, only th
   assert.equal(one.text, 'the second picture, from a tool');
 });
 
+test('a null block in a transcript line costs only itself: the chat\'s messages still load, poll and page back, with the blocks beside it', async () => {
+  const s = await start();
+  const folder = path.join(path.dirname(s.state), '.claude', 'projects', '-work');
+  fs.mkdirSync(folder, { recursive: true });
+  const text = words => ({ type: 'text', text: words });
+  const entries = [
+    { type: 'user', cwd: '/work', message: { role: 'user', content: 'first' } },
+    { type: 'user', message: { role: 'user', content: [null, text('second')] } },
+    { type: 'assistant', message: { id: 'msg_1', role: 'assistant', content: [null, text('third')] } },
+    { type: 'user', message: { role: 'user', content: [null, { type: 'tool_result', tool_use_id: 'toolu_1', content: [null, text('fourth')] }] } },
+    { type: 'user', message: { role: 'user', content: 'last' } },
+  ];
+  fs.writeFileSync(path.join(folder, 'sess-null-block.jsonl'), entries.map(e => `${JSON.stringify(e)}\n`).join(''));
+  const startOf = n => entries.slice(0, n).reduce((sum, e) => sum + Buffer.byteLength(JSON.stringify(e)) + 1, 0);
+  const { token } = await signIn(s);
+  const messages = async (query, expected) => {
+    const res = await request(s, 'GET', `/api/sessions/sess-null-block/messages${query}`, { headers: as(token) });
+    assert.equal(res.status, 200, `${query || 'a first load'}: ${res.text}`);
+    assert.deepEqual(res.body().items.map(i => (i.kind === 'result' ? i.output.trim() : i.text)), expected, query || 'a first load');
+  };
+  await messages('', ['first', 'second', 'third', 'fourth', 'last']);
+  await messages(`?after=${startOf(1)}`, ['second', 'third', 'fourth', 'last']);
+  await messages(`?before=${startOf(4)}`, ['first', 'second', 'third', 'fourth']);
+});
+
+test('a transcript whose first line is null does not stop the session list, which still shows it and the sessions beside it', async () => {
+  const s = await start();
+  const folder = path.join(path.dirname(s.state), '.claude', 'projects', '-work');
+  fs.mkdirSync(folder, { recursive: true });
+  const prompt = words => `${JSON.stringify({ type: 'user', cwd: '/work', message: { role: 'user', content: words } })}\n`;
+  fs.writeFileSync(path.join(folder, 'sess-fine.jsonl'), prompt('A fine session'));
+  fs.writeFileSync(path.join(folder, 'sess-null-first.jsonl'), `null\n${prompt('Behind a null line')}`);
+  const { token } = await signIn(s);
+  const list = await request(s, 'GET', '/api/sessions', { headers: as(token) });
+  assert.equal(list.status, 200, list.text);
+  assert.deepEqual(list.body().other.map(r => r.title).sort(), ['A fine session', 'Behind a null line']);
+  const opened = await request(s, 'GET', '/api/sessions/sess-null-first/messages', { headers: as(token) });
+  assert.equal(opened.status, 200, opened.text);
+  assert.deepEqual(opened.body().items.map(i => i.text), ['Behind a null line']);
+});
+
 test('renew sends the cookie again at most once a day, and pushes the expiry 90 days out', async () => {
   const s = await start();
   const { token } = await signIn(s);

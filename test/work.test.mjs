@@ -142,3 +142,35 @@ test('the end of a turn clears everything, so the next one starts from nothing',
   t.work.begin();
   assert.deepEqual(t.work.snapshot(), { thinking: false, writing: false, tools: [], tokens: 0, turnMs: 0 });
 });
+
+// A block that is not an object. The array holds a tool call of its own, which must not be tracked.
+const NOT_OBJECTS = [null, 'text', 7, true, [{ type: 'tool_use', id: 'inside', name: 'Bash', input: {} }]];
+
+test('a block that is not an object costs only itself: a tool beside it is still tracked, and ends when its result arrives', () => {
+  for (const bad of NOT_OBJECTS) {
+    const t = turn();
+    t.work.begin();
+    t.feed({ type: 'assistant', message: { id: 'msg_1', content: [bad, { type: 'text', text: 'Looking.' }, bad, { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }, bad] } });
+    assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_1', name: 'Bash', summary: 'ls' }], String(bad));
+    t.feed({ type: 'user', message: { role: 'user', content: [bad, { type: 'tool_result', tool_use_id: 'toolu_1', content: 'ok' }, bad] } });
+    assert.deepEqual(t.work.snapshot().tools, [], String(bad));
+  }
+});
+
+test('content that is not a list costs only its own message, so the tool tracked before it is still tracked after', () => {
+  const t = turn();
+  t.work.begin();
+  t.feed({ type: 'assistant', message: { id: 'msg_1', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'ls' } }] } });
+  for (const content of [{ type: 'tool_use', id: 'toolu_2', name: 'Bash', input: {} }, 7, true, 'text']) {
+    t.feed({ type: 'assistant', message: { id: 'msg_2', content } }, { type: 'user', message: { role: 'user', content } });
+  }
+  assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_1', name: 'Bash', summary: 'ls' }]);
+});
+
+test('a tool call whose input is null is named with no summary, whether it arrives finished or as streamed JSON', () => {
+  const t = turn();
+  t.work.begin();
+  t.feed({ type: 'assistant', message: { id: 'msg_1', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Bash', input: null }] } });
+  t.feed(messageStart('msg_2'), toolStart(0, 'toolu_2', 'Bash'), toolInput(0, 'null'), blockStop(0));
+  assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_1', name: 'Bash', summary: '' }, { id: 'toolu_2', name: 'Bash', summary: '' }]);
+});

@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
-import { listImages, readAfter, readBefore, readHead, readImage } from '../lib/transcripts.mjs';
+import { listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
 import { threadImages } from '../public/ui/gallery.js';
 import { absorb, prepend } from '../public/ui/thread.js';
 
@@ -624,9 +624,11 @@ test('a file rewritten with other content lists only what it holds now, whether 
 test('a scan that throws half way is dropped, so the next call reads the file again instead of adding to it', () => {
   const t = file('half-done', [line('u1', [picture('one')])]);
   assert.equal(listImages(t).length, 1);
-  const poison = { type: 'user', message: { role: 'user', content: { type: 'image' } } };
-  fs.appendFileSync(t.file, [line('u2', [picture('two')]), poison].map(e => `${JSON.stringify(e)}\n`).join(''));
-  assert.throws(() => listImages(t), TypeError);
+  fs.appendFileSync(t.file, [line('u2', [picture('two')]), line('u3', [picture('three')])].map(e => `${JSON.stringify(e)}\n`).join(''));
+  // A malformed block no longer makes the scan throw, so the line after two stands in as an entry that throws when it is read.
+  const real = JSON.parse;
+  JSON.parse = (text, ...rest) => (text.includes('"u3"') ? new Proxy({}, { get() { throw new TypeError('a line that cannot be read'); } }) : real(text, ...rest));
+  try { assert.throws(() => listImages(t), TypeError); } finally { JSON.parse = real; }
   fs.writeFileSync(t.file, [line('u1', [picture('one')]), line('u2', [picture('two')])].map(e => `${JSON.stringify(e)}\n`).join(''));
   const at = lineStarts(t);
   assert.deepEqual(drawn(listImages(t)), [`${at[0]}.0.u1`, `${at[1]}.0.u2`], 'two, which the failed scan had read, is not listed twice');
@@ -675,4 +677,120 @@ test('a line longer than a chunk is read whole, and a line that crosses from one
   const at = lineStarts(t);
   assert.deepEqual(drawn(listImages(t)), [`${at[0]}.0.u1`, `${at[1]}.0.u2`, `${at[2]}.0.u3`, `${at[3]}.0.u4`]);
   assert.equal(readImage(t, `${at[2]}.0.u3`).bytes.length, 7 * MiB);
+});
+
+// A block that is not an object, whatever puts it in a content list. The array holds a text and a picture of its own,
+// and neither may show or take a number.
+const NOT_OBJECTS = [null, 'text', 7, true, [{ type: 'text', text: 'inside' }, picture([5, 5, 5])]];
+const textBlock = text => ({ type: 'text', text });
+// `bad` before, between and after the blocks. undefined is no bad block at all, the control.
+const among = (bad, blocks) => (bad === undefined ? blocks : [bad, ...blocks.flatMap(b => [b, bad])]);
+// What a load (readBefore) and the live path (readAfter) each make of a file, which have to agree.
+const bothReads = t => [itemsOf(t), readAfter(t, 0, '/work', 8000).items];
+
+test('a block that is not an object costs only itself in a message the user typed', () => {
+  const t = file('bad-sent', NOT_OBJECTS.map((bad, n) => user(among(bad, [textBlock(`sent ${n}`)]))));
+  for (const items of bothReads(t)) {
+    assert.deepEqual(items.map(i => [i.kind, i.text]), NOT_OBJECTS.map((_, n) => ['user', `sent ${n}`]));
+  }
+});
+
+test('a block that is not an object costs only itself in what Claude wrote, beside text, thinking or a tool call', () => {
+  const t = file('bad-assistant', NOT_OBJECTS.map((bad, n) => assistant(`msg_${n}`, among(bad, [
+    { type: 'thinking', thinking: `thought ${n}` },
+    textBlock(`wrote ${n}`),
+    { type: 'tool_use', id: `toolu_${n}`, name: 'Bash', input: { command: 'ls' } },
+  ]))));
+  for (const items of bothReads(t)) {
+    assert.deepEqual(items.map(i => [i.kind, i.text || i.id]), NOT_OBJECTS.flatMap((_, n) => [['thinking', `thought ${n}`], ['assistant', `wrote ${n}`], ['tool', `toolu_${n}`]]));
+  }
+});
+
+test('a block that is not an object costs only itself in a tool result, which keeps its status and the text beside it', () => {
+  const t = file('bad-result', NOT_OBJECTS.map((bad, n) => line(`u${n}`, among(bad, [toolResult(`toolu_${n}`, among(bad, [textBlock(`output ${n}`)]))]))));
+  for (const items of bothReads(t)) {
+    assert.deepEqual(resultsOf(items).map(r => [r.toolId, r.status, r.output.trim()]), NOT_OBJECTS.map((_, n) => [`toolu_${n}`, 'ok', `output ${n}`]));
+    assert.deepEqual(items.filter(i => i.kind !== 'result'), [], 'and no message of the user\'s comes out of the blocks that are left');
+  }
+});
+
+test('content that is neither a list nor a string costs only its own message, in a user entry, an assistant entry and a tool result', () => {
+  const ODD = [{ type: 'text', text: 'in an object' }, 7, true];
+  const t = file('odd-content', [
+    user('before'),
+    ...ODD.flatMap((content, n) => [user(content), assistant(`msg_${n}`, content), user([toolResult(`toolu_${n}`, content)])]),
+    assistant('msg_string', 'Claude as a string'),
+    user('after'),
+  ]);
+  for (const items of bothReads(t)) {
+    assert.deepEqual(items.filter(i => i.kind !== 'result').map(i => [i.kind, i.text]), [['user', 'before'], ['user', 'after']]);
+    assert.deepEqual(resultsOf(items).map(r => [r.toolId, r.status, r.output]), ODD.map((_, n) => [`toolu_${n}`, 'ok', '']));
+  }
+});
+
+test('text or thinking that is not a string shows nothing, and the blocks beside it still show', () => {
+  const t = file('odd-words', [assistant('msg_1', [
+    { type: 'text' }, { type: 'text', text: null }, { type: 'text', text: 5 }, { type: 'text', text: {} }, { type: 'text', text: true }, textBlock(' \n'),
+    { type: 'thinking' }, { type: 'thinking', thinking: 5 }, { type: 'thinking', thinking: {} }, { type: 'thinking', thinking: true }, { type: 'thinking', thinking: ' \n' },
+    { type: 'thinking', thinking: 'Weighing it.' },
+    textBlock('Done.'),
+  ])]);
+  for (const items of bothReads(t)) assert.deepEqual(items.map(i => [i.kind, i.text]), [['thinking', 'Weighing it.'], ['assistant', 'Done.']]);
+});
+
+test('a tool call whose input is null, or whose name is not a string, is still listed with the summary it can give', () => {
+  const t = file('odd-tools', [assistant('msg_1', [
+    { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: null },
+    { type: 'tool_use', id: 'toolu_2', name: 'mcp__claude-in-chrome__navigate', input: null },
+    { type: 'tool_use', id: 'toolu_3', name: 7, input: { command: 'ls' } },
+    { type: 'tool_use', id: 'toolu_4', name: 'Bash', input: { command: 'pwd' } },
+  ])]);
+  for (const items of bothReads(t)) assert.deepEqual(items.map(i => [i.id, i.summary]), [['toolu_1', ''], ['toolu_2', ''], ['toolu_3', 'ls'], ['toolu_4', 'pwd']]);
+  assert.equal(toolSummary('Read', null, '/work'), '', 'the same summary an approval card is given for a call with no input');
+});
+
+test('a block that is not an object costs only itself in a message queued mid-turn, whose picture keeps the number it has without the block', () => {
+  for (const [n, bad] of [undefined, ...NOT_OBJECTS].entries()) {
+    const t = file(`bad-queued-${n}`, [{ ...queued(among(bad, [textBlock('redirect'), picture(SENT_0)]), 'prompt'), uuid: 'u1' }]);
+    for (const items of bothReads(t)) {
+      assert.deepEqual(items.map(i => [i.kind, i.text, i.images]), [['user', 'redirect', [{ ref: '0.0.u1', type: 'image/png' }]]], String(bad));
+    }
+    assert.deepEqual([...readImage(t, '0.0.u1').bytes], SENT_0, String(bad));
+  }
+});
+
+test('a block that is not an object takes no picture number, so every ref is the one it has without the block, and readImage gives the same bytes', () => {
+  const first = line('u0', 'hello');
+  const at = startOfSecond(first);
+  const BITMAP = [66, 77];
+  const mixed = bad => line('u1', among(bad, [
+    toolResult('toolu_a', among(bad, [textBlock('A'), picture(BITMAP, 'image/bmp'), picture(TOOL_A)])),
+    picture(SENT_0),
+    picture(BITMAP, 'image/bmp'),
+    toolResult('toolu_b', among(bad, [picture(TOOL_B, 'image/jpeg')])),
+    picture(SENT_1, 'image/webp'),
+  ]));
+  for (const [n, bad] of [undefined, ...NOT_OBJECTS].entries()) {
+    const t = file(`refs-${n}`, [first, mixed(bad)]);
+    for (const items of bothReads(t)) {
+      assert.deepEqual(items.find(i => i.kind === 'user' && i.images).images, [{ ref: `${at}.0.u1`, type: 'image/png' }, { ref: `${at}.1.u1`, type: 'image/webp' }], String(bad));
+      assert.deepEqual(resultsOf(items).flatMap(r => (r.images || []).map(i => i.ref)), [`${at}.r1.u1`, `${at}.r2.u1`], String(bad));
+    }
+    const bytes = ref => { const got = readImage(t, ref); return got && [got.type, [...got.bytes]]; };
+    assert.deepEqual(bytes(`${at}.r1.u1`), ['image/png', TOOL_A], String(bad));
+    assert.deepEqual(bytes(`${at}.r2.u1`), ['image/jpeg', TOOL_B], String(bad));
+    assert.deepEqual(bytes(`${at}.0.u1`), ['image/png', SENT_0], String(bad));
+    assert.deepEqual(bytes(`${at}.1.u1`), ['image/webp', SENT_1], String(bad));
+    assert.equal(bytes(`${at}.r0.u1`), null, 'the bitmap has the number 0 but cannot be drawn');
+    assert.equal(bytes(`${at}.r3.u1`), null, 'there is no fourth tool picture');
+    assert.equal(bytes(`${at}.2.u1`), null, 'and no third sent one');
+  }
+});
+
+test('a line that is not an object costs only itself, and a session file that starts with one still gets its folder, branch and title', () => {
+  const lines = [user('a'), ...NOT_OBJECTS, user('b')];
+  for (const items of bothReads(file('odd-lines', lines))) assert.deepEqual(items.map(i => i.text), ['a', 'b']);
+  const t = file('head-not-objects', [...NOT_OBJECTS, { ...user('Fix the login bug'), cwd: '/work', gitBranch: 'main' }]);
+  const head = readHead(t);
+  assert.deepEqual([head.cwd, head.branch, head.title], ['/work', 'main', 'Fix the login bug']);
 });
