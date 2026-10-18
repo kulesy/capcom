@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { as, cliCalls, request, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, listen, request, signIn, start, until } from './harness.mjs';
 
 const MINUTE = 60_000;
 const minutesAgo = minutes => new Date(Date.now() - minutes * MINUTE).toISOString();
@@ -19,6 +19,14 @@ const send = (s, token, id, text) => request(s, 'POST', `/api/sessions/${id}/sen
 const said = (s, text) => cliCalls(s).some(c => c.user === text);
 const processes = (s, id) => cliCalls(s).filter(c => c.started?.[c.started.indexOf('--resume') + 1] === id).length;
 const touched = s => cliCalls(s).filter(c => c.closed || c.control === 'interrupt' || c.response === 'deny');
+const turnEnds = viewer => viewer.events.filter(e => e.type === 'turn-end').map(e => e.data);
+// A chat's status as a viewer is given it on connecting, which carries the last error.
+const statusOf = async (s, token, id) => {
+  const viewer = listen(s, token, id);
+  await until(() => viewer.events.length);
+  viewer.close();
+  return viewer.events[0].data;
+};
 const stateOf = (ix, id) => [...ix.routines.flatMap(r => [r.latest, ...r.earlier]), ...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.started, ...ix.ungrouped, ...ix.other].find(r => r.id === id)?.state;
 
 // The titles in each place the list shows a session.
@@ -313,6 +321,55 @@ test('archiving a chat in the middle of a turn interrupts it and closes the proc
   await until(() => cliCalls(s).some(c => c.closed));
   assert.deepEqual(cliCalls(s).filter(c => c.response || c.control === 'interrupt' || c.closed), [{ control: 'interrupt' }, { closed: true }]);
   await until(async () => (await archive(s, token)).find(r => r.id === 'busy').state === 'idle');
+});
+
+test('a turn that archiving interrupts ends with no error for a viewer or in the status, though the CLI exits without answering the interrupt', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'busy', 'keep going');
+  await until(() => said(s, 'keep going'));
+  const viewer = listen(s, token, 'busy');
+  await until(() => viewer.events.some(e => e.type === 'status'));
+
+  assert.equal((await post(s, token, { id: 'busy', archived: true })).status, 200);
+  await until(() => viewer.events.some(e => e.type === 'exit'));
+  viewer.close();
+  assert.deepEqual(turnEnds(viewer), [{ error: false, message: '' }]);
+  assert.equal((await statusOf(s, token, 'busy')).lastError, '');
+});
+
+test('a turn that fails after one archiving interrupted still reports its error', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'busy', 'keep going');
+  await until(() => said(s, 'keep going'));
+  const viewer = listen(s, token, 'busy');
+  await until(() => viewer.events.some(e => e.type === 'status'));
+  await post(s, token, { id: 'busy', archived: true });
+  await until(() => viewer.events.some(e => e.type === 'exit'));
+
+  await send(s, token, 'busy', 'fail the turn');
+  await until(() => turnEnds(viewer).length === 2);
+  viewer.close();
+  assert.deepEqual(turnEnds(viewer), [{ error: false, message: '' }, { error: true, message: 'The fake turn failed.' }]);
+  assert.equal((await statusOf(s, token, 'busy')).lastError, 'The fake turn failed.');
+});
+
+test('a Stop on a chat with no turn running does not hide the error of its next turn', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'calm', title: 'Calm one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'calm', 'finish the turn');
+  await until(async () => stateOf(await index(s, token), 'calm') === 'idle');
+  const viewer = listen(s, token, 'calm');
+  await until(() => viewer.events.some(e => e.type === 'status'));
+
+  assert.equal((await request(s, 'POST', '/api/sessions/calm/stop', { headers: as(token), json: {} })).status, 200);
+  await until(() => cliCalls(s).some(c => c.control === 'interrupt'));
+  await send(s, token, 'calm', 'fail the turn');
+  await until(() => turnEnds(viewer).length === 1);
+  viewer.close();
+  assert.equal(turnEnds(viewer)[0].message, 'The fake turn failed.');
+  assert.equal(processes(s, 'calm'), 1, 'in the same process');
 });
 
 test('archiving an idle chat closes its process with no interrupt, and does not say it stopped anything', async () => {

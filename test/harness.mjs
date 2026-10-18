@@ -24,7 +24,8 @@ const freePort = () => new Promise(resolve => {
 });
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
-// and when its input closed. Sent 'ask for approval' it asks to run a command, and sent 'finish the turn' it ends the turn and stays open.
+// and when its input closed. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
+// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are.
@@ -79,6 +80,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    note({ user: m.message.content });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
     "  } catch {}",
     "}).on('close', () => { note({ closed: true }); process.exit(0); });",
     '',
@@ -136,6 +138,26 @@ export async function signIn(s, headers) {
 
 // What the fake CLI has logged so far: how it was started, each message and control message it was sent, and when its input closed.
 export const cliCalls = s => (fs.existsSync(s.cliLog) ? fs.readFileSync(s.cliLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
+
+// A viewer of a chat's events, as the page is. `events` fills with { type, data } as they arrive, the first being the chat's status.
+export function listen(s, token, id) {
+  const events = [];
+  const req = http.get({ host: '127.0.0.1', port: s.port, path: `/api/sessions/${id}/events`, headers: { host: `localhost:${s.port}`, ...as(token) } }, res => {
+    let text = '';
+    res.setEncoding('utf8');
+    res.on('data', chunk => {
+      text += chunk;
+      for (let end = text.indexOf('\n\n'); end >= 0; end = text.indexOf('\n\n')) {
+        const block = text.slice(0, end);
+        text = text.slice(end + 2);
+        const type = /^event: (.*)$/m.exec(block)?.[1];
+        if (type) events.push({ type, data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] || '{}') });
+      }
+    });
+  });
+  req.on('error', () => {});
+  return { events, close: () => req.destroy() };
+}
 
 export async function until(check, ms = 4000) {
   for (let waited = 0; !(await check()); waited += 20) {
