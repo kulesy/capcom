@@ -17,24 +17,73 @@ function folder(contents) {
 
 const OLD = { seededAt: '2026-10-15T05:44:17.563Z', groups: [{ id: 'cg-a', name: 'Reviewing' }, { id: 'cg-b', name: 'Backlog' }], pinned: ['p1'], assignments: { s1: 'cg-a', s2: 'cg-b' } };
 
-test('a layout file from before projects and unarchiving loads as it was, and a missing file is an empty layout', () => {
+const FIRST = '2026-10-17T09:30:00.000Z';
+
+// A write replaces the file, so a file dated 1970 shows whether a call wrote it.
+const backdate = f => fs.utimesSync(f.file, 1, 1);
+const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
+
+test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [] });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [] });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [], archived: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [], archived: {} });
 });
 
-test('unarchiving adds a session once, and keeps everything else in the file, including keys this version does not know', () => {
-  const f = folder({ ...OLD, later: { kept: true } });
+test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
+  const f = folder({ ...OLD, later: { kept: true }, unarchived: ['s1', 's2'] });
+  const before = Date.now();
+  f.layout.archive('s1');
+  const { archived } = f.onDisk();
+  assert.deepEqual(Object.keys(archived), ['s1']);
+  assert.equal(new Date(archived.s1).toISOString(), archived.s1);
+  assert.ok(Date.parse(archived.s1) >= before && Date.parse(archived.s1) <= Date.now(), archived.s1);
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], archived, unarchived: ['s2'] });
+  assert.deepEqual(f.layout.read().archived, archived);
+});
+
+test('a session that is archived already keeps its first time, and archiving it again writes nothing', () => {
+  const f = folder({ ...OLD, archived: { s1: FIRST } });
+  backdate(f);
+  f.layout.archive('s1');
+  assert.equal(rewritten(f), false);
+  assert.deepEqual(f.onDisk().archived, { s1: FIRST });
+  f.layout.archive('s2');
+  assert.deepEqual(Object.keys(f.onDisk().archived), ['s1', 's2'], 'a second session is added beside the first');
+  assert.equal(f.onDisk().archived.s1, FIRST);
+});
+
+test('unarchiving takes a session out of the archived list, adds it to the unarchived list once, and keeps everything else in the file, including keys this version does not know', () => {
+  const f = folder({ ...OLD, later: { kept: true }, archived: { s1: FIRST, s2: FIRST } });
   f.layout.unarchive('s1');
   f.layout.unarchive('s1');
   f.layout.unarchive('s3');
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], unarchived: ['s1', 's3'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
+});
+
+test('unarchiving writes nothing when the session is unarchived already, and a session in both lists leaves the archived one', () => {
+  const f = folder({ ...OLD, archived: { s2: FIRST }, unarchived: ['s1'] });
+  backdate(f);
+  f.layout.unarchive('s1');
+  assert.equal(rewritten(f), false);
+  const both = folder({ ...OLD, archived: { s1: FIRST }, unarchived: ['s1'] });
+  both.layout.unarchive('s1');
+  assert.deepEqual({ archived: both.onDisk().archived, unarchived: both.onDisk().unarchived }, { archived: {}, unarchived: ['s1'] });
+});
+
+test('archiving and unarchiving leave a session in its group or pin, so it comes back where it was', () => {
+  const f = folder({ ...OLD, pinned: ['p1'], assignments: { s1: 'cg-a' } });
+  for (const id of ['s1', 'p1']) f.layout.archive(id);
+  assert.deepEqual({ pinned: f.onDisk().pinned, assignments: f.onDisk().assignments }, { pinned: ['p1'], assignments: { s1: 'cg-a' } });
+  for (const id of ['s1', 'p1']) f.layout.unarchive(id);
+  assert.deepEqual({ pinned: f.onDisk().pinned, assignments: f.onDisk().assignments }, { pinned: ['p1'], assignments: { s1: 'cg-a' } });
+  assert.deepEqual(f.onDisk().archived, {});
 });
 
 test('a layout file that cannot be read is reported, and no change is written over it', () => {
   const edits = [
     l => l.move('s1', null),
     l => l.pin('s1', true),
+    l => l.archive('s1'),
     l => l.unarchive('s1'),
     l => l.addProject('Work'),
     l => l.renameProject('cp-a', 'Home'),
@@ -42,7 +91,7 @@ test('a layout file that cannot be read is reported, and no change is written ov
     l => l.addGroup('Notes'),
     l => l.moveGroup('cg-a', null),
   ];
-  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), '[]']) {
+  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), JSON.stringify({ ...OLD, archived: [] }), JSON.stringify({ ...OLD, archived: 'yesterday' }), JSON.stringify({ ...OLD, archived: null }), '[]']) {
     const f = folder(text);
     assert.match(f.layout.read().problem, /^layout\.json cannot be read: /, text);
     for (const edit of edits) assert.throws(() => edit(f.layout), { status: 500, message: /layout\.json cannot be read/ }, `${edit} on ${text}`);
@@ -50,8 +99,8 @@ test('a layout file that cannot be read is reported, and no change is written ov
   }
 });
 
-test('the first copy from Desktop keeps what was already in the file, the projects and the unarchived list included', () => {
-  const f = folder({ seededAt: null, projects: [{ id: 'cp-x', name: 'Mine' }], groups: [{ id: 'cg-mine', name: 'Mine', project: 'cp-x' }], pinned: [], assignments: { s9: 'cg-mine' }, unarchived: ['s9'] });
+test('the first copy from Desktop keeps what was already in the file, the projects, the unarchived list and the archived sessions included', () => {
+  const f = folder({ seededAt: null, projects: [{ id: 'cp-x', name: 'Mine' }], groups: [{ id: 'cg-mine', name: 'Mine', project: 'cp-x' }], pinned: [], assignments: { s9: 'cg-mine' }, unarchived: ['s9'], archived: { s1: FIRST } });
   const desk = {
     problem: null,
     sessions: [{ id: 's1', localId: 'local_1' }, { id: 's9', localId: 'local_9' }],
@@ -64,6 +113,8 @@ test('the first copy from Desktop keeps what was already in the file, the projec
   assert.deepEqual(made.projects, [{ id: 'cp-x', name: 'Mine' }]);
   assert.deepEqual(made.assignments, { s1: 'cg-d', s9: 'cg-mine' });
   assert.deepEqual(made.unarchived, ['s9']);
+  assert.deepEqual(made.archived, { s1: FIRST });
+  assert.deepEqual(f.onDisk().archived, { s1: FIRST });
   assert.equal(f.layout.seed(desk), null, 'it copies once');
 });
 
@@ -72,6 +123,7 @@ const WITH_PROJECTS = {
   projects: [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Garden' }],
   groups: [{ id: 'cg-a', name: 'Reviewing', project: 'cp-a', colour: 'blue' }, { id: 'cg-b', name: 'Backlog', project: 'cp-b' }, { id: 'cg-c', name: 'Loose' }],
   unarchived: ['s5'],
+  archived: { s6: FIRST },
 };
 const ID = /^c[pg]-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -174,6 +226,7 @@ test('every other edit keeps the projects and the project of each group', () => 
   const f = folder(WITH_PROJECTS);
   f.layout.move('s1', 'cg-b');
   f.layout.pin('s2', true);
+  f.layout.archive('s4');
   f.layout.unarchive('s3');
   const after = f.onDisk();
   assert.deepEqual(after.projects, WITH_PROJECTS.projects);
