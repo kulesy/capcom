@@ -199,6 +199,38 @@ test('archiving a session that is archived already keeps the time it was archive
   assert.equal((await archive(s, token))[0].archivedAt, Date.parse('2026-10-17T09:30:00.000Z'));
 });
 
+// An old session brought back from the archive has no new message to lift it into the newest 60, so the list must keep it anyway.
+for (const [source, list, how] of [['desktop', 'ungrouped', 'Desktop'], ['capcom', 'started', 'Capcom'], ['cli', 'other', 'Capcom']]) {
+  test(`an old ${source} session archived by ${how} and unarchived without a message is listed last, below the 60 newest`, async () => {
+    const newer = Array.from({ length: 61 }, (_, i) => ({ id: `new-${i}`, title: `Newer ${i}`, source, ago: i + 1 }));
+    const s = await start({
+      sessions: [...newer, { id: 'old', title: 'Old one', source, ago: 6 * 24 * 60, archived: how === 'Desktop' }],
+      layout: how === 'Desktop' ? {} : { archived: { old: minutesAgo(5 * 24 * 60) } },
+    });
+    const { token } = await signIn(s);
+    const newest = newer.slice(0, 60).map(r => r.title);
+    assert.deepEqual(places(await index(s, token))[list], newest, 'the list stops at the 60 newest');
+    assert.deepEqual(titles(await archive(s, token)), ['Old one']);
+
+    assert.equal((await post(s, token, { id: 'old', archived: false })).status, 200);
+    assert.deepEqual(places(await index(s, token))[list], [...newest, 'Old one'], 'the old one comes last and the 60 newest are all still there');
+    assert.deepEqual(await archive(s, token), []);
+  });
+}
+
+test('an old routine run unarchived without a message is kept below the 12 earlier runs the routine shows', async () => {
+  const runs = Array.from({ length: 14 }, (_, i) => ({ id: `run-${i}`, title: `Run ${i}`, routine: 'nightly', ago: i + 1 }));
+  const s = await start({ sessions: [...runs, { id: 'old', title: 'Old run', routine: 'nightly', ago: 6 * 24 * 60, archived: true }] });
+  const { token } = await signIn(s);
+  const earlier = async () => titles((await index(s, token)).routines[0].earlier);
+  const newest = runs.slice(1, 13).map(r => r.title);
+  assert.deepEqual(await earlier(), newest);
+
+  assert.equal((await post(s, token, { id: 'old', archived: false })).status, 200);
+  assert.deepEqual(await earlier(), [...newest, 'Old run']);
+  assert.deepEqual(await archive(s, token), []);
+});
+
 test('a refused request says why and writes nothing', async () => {
   const s = await start({
     sessions: [{ id: 'one', title: 'One', ago: 1 }, { id: 'two', title: 'Two', ago: 2 }],

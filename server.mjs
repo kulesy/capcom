@@ -91,9 +91,11 @@ function buildIndex({ archived = false } = {}) {
   const routines = new Map();
   for (const r of visible.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
-    else if (routines.get(r.routine).earlier.length < 12) routines.get(r.routine).earlier.push(r);
+    else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
   const loose = visible.filter(r => !r.group && !r.routine && !r.pinned).sort(byRecent);
+  // A list stops at its newest 60 but keeps every session brought back from the archive, so an old one is not lost between the two.
+  const newest = list => list.filter((r, i) => i < 60 || unarchived.has(r.id));
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
@@ -101,9 +103,9 @@ function buildIndex({ archived = false } = {}) {
     pinned,
     groups,
     routines: [...routines.values()].sort((a, b) => byRecent(a.latest, b.latest)),
-    started: loose.filter(r => r.source === 'capcom').slice(0, 60),
-    ungrouped: loose.filter(r => r.source === 'desktop').slice(0, 60),
-    other: loose.filter(r => r.source === 'cli').slice(0, 60),
+    started: newest(loose.filter(r => r.source === 'capcom')),
+    ungrouped: newest(loose.filter(r => r.source === 'desktop')),
+    other: newest(loose.filter(r => r.source === 'cli')),
     rows,
   };
 }
