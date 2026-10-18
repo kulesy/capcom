@@ -24,16 +24,18 @@ function App() {
   const now = useRef({});
   now.current = { ix };
   const latest = useRef(0);
+  const shown = useRef(0);
   const writing = useRef(0);
   const [offering, stopOffering] = usePasskeyOffer();
   useRenewal();
 
-  // Only the newest request counts, so a slow answer cannot put an older list back.
+  // A list is drawn only if it is newer than the one on screen, so a slow answer cannot put an older list back, and once a load
+  // finishes the screen shows its list or a newer one.
   const loadIndex = useCallback(async () => {
     const mine = ++latest.current;
     try {
       const next = await api('api/sessions');
-      if (mine === latest.current) { setIx(next); setError(''); }
+      if (mine > shown.current) { shown.current = mine; setIx(next); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
     }
@@ -50,7 +52,7 @@ function App() {
     const pin = section === 'pinned';
     const group = before.groups.some(g => g.id === section) ? section : null;
     setIx(guess);
-    latest.current++;
+    shown.current = ++latest.current;
     writing.current++;
     try {
       await api(pin ? 'api/layout/pin' : 'api/layout/move', pin ? { id, pinned: true } : { id, group });
@@ -65,7 +67,7 @@ function App() {
   }, []);
 
   // A change to a project or group. It resolves with { problem, made }: the reason when the server refuses, or an empty string and
-  // the project or group the server made, changed or removed. The list is loaded again either way.
+  // the project or group the server made, changed or removed. Either way the list is loaded again before it resolves.
   const edit = useCallback(async (path, body) => {
     writing.current++;
     try {

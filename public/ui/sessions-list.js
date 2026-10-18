@@ -201,10 +201,11 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
   }, [note]);
 
   // Focus goes to the project or group a closed form made, or back to what it replaced or came from, as soon as the list has been
-  // drawn without the form. It scrolls into view, so `focus()` must never be given preventScroll.
+  // drawn without the form. The first selector that matches wins, so when the list could not be loaded again focus goes to the next
+  // one rather than to the page. It scrolls into view, so `focus()` must never be given preventScroll.
   useLayoutEffect(() => {
     if (back === null) return;
-    nav.current.querySelector(back)?.focus();
+    back.map(to => nav.current.querySelector(to)).find(Boolean)?.focus();
     setBack(null);
   }, [back]);
 
@@ -216,7 +217,7 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     return problem ? null : made;
   }
 
-  const closeForm = focus => { setForm(null); if (focus) setBack(focus); };
+  const closeForm = (...focus) => { setForm(null); setBack(focus); };
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
   const pop = (key, { label, items }, anchor) => setShown(open => (open?.key === key ? null : { key, anchor, label, items }));
 
@@ -230,12 +231,12 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
 
   async function moveGroup(g, project) {
     if (await change('api/layout/group/move', { id: g.id, project }) && project) expand(project);
-    setBack(headOf(g.id));
+    setBack([headOf(g.id)]);
   }
 
   async function addGroup(name, project) {
     const made = await change('api/layout/group/add', { name, project });
-    if (made) { closeForm(headOf(made.id)); if (project) expand(project); }
+    if (made) { closeForm(headOf(made.id), project ? headOf(project) : '.add'); if (project) expand(project); }
     return !!made;
   }
 
@@ -275,7 +276,7 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     ? html`<${NameForm} label="New project" action="Create" onCancel=${() => closeForm('.add')}
         onSubmit=${async name => {
           const made = await change('api/layout/project/add', { name });
-          if (made) closeForm(headOf(made.id));
+          if (made) closeForm(headOf(made.id), '.add');
           return !!made;
         }} />`
     : html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`;
