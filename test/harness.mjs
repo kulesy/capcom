@@ -24,7 +24,9 @@ const freePort = () => new Promise(resolve => {
 });
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started and what it was sent.
-// A session is { id, title, archived, group, pinned, ago } with `ago` in minutes, and `groups` and `layout` are written as they are.
+// A session is { id, title, archived, archivedAgo, group, pinned, ago, source }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
+// A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
+// session does. `groups` and `layout` are written as they are.
 function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
@@ -33,13 +35,23 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   fs.mkdirSync(transcripts, { recursive: true });
   fs.writeFileSync(path.join(desktop, 'claude_desktop_config.json'), JSON.stringify({ preferences: { epitaxyPrefs: { 'dframe-group-scopes': { scope: { groups: [] } } } } }));
   const now = Date.now();
-  sessions.forEach(({ id, title = '', archived = false, ago = 10 }) => {
+  const started = [];
+  sessions.forEach(({ id, title = '', archived = false, archivedAgo, ago = 10, source = 'desktop' }) => {
     const at = now - ago * 60_000;
-    fs.writeFileSync(path.join(records, `local_${id}.json`), JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at }));
+    if (source === 'desktop') {
+      const record = path.join(records, `local_${id}.json`);
+      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at }));
+      if (archivedAgo !== undefined) {
+        const changed = (now - archivedAgo * 60_000) / 1000;
+        fs.utimesSync(record, changed, changed);
+      }
+    }
+    if (source === 'capcom') started.push({ id, cwd: home, at, title });
     const transcript = path.join(transcripts, `${id}.jsonl`);
-    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: 'hello' } })}\n`);
+    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
     fs.utimesSync(transcript, at / 1000, at / 1000);
   });
+  if (started.length) fs.writeFileSync(path.join(state, 'started.json'), JSON.stringify(started));
   fs.writeFileSync(path.join(state, 'layout.json'), JSON.stringify({
     seededAt: '2026-10-16T00:00:00.000Z',
     groups,
@@ -116,7 +128,7 @@ export async function signIn(s, headers) {
 export const cliCalls = s => (fs.existsSync(s.cliLog) ? fs.readFileSync(s.cliLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
 
 export async function until(check, ms = 4000) {
-  for (let waited = 0; !check(); waited += 20) {
+  for (let waited = 0; !(await check()); waited += 20) {
     if (waited > ms) throw new Error('timed out waiting');
     await new Promise(resolve => setTimeout(resolve, 20));
   }

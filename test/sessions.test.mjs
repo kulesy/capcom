@@ -96,6 +96,58 @@ test('a message to an archived session brings it back to where it was, on the se
   assert.deepEqual(desktop(), before, "Desktop's records are never written");
 });
 
+test('a message to a session archived in Capcom brings it back to where it was, whoever started it, and a later message writes nothing', async () => {
+  const archivedAt = '2026-10-17T09:30:00.000Z';
+  const s = await start({
+    claude: true,
+    groups: [{ id: 'cg-work', name: 'Work' }],
+    sessions: [
+      { id: 'live', title: 'Live one', group: 'cg-work', ago: 1 },
+      { id: 'grouped', title: 'Archived in a group', group: 'cg-work', ago: 2 },
+      { id: 'pinned', title: 'Archived and pinned', pinned: true, ago: 3 },
+      { id: 'started', title: 'Started here and archived', source: 'capcom', ago: 4 },
+      { id: 'terminal', title: 'Terminal session archived', source: 'cli', ago: 5 },
+    ],
+    layout: { archived: { grouped: archivedAt, pinned: archivedAt, started: archivedAt, terminal: archivedAt } },
+  });
+  const { token } = await signIn(s);
+  const send = (id, text) => request(s, 'POST', `/api/sessions/${id}/send`, { headers: as(token), json: { text } });
+  const said = text => cliCalls(s).some(c => c.user === text);
+  const records = path.join(s.home, 'Library', 'Application Support', 'Claude', 'claude-code-sessions', 'account', 'org');
+  const desktop = () => fs.readdirSync(records).sort().map(name => fs.readFileSync(path.join(records, name), 'utf8'));
+  const before = desktop();
+
+  let now = await listing(s, token);
+  assert.deepEqual(titles(now.sessions.groups[0].sessions), ['Live one']);
+  assert.deepEqual([now.sessions.pinned, now.sessions.started, now.sessions.other].map(titles), [[], [], []]);
+  assert.deepEqual(titles(now.archived).sort(), ['Archived and pinned', 'Archived in a group', 'Started here and archived', 'Terminal session archived']);
+
+  const first = await send('grouped', 'the message that brings it back');
+  assert.equal(first.body().unarchived, true);
+  await until(() => said('the message that brings it back'));
+  now = await listing(s, token);
+  assert.deepEqual(titles(now.sessions.groups[0].sessions), ['Archived in a group', 'Live one']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(s.layout, 'utf8')).archived, { pinned: archivedAt, started: archivedAt, terminal: archivedAt });
+  assert.deepEqual(JSON.parse(fs.readFileSync(s.layout, 'utf8')).unarchived, ['grouped']);
+
+  const written = fs.readFileSync(s.layout, 'utf8');
+  const later = await send('grouped', 'and a message to it after that');
+  assert.equal(later.status, 200);
+  assert.equal(later.body().unarchived, undefined, 'the page is not told again');
+  await until(() => said('and a message to it after that'));
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), written, 'nothing is written for a session that is not archived');
+
+  for (const id of ['pinned', 'started', 'terminal']) assert.equal((await send(id, `a message to ${id}`)).body().unarchived, true, id);
+  now = await listing(s, token);
+  assert.deepEqual(titles(now.sessions.pinned), ['Archived and pinned']);
+  assert.deepEqual(titles(now.sessions.started), ['Started here and archived']);
+  assert.deepEqual(titles(now.sessions.other), ['Terminal session archived']);
+  assert.deepEqual(now.archived, []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(s.layout, 'utf8')).archived, {});
+  assert.deepEqual(JSON.parse(fs.readFileSync(s.layout, 'utf8')).unarchived, ['grouped', 'pinned', 'started', 'terminal']);
+  assert.deepEqual(desktop(), before, "Desktop's records are never written");
+});
+
 test('a message to an archived session still goes through when layout.json cannot be used, and the file is left as it was', async () => {
   const s = await start({ claude: true, sessions: [{ id: 'archived', title: 'Archived one', archived: true, ago: 1 }] });
   const { token } = await signIn(s);

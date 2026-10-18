@@ -78,7 +78,10 @@ function buildIndex({ archived = false } = {}) {
   for (const r of rows.values()) {
     r.group = groupIds.has(own.assignments[r.id]) ? own.assignments[r.id] : null;
     r.pinned = pins.has(r.id);
-    if (unarchived.has(r.id)) r.archived = false;
+    // Capcom's own choice wins over Desktop's flag, in both directions. A session in both lists is archived.
+    if (Object.hasOwn(own.archived, r.id)) r.archived = true;
+    else if (unarchived.has(r.id)) r.archived = false;
+    if (r.archived) r.archivedAt = Date.parse(own.archived[r.id]) || r.changedAt || r.lastActivityAt;
   }
 
   const visible = [...rows.values()].filter(r => archived || !r.archived);
@@ -453,11 +456,11 @@ async function api(req, res, u) {
     const { rows, ...index } = buildIndex({ archived: u.searchParams.get('archived') === '1' });
     return send(res, 200, index);
   }
-  // Archived sessions are left out of the list and found through search. Desktop does not record when a session was
-  // archived, but archiving rewrites its record, so the record's file time stands in, newest first.
+  // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
+  // archived a session, but archiving rewrites its record, so the record's file time stands in.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
     const archived = [...buildIndex({ archived: true }).rows.values()].filter(r => r.archived)
-      .map(({ id, title, cwd, branch, routine, state, lastActivityAt, changedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt: changedAt || lastActivityAt, archived: true }))
+      .map(({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, archived: true }))
       .sort((a, b) => b.archivedAt - a.archivedAt);
     return send(res, 200, { archived });
   }
