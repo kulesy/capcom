@@ -1363,6 +1363,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 }
 
 .viewer-stage {
+  position: relative;
   display: flex;
   min-height: 0;
   padding: 0.25rem 1rem 0.5rem;
@@ -1370,13 +1371,9 @@ html.viewing, html.viewing body { overflow: hidden; }
   touch-action: none;
 }
 
-.viewer-stage[data-size="actual"] {
-  overflow: auto;
-  overscroll-behavior: contain;
-  touch-action: pan-x pan-y;
-}
+.viewer-stage[data-size="zoom"] { cursor: grab; }
 
-.viewer-stage:focus-visible { outline-offset: -2px; }
+.viewer-stage[data-size="zoom"][data-drag] { cursor: grabbing; }
 
 .viewer-img {
   display: block;
@@ -1391,7 +1388,14 @@ html.viewing, html.viewing body { overflow: hidden; }
   transition: opacity 160ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.viewer-stage[data-size="actual"] .viewer-img { max-width: none; max-height: none; }
+.viewer-stage[data-size="zoom"] .viewer-img {
+  position: absolute;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  box-sizing: content-box;
+  -webkit-touch-callout: none;
+}
 
 .viewer-img[data-state="loading"] { position: absolute; opacity: 0; pointer-events: none; }
 

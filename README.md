@@ -46,9 +46,14 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   pictures in that chat in the order the thread shows them, those you sent and those Claude's tools returned
   together, with a count such as "2 of 5" between the arrows. Pictures attached to the box you are writing step
   among themselves only.
-  Actual size shows the picture at its own pixel size and scrolls to the rest of it. There a swipe pans and, once
-  Tab has reached the picture, the left and right arrow keys scroll it, so only the arrows under the picture
-  step. Fit to screen goes back. The link at the top opens the picture on its own in a new tab.
+  Pinch with two fingers on a phone or a trackpad to zoom in on the spot between them, or hold Ctrl and turn the
+  scroll wheel. Double tap the picture to zoom in where you tapped, and double tap again to go back. Actual size
+  shows the middle of the picture at its own pixel size, and Fit to screen goes back. The button is greyed out
+  until the picture has loaded, and when it already fits at its own size. While the picture is zoomed, you move
+  around it with a drag, a swipe, the scroll wheel or the arrow keys, so only the arrows under the picture step.
+  Page Up and Page Down move it a screen at a time, and Home and End go to its top and bottom. The next picture
+  opens at fit. A pinch does not step or zoom the page behind. The link at the top opens the picture on its own in
+  a new tab.
   While the viewer is open, Tab stays among its controls, the page behind does not scroll or take keys, and
   Esc closes the viewer without stopping a running chat. Closing it puts focus back on the thumbnail you
   clicked, however far you stepped, so you stay where you were reading. If that thumbnail has gone, as when a
