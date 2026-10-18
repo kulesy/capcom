@@ -23,8 +23,9 @@ const freePort = () => new Promise(resolve => {
   });
 });
 
-// Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started and what it was sent.
-// A session is { id, title, archived, archivedAgo, group, pinned, ago, source }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
+// Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
+// and when its input closed. Sent 'ask for approval' it asks to run a command, and sent 'finish the turn' it ends the turn and stays open.
+// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are.
 function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false }) {
@@ -36,11 +37,11 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   fs.writeFileSync(path.join(desktop, 'claude_desktop_config.json'), JSON.stringify({ preferences: { epitaxyPrefs: { 'dframe-group-scopes': { scope: { groups: [] } } } } }));
   const now = Date.now();
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, ago = 10, source = 'desktop' }) => {
+  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop' }) => {
     const at = now - ago * 60_000;
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
-      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at }));
+      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at, ...(routine && { scheduledTaskId: routine }) }));
       if (archivedAgo !== undefined) {
         const changed = (now - archivedAgo * 60_000) / 1000;
         fs.utimesSync(record, changed, changed);
@@ -67,10 +68,19 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "import fs from 'node:fs';",
     "import readline from 'node:readline';",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
+    "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
     "note({ started: process.argv.slice(2) });",
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
-    "  try { const m = JSON.parse(line); if (m.type === 'user') note({ user: m.message.content }); } catch {}",
-    "}).on('close', () => process.exit(0));",
+    "  try {",
+    "    const m = JSON.parse(line);",
+    "    if (m.type === 'control_request') note({ control: m.request.subtype });",
+    "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
+    "    if (m.type !== 'user') return;",
+    "    note({ user: m.message.content });",
+    "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
+    "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    "  } catch {}",
+    "}).on('close', () => { note({ closed: true }); process.exit(0); });",
     '',
   ].join('\n'), { mode: 0o755 });
   return { cli, log };
@@ -124,7 +134,7 @@ export async function signIn(s, headers) {
   return { res, cookie, token: tokenIn(cookie) };
 }
 
-// What the fake CLI has logged so far: how it was started, and each message it was sent.
+// What the fake CLI has logged so far: how it was started, each message and control message it was sent, and when its input closed.
 export const cliCalls = s => (fs.existsSync(s.cliLog) ? fs.readFileSync(s.cliLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : []);
 
 export async function until(check, ms = 4000) {
