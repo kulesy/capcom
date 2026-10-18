@@ -8,7 +8,7 @@ import { useLocal } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
-import { moveTargets, nextStop } from './tree.js';
+import { moveTargets, nextStop, withoutRow } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
@@ -70,20 +70,15 @@ export function placeRow(ix, id, section) {
   if (inPlace) return ix;
   const moved = { ...row, pinned: section === 'pinned', group };
   const lands = LOOSE.includes(section) ? looseHome(row) : section;
-  const without = list => list.filter(r => r.id !== id);
-  const into = (section, list) => (section === lands ? [...without(list), moved].sort(group ? byTitle : byRecent) : without(list));
+  const rest = withoutRow(ix, id);
+  const into = (section, list) => (section === lands ? [...list, moved].sort(group ? byTitle : byRecent) : list);
   return {
-    ...ix,
-    pinned: into('pinned', ix.pinned),
-    groups: ix.groups.map(g => ({ ...g, sessions: into(g.id, g.sessions) })),
-    routines: ix.routines.flatMap(g => {
-      if (g.latest.id !== id) return [{ ...g, earlier: without(g.earlier) }];
-      const [latest, ...earlier] = g.earlier;
-      return latest ? [{ ...g, latest, earlier }] : [];
-    }),
-    started: into('started', ix.started),
-    ungrouped: into('ungrouped', ix.ungrouped),
-    other: into('other', ix.other),
+    ...rest,
+    pinned: into('pinned', rest.pinned),
+    groups: rest.groups.map(g => ({ ...g, sessions: into(g.id, g.sessions) })),
+    started: into('started', rest.started),
+    ungrouped: into('ungrouped', rest.ungrouped),
+    other: into('other', rest.other),
   };
 }
 
