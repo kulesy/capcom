@@ -6,6 +6,7 @@ import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
+import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
 import { everyRow } from './sessions-list.js';
 
 const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
@@ -72,7 +73,7 @@ function Hit({ it, selected, onPick, onHover, onUnarchive }) {
 export function Spotlight({ ix, archive, onClose }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState('all');
-  const [active, setActive] = useState(0);
+  const [held, setHeld] = useState(FIRST);
   const [archived, setArchived] = useState([]);
   const [gone, setGone] = useState([]);
   const [note, setNote] = useState(null);
@@ -97,26 +98,38 @@ export function Spotlight({ ix, archive, onClose }) {
     return sectionsFor(chip, ix, kept, query).filter(s => s.items.length);
   }, [ix, archived, gone, chip, query]);
   const flat = sections.flatMap(s => s.items);
-  const pick = Math.min(active, Math.max(flat.length - 1, 0));
+  const keys = flat.map(it => it.key);
+  const pick = selectedIn(keys, held);
   const canUnarchive = !!flat[pick]?.r?.archived;
 
   useLayoutEffect(() => { input.current.focus(); }, []);
+  // A result held by its key has its position kept up to date, so when it goes the selection falls back on where it last was.
+  useLayoutEffect(() => { setHeld(now => (now.key === null || (now.at === pick && now.key === keys[pick]) ? now : holdAt(keys, pick))); });
   useLayoutEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [pick, sections]);
 
   const open = it => { onClose(); location.hash = it.hash || `#/s/${encodeURIComponent(it.r.id)}`; };
-  const choose = key => { setChip(key); setActive(0); input.current.focus(); };
+  const choose = key => { setChip(key); setHeld(FIRST); input.current.focus(); };
   const step = by => {
     setChip(now => CHIPS[Math.max(0, Math.min(CHIPS.length - 1, CHIPS.findIndex(([key]) => key === now) + by))][0]);
-    setActive(0);
+    setHeld(FIRST);
   };
 
   // Takes an archived session out of the list at once and asks the server to unarchive it. If the server refuses, the session
   // comes back and the reason shows.
-  const unarchive = async ({ r }) => {
+  const unarchive = async it => {
+    const { r } = it;
+    // The selection goes to the result beside it, held by key, so the session reappearing in Sessions does not move it.
+    const beside = keys[pick] === it.key ? holdBeside(keys, pick) : null;
+    const was = pick;
+    if (beside) setHeld(beside);
     setGone(ids => [...ids, r.id]);
     input.current.focus();
     const { problem } = await archive(r.id, false);
-    if (problem) setGone(ids => ids.filter(id => id !== r.id));
+    if (problem) {
+      setGone(ids => ids.filter(id => id !== r.id));
+      // A refusal puts the selection back on the session, unless it has been moved on since.
+      if (beside) setHeld(now => (now.key === beside.key ? { key: it.key, at: was } : now));
+    }
     setNote(problem ? { text: problem, problem: true } : { text: `Unarchived ${r.title || UNTITLED}.` });
   };
 
@@ -127,9 +140,9 @@ export function Spotlight({ ix, archive, onClose }) {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
     else if (e.key === 'ArrowRight' && box.selectionStart === box.value.length) { e.preventDefault(); step(1); }
     else if (e.key === 'ArrowLeft' && box.selectionEnd === 0) { e.preventDefault(); step(-1); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(pick + 1, flat.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(pick - 1, 0)); }
-    else if (e.key === 'Enter' && e.shiftKey && canUnarchive && !e.isComposing) { e.preventDefault(); unarchive(flat[pick]); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); setHeld(holdStep(keys, pick, 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHeld(holdStep(keys, pick, -1)); }
+    else if (e.key === 'Enter' && e.shiftKey && !e.isComposing) { e.preventDefault(); if (canUnarchive) unarchive(flat[pick]); }
     else if (e.key === 'Enter' && !e.isComposing && flat[pick]) { e.preventDefault(); open(flat[pick]); }
   };
 
@@ -139,7 +152,7 @@ export function Spotlight({ ix, archive, onClose }) {
       <div class="spotlight-top">
         <input class="spotlight-input" ref=${input} type="search" placeholder="Search" autocomplete="off" spellcheck=${false}
           aria-label="Search" aria-controls="spotlightResults" value=${query}
-          onInput=${e => { setQuery(e.target.value); setActive(0); }} onKeyDown=${onKeyDown} />
+          onInput=${e => { setQuery(e.target.value); setHeld(FIRST); }} onKeyDown=${onKeyDown} />
         <button class="icon-btn spotlight-close" type="button" aria-label="Close" onClick=${onClose}>
           <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
         </button>
@@ -150,7 +163,7 @@ export function Spotlight({ ix, archive, onClose }) {
       <div class="spotlight-results" id="spotlightResults" role="listbox" ref=${list}>
         ${sections.length
           ? sections.map(s => html`<section key=${s.title}><h3 class="spotlight-head">${s.title}</h3><ul>
-              ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} selected=${index.get(it) === pick} onPick=${open} onHover=${() => index.get(it) !== pick && setActive(index.get(it))} onUnarchive=${unarchive} />`)}
+              ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} selected=${index.get(it) === pick} onPick=${open} onHover=${() => index.get(it) !== pick && setHeld(holdAt(keys, index.get(it)))} onUnarchive=${unarchive} />`)}
             </ul></section>`)
           : html`<p class="quiet pad">${ix ? 'Nothing matches.' : 'Loading sessions'}</p>`}
       </div>
