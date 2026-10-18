@@ -144,7 +144,7 @@ function App() {
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
     </main>
-    ${finding ? html`<${Spotlight} ix=${ix} onClose=${() => setFinding(false)} />` : null}
+    ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onClose=${() => setFinding(false)} />` : null}
   </div>
   <${ViewerHost} />
 <//>`;

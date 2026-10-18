@@ -1,5 +1,6 @@
 // Ctrl+K searches from anywhere, laid out like Desktop's search. Chips pick what to look through, and the left and right
-// arrows move between them. Archived sessions are only found here, under their own chip, most recently archived first.
+// arrows move between them. Archived sessions are only found here, under their own chip, most recently archived first, and
+// only here is one unarchived, by its button or with Shift+Enter.
 import { api } from './api.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
@@ -43,32 +44,38 @@ function sectionsFor(chip, ix, archived, query) {
   ];
 }
 
-function Hit({ it, selected, onPick, onHover }) {
+// The hover is on the item, so a row stays selected while the pointer is over its Unarchive button.
+function Hit({ it, selected, onPick, onHover, onUnarchive }) {
   const pick = e => { e.preventDefault(); onPick(it); };
   if (it.action) {
-    return html`<li role="option" aria-selected=${selected}>
-      <a class="row action" href=${it.hash} aria-selected=${selected} onMouseMove=${onHover} onClick=${pick}>
+    return html`<li role="option" aria-selected=${selected} onMouseMove=${onHover}>
+      <a class="row action" href=${it.hash} aria-selected=${selected} onClick=${pick}>
         <span class="action-icon" aria-hidden="true">+</span>
         <span class="row-title">${it.action}</span>
         <kbd class="row-time">${it.hint}</kbd>
       </a></li>`;
   }
   const { r } = it;
+  const title = r.title || UNTITLED;
   const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join('  ');
-  return html`<li role="option" aria-selected=${selected}>
-    <a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} aria-selected=${selected} onMouseMove=${onHover} onClick=${pick}>
+  return html`<li class=${r.archived ? 'can-unarchive' : null} role="option" aria-selected=${selected} onMouseMove=${onHover}>
+    <a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} aria-selected=${selected} onClick=${pick}>
       <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
-      <span class="row-title">${r.title || UNTITLED}</span>
+      <span class="row-title">${title}</span>
       <time class="row-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>
       ${meta ? html`<span class="row-meta">${meta}</span>` : null}
-    </a></li>`;
+    </a>
+    ${r.archived ? html`<button class="unarchive" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button>` : null}
+  </li>`;
 }
 
-export function Spotlight({ ix, onClose }) {
+export function Spotlight({ ix, archive, onClose }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState('all');
   const [active, setActive] = useState(0);
   const [archived, setArchived] = useState([]);
+  const [gone, setGone] = useState([]);
+  const [note, setNote] = useState(null);
   const input = useRef(null);
   const list = useRef(null);
 
@@ -78,9 +85,20 @@ export function Spotlight({ ix, onClose }) {
     return () => { live = false; };
   }, []);
 
-  const sections = useMemo(() => (ix ? sectionsFor(chip, ix, archived, query).filter(s => s.items.length) : []), [ix, archived, chip, query]);
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => setNote(null), 6000);
+    return () => clearTimeout(timer);
+  }, [note]);
+
+  const sections = useMemo(() => {
+    if (!ix) return [];
+    const kept = archived.filter(r => !gone.includes(r.id));
+    return sectionsFor(chip, ix, kept, query).filter(s => s.items.length);
+  }, [ix, archived, gone, chip, query]);
   const flat = sections.flatMap(s => s.items);
   const pick = Math.min(active, Math.max(flat.length - 1, 0));
+  const canUnarchive = !!flat[pick]?.r?.archived;
 
   useLayoutEffect(() => { input.current.focus(); }, []);
   useLayoutEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [pick, sections]);
@@ -92,6 +110,16 @@ export function Spotlight({ ix, onClose }) {
     setActive(0);
   };
 
+  // Takes an archived session out of the list at once and asks the server to unarchive it. If the server refuses, the session
+  // comes back and the reason shows.
+  const unarchive = async ({ r }) => {
+    setGone(ids => [...ids, r.id]);
+    input.current.focus();
+    const { problem } = await archive(r.id, false);
+    if (problem) setGone(ids => ids.filter(id => id !== r.id));
+    setNote(problem ? { text: problem, problem: true } : { text: `Unarchived ${r.title || UNTITLED}.` });
+  };
+
   // The arrows change chips only from the edge of the text, so they still move the caret through a query.
   // Esc stops here, so it closes the spotlight without also stopping a chat that is running behind it.
   const onKeyDown = e => {
@@ -101,6 +129,7 @@ export function Spotlight({ ix, onClose }) {
     else if (e.key === 'ArrowLeft' && box.selectionEnd === 0) { e.preventDefault(); step(-1); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(pick + 1, flat.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(pick - 1, 0)); }
+    else if (e.key === 'Enter' && e.shiftKey && canUnarchive && !e.isComposing) { e.preventDefault(); unarchive(flat[pick]); }
     else if (e.key === 'Enter' && !e.isComposing && flat[pick]) { e.preventDefault(); open(flat[pick]); }
   };
 
@@ -121,12 +150,14 @@ export function Spotlight({ ix, onClose }) {
       <div class="spotlight-results" id="spotlightResults" role="listbox" ref=${list}>
         ${sections.length
           ? sections.map(s => html`<section key=${s.title}><h3 class="spotlight-head">${s.title}</h3><ul>
-              ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} selected=${index.get(it) === pick} onPick=${open} onHover=${() => index.get(it) !== pick && setActive(index.get(it))} />`)}
+              ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} selected=${index.get(it) === pick} onPick=${open} onHover=${() => index.get(it) !== pick && setActive(index.get(it))} onUnarchive=${unarchive} />`)}
             </ul></section>`)
           : html`<p class="quiet pad">${ix ? 'Nothing matches.' : 'Loading sessions'}</p>`}
       </div>
+      <div class="spotlight-status" role="status">${note ? html`<p class=${note.problem ? 'problem' : 'note'}>${note.text}</p>` : null}</div>
       <footer class="spotlight-foot">
         <span>Close <kbd>Esc</kbd></span><span>Change type <kbd>←</kbd><kbd>→</kbd></span><span>Open <kbd>↵</kbd></span>
+        ${canUnarchive ? html`<span>Unarchive <kbd>⇧↵</kbd></span>` : null}
       </footer>
     </div>
   </div>`;

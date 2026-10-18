@@ -1219,7 +1219,7 @@ button.thumb:hover { border-color: var(--rule-strong); }
 }
 
 /* Only the results shrink when the list is long. The chips scroll sideways, and a scroller would otherwise shrink too. */
-.spotlight-top, .chips, .spotlight-foot { flex: none; }
+.spotlight-top, .chips, .spotlight-status, .spotlight-foot { flex: none; }
 
 .spotlight-top { display: flex; align-items: center; gap: 0.25rem; padding-right: 0.5rem; }
 
@@ -1261,6 +1261,29 @@ button.thumb:hover { border-color: var(--rule-strong); }
 
 .row.action .action-icon { grid-area: lamp; font-size: 1rem; line-height: 1; color: var(--ink-quiet); text-align: center; }
 
+.can-unarchive { position: relative; }
+
+.can-unarchive > .row { padding-right: 5.5rem; }
+
+button.unarchive {
+  position: absolute;
+  top: 0;
+  right: 0.35rem;
+  bottom: 0;
+  border: 0;
+  background: none;
+  padding: 0 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ink-quiet);
+  cursor: pointer;
+}
+
+button.unarchive:hover { color: var(--ink); text-decoration: underline; }
+
+button.unarchive:focus-visible { outline-offset: -2px; border-radius: 0.5rem; }
+
+.spotlight-status .note, .spotlight-status .problem { margin: 0.5rem 0.75rem; }
+
 .spotlight-foot {
   display: flex;
   flex-wrap: wrap;
@@ -1289,6 +1312,8 @@ kbd + kbd { margin-left: 0.2rem; }
 
 @media (pointer: coarse) {
   .spotlight-foot { display: none; }
+
+  button.unarchive { min-height: 2.75rem; }
 }
 
 .viewer {
