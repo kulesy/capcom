@@ -530,7 +530,8 @@ async function api(req, res, u) {
   const action = parts[3];
   if (req.method === 'GET' && action === 'messages') {
     const row = findRow(id);
-    return send(res, 200, { ...readMessages(id, u.searchParams), session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine } });
+    const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};
+    return send(res, 200, { ...readMessages(id, u.searchParams), session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });

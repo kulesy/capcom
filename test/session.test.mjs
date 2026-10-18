@@ -118,3 +118,39 @@ test('an answer that fails after the start has moved on is dropped without takin
     chat.close();
   });
 });
+
+test('connector names that Desktop gives after the chat opened reach it, and the same names again leave its session as it was', async () => {
+  const real = globalThis.fetch;
+  const planner = '5b6c7d8e-2222-4f3a-8b9c-abcdef012345';
+  let connectors = {};
+  globalThis.fetch = async url => {
+    const body = String(url).endsWith('/chips')
+      ? { chips: [] }
+      : { items: [], start: 0, end: 10, hasEarlier: false, session: connectors && { id: 'chat-names', title: 'Moved to Desktop', connectors: { ...connectors } } };
+    return { status: 200, ok: true, json: async () => body };
+  };
+  const settled = () => new Promise(resolve => setImmediate(resolve));
+  try {
+    const { chat, stream } = await openChat('chat-names');
+    const session = () => chat.store.get().session;
+    assert.deepEqual(session().connectors, {}, 'Desktop had no record when the chat opened');
+
+    connectors = { [planner]: 'Planner' };
+    stream.emit('changed', {});
+    await settled();
+    assert.deepEqual(session(), { id: 'chat-names', title: 'Moved to Desktop', connectors: { [planner]: 'Planner' } });
+
+    const held = session();
+    stream.emit('changed', {});
+    await settled();
+    assert.equal(session(), held, 'the same names again change nothing');
+
+    connectors = null;
+    stream.emit('changed', {});
+    await settled();
+    assert.equal(session(), held, 'a reply with no session keeps the names');
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
+  }
+});

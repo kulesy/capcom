@@ -3,6 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { absorb, activity, display, prepend, summarize } from '../public/ui/thread.js';
 
+const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
+const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
+
 let n = 0;
 const item = (kind, extra = {}) => ({ kind, key: `k${++n}`, ...extra });
 const tool = (name, extra = {}) => item('tool', { id: `t${n + 1}`, name, status: 'ok', input: {}, ...extra });
@@ -60,6 +63,17 @@ test('several tools at once are counted and named once each', () => {
 test('several MCP tools at once are named with their servers, so two called computer are told apart', () => {
   const work = { tools: [{ name: 'mcp__Claude_Browser__computer', summary: 'screenshot' }, { name: 'mcp__claude-in-chrome__computer', summary: 'screenshot' }, { name: 'mcp__Claude_Browser__computer', summary: 'zoom' }, { name: 'Read', summary: 'a' }] };
   assert.deepEqual(activity(work), { doing: 'Running 4 tools', detail: 'Claude Browser computer, Chrome computer, Read' });
+});
+
+test('the status line names a connector by the name its session gives it, and as a connector when it gives none, for one tool or several', () => {
+  const names = { [MAILBOX]: 'Mailbox' };
+  const one = { tools: [{ name: `mcp__${MAILBOX}__search_threads`, summary: 'invoices' }] };
+  assert.deepEqual(activity(one, names), { doing: 'Using', detail: 'Mailbox search threads: invoices' });
+  assert.deepEqual(activity(one), { doing: 'Using', detail: 'connector search threads: invoices' });
+  const several = { tools: [{ name: `mcp__${MAILBOX}__search_threads`, summary: 'a' }, { name: `mcp__${CALENDAR}__list_events`, summary: 'b' }, { name: 'Read', summary: 'c' }] };
+  assert.deepEqual(activity(several, names), { doing: 'Running 3 tools', detail: 'Mailbox search threads, connector list events, Read' });
+  assert.deepEqual(activity(several), { doing: 'Running 3 tools', detail: 'connector search threads, connector list events, Read' });
+  assert.deepEqual(activity({ tools: [{ name: 'Bash', summary: 'npm test' }] }, names), { doing: 'Running', detail: 'npm test' });
 });
 
 test('with no tool the status line says thinking, writing or just working', () => {

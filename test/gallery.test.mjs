@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { dataUrlToBlob, draftImages, fromTool, imageKey, isDataUrl, joinEarlier, nearestThumb, overflow, position, stepIndex, stepKey, swipeStep, tabTarget, threadImages, tileLabel, toolShots } from '../public/ui/gallery.js';
 
 const url = ref => `api/sessions/s1/images/${ref}`;
+const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
+const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
 
 test('a saved picture is named by its ref and one still being sent by the id the page gave it', () => {
   assert.equal(imageKey({ ref: '120.0.abc', type: 'image/png' }), '120.0.abc');
@@ -64,6 +66,25 @@ test('pictures from different servers are each named for their own source, in th
   assert.deepEqual(toolShots(items).map(s => s.source), ['Chrome', 'Claude Browser', 'a connector', 'Google Drive', 'Read']);
   const shots = toolShots(items);
   assert.deepEqual(shots.slice(0, 3).map((s, n) => tileLabel(n, shots.length, s.source)), ['View image 1 of 5, from Chrome', 'View image 2 of 5, from Claude Browser', 'View image 3 of 5, from a connector']);
+});
+
+test('a picture from a connector the session names is told apart by that name, in the viewer and on the tiles, and one from a connector it does not name stays a connector', () => {
+  const shot = ref => ({ ref, type: 'image/png' });
+  const items = [
+    { kind: 'user', text: 'look', images: [shot('1.0.a')] },
+    { kind: 'tool', id: 't1', name: `mcp__${MAILBOX}__read_thread`, images: [shot('2.r0.a')] },
+    { kind: 'tool', id: 't2', name: `mcp__${CALENDAR}__list_events`, images: [shot('3.r0.a')] },
+    { kind: 'tool', id: 't3', name: 'mcp__claude_ai_Google_Drive__download_file_content', images: [shot('4.r0.a')] },
+    { kind: 'tool', id: 't4', name: 'Read', images: [shot('5.r0.a')] },
+  ];
+  const names = { [MAILBOX]: 'Mailbox' };
+  assert.deepEqual(threadImages(items, [], url, names).map(i => i.alt), ['Attached image', 'Image from Mailbox', 'Image from a connector', 'Image from Google Drive', 'Image from Read']);
+  assert.deepEqual(threadImages(items, [], url).map(i => i.alt), ['Attached image', 'Image from a connector', 'Image from a connector', 'Image from Google Drive', 'Image from Read']);
+  assert.deepEqual(toolShots(items.slice(1), names).map(s => s.source), ['Mailbox', 'a connector', 'Google Drive', 'Read']);
+  assert.deepEqual(toolShots(items.slice(1)).map(s => s.source), ['a connector', 'a connector', 'Google Drive', 'Read']);
+  const shots = toolShots(items.slice(1, 3), names);
+  assert.deepEqual(shots.map((s, n) => tileLabel(n, shots.length, s.source)), ['View image 1 of 2, from Mailbox', 'View image 2 of 2, from a connector']);
+  assert.equal(threadImages(items, [], url, names)[1].src, 'api/sessions/s1/images/2.r0.a', 'the names change the label and nothing else');
 });
 
 test('the pictures being composed are listed by their data URLs and named by their files', () => {

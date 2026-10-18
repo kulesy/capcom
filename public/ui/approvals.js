@@ -22,7 +22,7 @@ function chromeCard(tool, i) {
 const capitalised = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 
 // Says exactly what is about to happen, so the answer is an informed one.
-function cardParts(p) {
+function cardParts(p, names) {
   const i = p.input || {};
   if (p.tool === 'Bash') return { title: 'Bash wants to run a command', fields: [['Command', i.command]] };
   if (p.tool === 'Edit') return { title: `Edit wants to change ${p.summary}`, diff: [i.old_string, i.new_string] };
@@ -36,7 +36,7 @@ function cardParts(p) {
   if (p.tool?.startsWith(CHROME)) return chromeCard(p.tool.slice(CHROME.length), i);
   const mcp = p.tool?.match(/^mcp__(.+?)__(.+)$/);
   const fields = Object.entries(i).filter(([, v]) => v !== '' && v != null).slice(0, 8).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v, null, 2)]);
-  return { title: mcp ? `${capitalised(toolSource(p.tool))} wants to use ${toolLabel(p.tool)}` : `${p.label} wants to run`, fields };
+  return { title: mcp ? `${capitalised(toolSource(p.tool, names))} wants to use ${toolLabel(p.tool)}` : `${p.label} wants to run`, fields };
 }
 
 function Diff({ before, after }) {
@@ -57,9 +57,9 @@ function useDecide(p, onDecide) {
   return [busy, decide];
 }
 
-function ApprovalCard({ p, onDecide }) {
+function ApprovalCard({ p, names, onDecide }) {
   const [busy, decide] = useDecide(p, onDecide);
-  const c = cardParts(p);
+  const c = cardParts(p, names);
   const fields = (c.fields || []).filter(([, v]) => v !== undefined && v !== null && v !== '');
   const always = p.suggestions?.length && !p.tool?.startsWith(CHROME);
   return html`<article class="approval" data-id=${p.requestId}>
@@ -114,7 +114,8 @@ function QuestionCard({ p, onDecide }) {
 
 export function Approvals({ ctrl }) {
   const pending = useStore(ctrl.store, s => s.status?.pending);
+  const names = useStore(ctrl.store, s => s.session?.connectors);
   return html`<div class="approvals" id="approvals">${(pending || []).map(p => (p.tool === 'AskUserQuestion'
     ? html`<${QuestionCard} key=${p.requestId} p=${p} onDecide=${ctrl.decide} />`
-    : html`<${ApprovalCard} key=${p.requestId} p=${p} onDecide=${ctrl.decide} />`))}</div>`;
+    : html`<${ApprovalCard} key=${p.requestId} p=${p} names=${names} onDecide=${ctrl.decide} />`))}</div>`;
 }

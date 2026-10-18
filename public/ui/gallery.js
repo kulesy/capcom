@@ -10,10 +10,10 @@ export const isDataUrl = src => src.startsWith('data:');
 export const fromTool = source => `Image from ${source}`;
 
 // The chat's pictures in the order the transcript draws them, so Previous and Next follow the page.
-export function threadImages(items, sending, url) {
+export function threadImages(items, sending, url, names) {
   const out = [];
   for (const message of [...items, ...sending]) {
-    const alt = message.kind === 'tool' ? fromTool(toolSource(message.name)) : 'Attached image';
+    const alt = message.kind === 'tool' ? fromTool(toolSource(message.name, names)) : 'Attached image';
     for (const img of message.images || []) out.push({ key: imageKey(img), src: img.src ?? url(img.ref), alt });
   }
   return out;
@@ -21,7 +21,7 @@ export function threadImages(items, sending, url) {
 
 export const draftImages = images => images.map(img => ({ key: imageKey(img), src: img.src, alt: img.name }));
 
-export const toolShots = tools => tools.flatMap(t => (t.images || []).map(img => ({ img, source: toolSource(t.name) })));
+export const toolShots = (tools, names) => tools.flatMap(t => (t.images || []).map(img => ({ img, source: toolSource(t.name, names) })));
 
 export const TILES = 4;
 

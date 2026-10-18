@@ -26,9 +26,9 @@ const freePort = () => new Promise(resolve => {
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
 // and when its input closed. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes.
-// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
+// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
-// session does. `groups` and `layout` are written as they are.
+// session does. `groups` and `layout` are written as they are, and so is a session's `remoteMcpServersConfig`, a null included. A record has no such key without it.
 function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
@@ -38,11 +38,11 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   fs.writeFileSync(path.join(desktop, 'claude_desktop_config.json'), JSON.stringify({ preferences: { epitaxyPrefs: { 'dframe-group-scopes': { scope: { groups: [] } } } } }));
   const now = Date.now();
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop' }) => {
+  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig }) => {
     const at = now - ago * 60_000;
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
-      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at, ...(routine && { scheduledTaskId: routine }) }));
+      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at, ...(routine && { scheduledTaskId: routine }), ...(remoteMcpServersConfig !== undefined && { remoteMcpServersConfig }) }));
       if (archivedAgo !== undefined) {
         const changed = (now - archivedAgo * 60_000) / 1000;
         fs.utimesSync(record, changed, changed);

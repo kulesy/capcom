@@ -79,13 +79,13 @@ const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Edi
 const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || ((name || '').startsWith(CHROME) ? 'chrome' : 'other'));
 
 // What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.
-export function activity(work) {
+export function activity(work, names) {
   const tools = work?.tools || [];
-  if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => fullToolLabel(t.name)))].join(', ') };
+  if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => fullToolLabel(t.name, names)))].join(', ') };
   if (tools.length) {
     const [t] = tools;
     const kind = toolKind(t.name);
-    return { doing: DOING[kind], detail: kind === 'other' ? [fullToolLabel(t.name), t.summary].filter(Boolean).join(': ') : t.summary };
+    return { doing: DOING[kind], detail: kind === 'other' ? [fullToolLabel(t.name, names), t.summary].filter(Boolean).join(': ') : t.summary };
   }
   return { doing: work?.thinking ? 'Thinking' : work?.writing ? 'Writing' : 'Working', detail: '' };
 }

@@ -218,6 +218,78 @@ test('a transcript whose first line is null does not stop the session list, whic
   assert.deepEqual(opened.body().items.map(i => i.text), ['Behind a null line']);
 });
 
+test('a Desktop session\'s messages name its connectors from its own record and keep nothing else the record says of them, and the session list carries none of it', async () => {
+  const mailbox = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
+  const calendar = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
+  const notebook = '9e8d7c6b-3333-4a5b-8c4d-0a1b2c3d4e5f';
+  const detail = { url: 'https://mail.example.test/mcp', tools: [{ name: 'find_thread', description: 'Look a thread up by its subject' }], instructions: 'Only read the mailbox of the person asking.' };
+  const s = await start({
+    sessions: [
+      { id: 'sess-named', title: 'Named chat', remoteMcpServersConfig: [
+        { uuid: mailbox, name: 'Mailbox', ...detail },
+        { uuid: calendar, name: '  Calendar  ' },
+        { uuid: '1a2b3c4d-4444-4a5b-8c6d-0e1f2a3b4c5d', name: '   ', ...detail },
+        { uuid: '2b3c4d5e-5555-4a5b-8c6d-0e1f2a3b4c5d', ...detail },
+        { uuid: '3c4d5e6f-6666-4a5b-8c6d-0e1f2a3b4c5d', name: 42 },
+        { uuid: 'not-a-uuid', name: 'Odd one' },
+        { name: 'No UUID' },
+        null,
+      ] },
+      { id: 'sess-other', title: 'Other chat', remoteMcpServersConfig: [{ uuid: notebook, name: 'Notebook' }] },
+      { id: 'sess-null', title: 'Null chat', remoteMcpServersConfig: null },
+      { id: 'sess-bare', title: 'Bare chat' },
+      { id: 'sess-terminal', title: 'Terminal chat', source: 'cli' },
+    ],
+  });
+  const { token } = await signIn(s);
+  const messages = async id => {
+    const res = await request(s, 'GET', `/api/sessions/${id}/messages`, { headers: as(token) });
+    assert.equal(res.status, 200, `${id}: ${res.text}`);
+    return res;
+  };
+
+  const named = await messages('sess-named');
+  assert.deepEqual(named.body().session.connectors, { [mailbox]: 'Mailbox', [calendar]: 'Calendar' });
+  for (const kept of [detail.url, 'find_thread', detail.tools[0].description, detail.instructions]) assert.equal(named.text.includes(kept), false, kept);
+  assert.deepEqual((await messages('sess-other')).body().session.connectors, { [notebook]: 'Notebook' }, 'each session has its own record\'s names');
+  for (const id of ['sess-null', 'sess-bare', 'sess-terminal']) assert.deepEqual((await messages(id)).body().session.connectors, {}, id);
+
+  for (const url of ['/api/sessions', '/api/sessions?archived=1']) {
+    const list = await request(s, 'GET', url, { headers: as(token) });
+    assert.equal(list.status, 200, url);
+    assert.deepEqual(list.body().ungrouped.map(r => r.title).sort(), ['Bare chat', 'Named chat', 'Null chat', 'Other chat'], url);
+    for (const leaked of [mailbox, calendar, notebook, 'Mailbox', 'Calendar', 'Notebook', 'connectors']) assert.equal(list.text.includes(leaked), false, `${url} carries ${leaked}`);
+  }
+});
+
+test('a session on a Mac with no Desktop files gets no connector names, and its messages still load', async () => {
+  const s = await start();
+  const folder = path.join(path.dirname(s.state), '.claude', 'projects', '-work');
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, 'sess-terminal.jsonl'), `${JSON.stringify({ type: 'user', cwd: '/work', message: { role: 'user', content: 'from a terminal' } })}\n`);
+  const { token } = await signIn(s);
+  const res = await request(s, 'GET', '/api/sessions/sess-terminal/messages', { headers: as(token) });
+  assert.equal(res.status, 200, res.text);
+  assert.deepEqual(res.body().session.connectors, {});
+  assert.deepEqual(res.body().items.map(i => i.text), ['from a terminal']);
+});
+
+test('a connector\'s name is cleaned as a message sender\'s name is: one line, no bidi or zero-width marks, and 60 characters at most', async () => {
+  const flipped = '4d5e6f7a-7777-4a5b-8c6d-0e1f2a3b4c5d';
+  const long = '5e6f7a8b-8888-4a5b-8c6d-0e1f2a3b4c5d';
+  const s = await start({
+    sessions: [{ id: 'sess-odd-names', title: 'Odd names', remoteMcpServersConfig: [
+      { uuid: flipped, name: '‮liamg\nBox​' },
+      { uuid: long, name: `Notes ${'x'.repeat(70)}` },
+      { uuid: '6f7a8b9c-9999-4a5b-8c6d-0e1f2a3b4c5d', name: '​‮\n' },
+    ] }],
+  });
+  const { token } = await signIn(s);
+  const res = await request(s, 'GET', '/api/sessions/sess-odd-names/messages', { headers: as(token) });
+  assert.equal(res.status, 200, res.text);
+  assert.deepEqual(res.body().session.connectors, { [flipped]: 'liamg Box', [long]: `Notes ${'x'.repeat(54)}...` }, 'and a name of marks alone is dropped');
+});
+
 test('renew sends the cookie again at most once a day, and pushes the expiry 90 days out', async () => {
   const s = await start();
   const { token } = await signIn(s);

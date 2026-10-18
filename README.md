@@ -119,12 +119,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   fourth thumbnail is dimmed with a count such as "+7" for the pictures that have no thumbnail of their own, and
   a click on it opens the viewer at that picture. Each thumbnail opens the viewer. A call to an MCP tool shows
   its server first, as in "Chrome computer" or "Gmail search threads", and its thumbnails are labelled with
-  where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop". A claude.ai
-  connector shows as "connector" in a Desktop session, since Desktop names it by an id. A picture a tool
-  returned in a form the page cannot draw still shows as "[image]" in the call's output. A message to
-  another chat reads "to name: summary" and counts as "sent 2 messages", and a look at the other chats
-  reads "looked up other sessions". A send asks for approval only when a permission rule makes the CLI
-  ask, and the approval card then shows who it goes to and the message.
+  where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop". Desktop names a
+  claude.ai connector by an id, so in a Desktop session it shows by the name that session's Desktop record
+  gives it, or as "connector" when the record has none. A picture a tool returned in a form the page cannot
+  draw still shows as "[image]" in the call's output. A message to another chat reads "to name: summary"
+  and counts as "sent 2 messages", and a look at the other chats reads "looked up other sessions". A send
+  asks for approval only when a permission rule makes the CLI ask, and the approval card then shows who it
+  goes to and the message.
 - **Live work.** While Claude works, its thinking streams into a Thinking block above the status line.
   The block folds into a Thought row when the thought ends, and a tap opens it again. Each tool call shows
   as soon as it starts. The status line names the step, such as "Running npm test", "Reading

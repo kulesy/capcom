@@ -22,6 +22,13 @@ const thought = (shown, d) => (d.done
   ? (shown?.id === d.id ? { ...shown, done: true } : shown)
   : { id: d.id, done: false, text: (shown?.id === d.id ? shown.text : '') + d.text });
 
+// Desktop can name a session's connectors after the chat opened, as when the chat moves to Desktop, so each reply brings them.
+// Every row compares the names, so names equal to the ones held are not set again.
+const sameNames = (a, b) => {
+  const keys = Object.keys(a || {});
+  return keys.length === Object.keys(b || {}).length && keys.every(k => Object.hasOwn(b, k) && b[k] === a[k]);
+};
+
 // The CLI holds at most 100 messages at once, so keeping that many counts a burst that ended together in full.
 const ENDED_KEPT = 100;
 
@@ -138,12 +145,14 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       const over = ended;
       const clearLive = over || r.items.some(i => i.kind === 'assistant');
       ended = false;
+      const names = r.session?.connectors;
       store.set(s => {
         const thread = absorb(r.reset ? { items: [], orphans: new Map() } : s, r.items);
         const saved = s.think?.done && r.items.some(i => i.kind === 'thinking' && i.msgId === s.think.id);
         return {
           ...thread, ...(chips && { chips }), end: r.end,
           ...(r.reset && { start: r.start, hasEarlier: r.hasEarlier }),
+          ...(s.session && names && !sameNames(names, s.session.connectors) && { session: { ...s.session, connectors: names } }),
           sending: s.sending.filter(m => !r.items.some(i => sameMessage(i, m))),
           ...(clearLive && { live: '' }),
           ...((over || saved) && { think: null }),

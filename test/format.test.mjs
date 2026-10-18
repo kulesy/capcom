@@ -3,6 +3,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { duration, fullToolLabel, groupHolds, holdCause, holdEnd, preview, serverLabel, tokenCount, toolLabel, toolSource } from '../public/ui/format.js';
 
+const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
+const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
+const labels = (name, names) => [serverLabel(name, names), toolSource(name, names), fullToolLabel(name, names)];
+
 test('a timer reads in seconds, then minutes and seconds, then hours and minutes', () => {
   assert.deepEqual([0, 999, 1000, 59_999, 60_000, 65_000, 3_599_000, 3_600_000, 3_725_000].map(duration), ['0s', '0s', '1s', '59s', '1m 00s', '1m 05s', '59m 59s', '1h 00m', '1h 02m']);
   assert.equal(duration(-5), '0s');
@@ -118,6 +122,47 @@ test('a name that ends at its server, or has underscores around it, leaves no st
   assert.equal(fullToolLabel('mcp__Claude_Browser__'), 'Claude Browser');
   assert.equal(toolSource('mcp__Claude_Browser__'), 'Claude Browser');
   assert.equal(fullToolLabel('mcp__foo___tool'), 'foo tool');
+});
+
+test('a connector the session names shows by that name in the server label, the source and the full tool label, each connector by its own', () => {
+  const names = { [MAILBOX]: 'Mailbox', [CALENDAR]: 'Calendar' };
+  assert.deepEqual(labels(`mcp__${MAILBOX}__search_threads`, names), ['Mailbox', 'Mailbox', 'Mailbox search threads']);
+  assert.deepEqual(labels(`mcp__${CALENDAR}__list_events`, names), ['Calendar', 'Calendar', 'Calendar list events']);
+});
+
+test('a connector the session gives no name stays a connector, whether the session has no names, none that match, or a blank one', () => {
+  const name = `mcp__${MAILBOX}__search_threads`;
+  for (const names of [undefined, null, {}, { [CALENDAR]: 'Calendar' }, { [MAILBOX]: '' }]) {
+    assert.deepEqual(labels(name, names), ['connector', 'a connector', 'connector search threads'], JSON.stringify(names));
+  }
+  assert.deepEqual(labels(name), ['connector', 'a connector', 'connector search threads']);
+});
+
+test('only a connector is named from the names, so every other server reads as it does without them, even when the names hold an entry under its id', () => {
+  const lures = { claude_ai_Gmail: 'Wrong', 'claude-in-chrome': 'Wrong', ccd_session: 'Wrong', playwright: 'Wrong', capcom: 'Wrong', '0d2c4b1a-9e8f': 'Wrong', [MAILBOX]: 'Mailbox' };
+  const servers = {
+    mcp__claude_ai_Gmail__search_threads: ['Gmail', 'Gmail', 'Gmail search threads'],
+    'mcp__claude-in-chrome__computer': ['Chrome', 'Chrome', 'Chrome computer'],
+    mcp__ccd_session__spawn_task: ['Desktop', 'Desktop', 'Desktop spawn task'],
+    mcp__playwright__browser_take_screenshot: ['playwright', 'playwright', 'playwright browser take screenshot'],
+    'mcp__0d2c4b1a-9e8f__read': ['0d2c4b1a 9e8f', '0d2c4b1a 9e8f', '0d2c4b1a 9e8f read'],
+    mcp__capcom__show_widget: ['', 'show widget', 'show widget'],
+    Read: ['', 'Read', 'Read'],
+  };
+  for (const [name, expected] of Object.entries(servers)) {
+    assert.deepEqual(labels(name, lures), expected, name);
+    assert.deepEqual(labels(name), expected, name);
+  }
+});
+
+test('only an entry the names object holds itself counts, not one behind its prototype or under a key such as __proto__', () => {
+  const name = `mcp__${CALENDAR}__list_events`;
+  const unnamed = ['connector', 'a connector', 'connector list events'];
+  const parsed = JSON.parse(`{"__proto__":{"${CALENDAR}":"Nested"},"${MAILBOX}":"Mailbox"}`);
+  assert.equal(Object.hasOwn(parsed, '__proto__'), true, 'the parsed object has the key of its own');
+  assert.deepEqual(labels(name, parsed), unnamed);
+  assert.deepEqual(labels(`mcp__${MAILBOX}__search_threads`, parsed), ['Mailbox', 'Mailbox', 'Mailbox search threads']);
+  assert.deepEqual(labels(name, Object.create({ [CALENDAR]: 'Inherited' })), unnamed);
 });
 
 // The causes and outcomes the CLI's peer_message_hold message lists (checked on CLI 2.1.301).

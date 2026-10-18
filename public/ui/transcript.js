@@ -15,9 +15,9 @@ function LiveThink({ think }) {
 }
 
 // What Claude is doing now, how long the turn has run, and the tokens of the replies it has finished.
-function Working({ work, since, on }) {
+function Working({ work, since, on, names }) {
   useClock(on);
-  const { doing, detail } = activity(work);
+  const { doing, detail } = activity(work, names);
   const meta = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`].filter(Boolean).join(' · ');
   return html`<p class="working" id="working" hidden=${!on}><span class="lamp" data-state="working"></span>
     <span class="working-text" id="workingText"><span class="working-doing">${doing}</span>${detail ? html`<span class="working-detail">${detail}</span>` : null}</span>
@@ -28,10 +28,11 @@ function Working({ work, since, on }) {
 function Live({ ctrl, box }) {
   const { live, think, work, turnStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart');
   const state = useStore(ctrl.store, s => s.status?.state || 'idle');
+  const names = useStore(ctrl.store, s => s.session?.connectors);
   useStick(box);
   return html`${think ? html`<${LiveThink} think=${think} />` : null}
     <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live) : '' }}></div>
-    <${Working} work=${work} since=${turnStart} on=${state === 'working'} />`;
+    <${Working} work=${work} since=${turnStart} on=${state === 'working'} names=${names} />`;
 }
 
 export function Transcript({ ctrl }) {
@@ -53,12 +54,13 @@ export function Transcript({ ctrl }) {
 
   // The viewer steps through the pictures the thread holds when one is clicked, and back through those of the unloaded messages, which the server lists. It closes with the chat.
   const viewImage = useCallback((key, from) => {
+    const names = () => ctrl.store.get().session?.connectors;
     const thread = () => {
       const { items: saved, sending: unsent } = ctrl.store.get();
-      return threadImages(saved, unsent, ctrl.imageUrl);
+      return threadImages(saved, unsent, ctrl.imageUrl, names());
     };
     const images = thread();
-    const earlier = ctrl.store.get().hasEarlier ? ctrl.earlierImages().then(list => threadImages(list, [], ctrl.imageUrl)) : null;
+    const earlier = ctrl.store.get().hasEarlier ? ctrl.earlierImages().then(list => threadImages(list, [], ctrl.imageUrl, names())) : null;
     openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from, thread, earlier);
   }, [ctrl]);
   useEffect(() => closeViewer, []);
@@ -67,7 +69,7 @@ export function Transcript({ ctrl }) {
     ${ctrl.draft ? html`<p class="quiet pad" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
     <button class="button earlier" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
     <ol class="items" id="items">
-      ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} />`)}
+      ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} />`)}
       ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} onImage=${viewImage} />`)}
     </ol>
     <${Live} ctrl=${ctrl} box=${box} />
