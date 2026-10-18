@@ -1,22 +1,29 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 
-// A menu under the button that opened it. It is fixed to the screen, so the scrolling list cannot clip it. A choice, Esc, a tap
-// outside it, or a scroll that moves its button closes it. `items` are { label, run, danger }.
-export function Menu({ anchor, label, items, onClose }) {
+// A menu under the button or row that opened it, or with its top left at `point` ({ x, y }) when a click made it. It is fixed to the
+// screen, so the scrolling list cannot clip it. A choice, Esc, a tap outside it, or a scroll that moves its anchor closes it.
+// `items` are { label, run, danger }.
+export function Menu({ anchor, point = null, label, items, onClose }) {
   const box = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
   const [at, setAt] = useState(null);
 
   useLayoutEffect(() => {
-    const a = anchor.getBoundingClientRect();
     const { width, height } = box.current.getBoundingClientRect();
-    const room = window.innerHeight - a.bottom;
-    const top = room >= height + 8 || a.top < height + 8 ? a.bottom + 4 : a.top - height - 4;
-    setAt({
-      top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
-      left: Math.max(8, Math.min(a.right - width, window.innerWidth - width - 8)),
-    });
+    const keep = (pos, size, room) => Math.max(8, Math.min(pos, room - size - 8));
+    let top;
+    let left;
+    if (point) {
+      top = point.y + height + 8 <= window.innerHeight ? point.y : point.y - height;
+      left = point.x + width + 8 <= window.innerWidth ? point.x : point.x - width;
+    } else {
+      const a = anchor.getBoundingClientRect();
+      const room = window.innerHeight - a.bottom;
+      top = room >= height + 8 || a.top < height + 8 ? a.bottom + 4 : a.top - height - 4;
+      left = a.right - width;
+    }
+    setAt({ top: keep(top, height, window.innerHeight), left: keep(left, width, window.innerWidth) });
   }, []);
 
   useLayoutEffect(() => { if (at) box.current.querySelector('button').focus({ preventScroll: true }); }, [at]);
@@ -26,7 +33,8 @@ export function Menu({ anchor, label, items, onClose }) {
     const start = anchor.getBoundingClientRect();
     const moved = () => { const now = anchor.getBoundingClientRect(); return Math.abs(now.top - start.top) > 1 || Math.abs(now.left - start.left) > 1; };
     const away = () => close.current();
-    const outside = e => { if (box.current && !box.current.contains(e.target) && !anchor.contains(e.target)) away(); };
+    const toggles = anchor.matches('button');
+    const outside = e => { if (box.current && !box.current.contains(e.target) && !(toggles && anchor.contains(e.target))) away(); };
     const scrolled = e => { if (box.current && !box.current.contains(e.target) && moved()) away(); };
     document.addEventListener('pointerdown', outside, true);
     window.addEventListener('scroll', scrolled, true);

@@ -5,6 +5,7 @@ import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
 import { Spotlight } from './ui/spotlight.js';
+import { withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
@@ -66,6 +67,28 @@ function App() {
     }
   }, []);
 
+  // Archiving takes the row out at once and puts it back if the server refuses. Unarchiving waits for the server's list, because the
+  // server says where the session lands. It resolves with { problem, stopped }: the reason when the server refuses, and whether it
+  // stopped a chat that was running.
+  const archive = useCallback(async (id, archived) => {
+    const before = now.current.ix;
+    if (archived) {
+      setIx(withoutRow(before, id));
+      shown.current = ++latest.current;
+    }
+    writing.current++;
+    try {
+      const reply = await api('api/layout/archive', { id, archived });
+      return { problem: '', stopped: !!reply.stopped };
+    } catch (e) {
+      if (archived) setIx(before);
+      return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false };
+    } finally {
+      writing.current--;
+      loadIndex();
+    }
+  }, []);
+
   // A change to a project or group. It resolves with { problem, made }: the reason when the server refuses, or an empty string and
   // the project or group the server made, changed or removed. Either way the list is loaded again before it resolves.
   const edit = useCallback(async (path, body) => {
@@ -112,7 +135,7 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} edit=${edit} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>

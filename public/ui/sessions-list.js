@@ -8,11 +8,11 @@ import { useLocal } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
-import { moveTargets, nextStop, withoutRow } from './tree.js';
+import { moveTargets, neighbour, nextStop, withoutRow } from './tree.js';
 
-function RowLink({ r, title = r.title, current, lifted }) {
+function RowLink({ r, title = r.title, current, lifted, marked }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
-  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} aria-current=${current === r.id ? 'page' : null}>
+  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} aria-current=${current === r.id ? 'page' : null}>
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
     <span class="row-title">${title || UNTITLED}</span>
     <time class="row-time">${when(r.lastActivityAt)}</time>
@@ -42,13 +42,13 @@ function Section({ id, name, count, collapsed, toggle, drop, over, menu, tree, c
 
 // The latest run of a routine, with the earlier ones folded away until asked for.
 // A routine's row opens its latest run. The arrow at its end folds the earlier runs out underneath.
-function Routine({ g, current, lifted, open, onToggle }) {
+function Routine({ g, current, lifted, marked, open, onToggle }) {
   const earlier = g.earlier.length;
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
   return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
-    <${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} />
+    <${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} />
     ${earlier ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}></button>` : null}
-    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} />`)}</ul>` : null}
+    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} />`)}</ul>` : null}
   </li>`;
 }
 
@@ -89,7 +89,8 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
   const over = drag?.over;
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
   const lifted = drag?.id;
-  const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} lifted=${r.id === lifted} />`);
+  const marked = tree.shown?.session;
+  const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} />`);
   const section = (id, name, list, body, { drop = true, always = false, menu = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
     return html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
@@ -108,7 +109,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
     </section>`;
   };
   const parts = [
-    section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} /><//>`), { drop: false }),
+    section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} /><//>`), { drop: false }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
     ...ix.projects.map(project),
     ...ix.groups.filter(g => !g.project).map(group),
@@ -149,21 +150,28 @@ function walk(e, box) {
   }
 }
 
+// A note about something that did not work, which shows in amber. No reason means no note.
+const problemNote = text => (text ? { text, problem: true } : null);
+
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
 // `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
-// group the server made, changed or removed.
-export function SessionList({ ix, error, current, place, edit, onFind, passkeys, banner }) {
+// group the server made, changed or removed. `archive(id, archived)` archives or unarchives a session and resolves with
+// { problem, stopped }: the reason when the server refuses, and whether it stopped a chat that was running.
+export function SessionList({ ix, error, current, place, edit, archive, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(null);
   const [form, setForm] = useState(null);
   const [shown, setShown] = useState(null);
   const [back, setBack] = useState(null);
+  const [after, setAfter] = useState(null);
   const nav = useRef(null);
   const box = useRef(null);
+  const opened = useRef(0);
   const latestPlace = useRef(place);
   latestPlace.current = place;
+  const latestMenu = useRef(null);
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
   const expand = id => setCollapsed(all => ({ ...all, [id]: false }));
   const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
@@ -173,8 +181,9 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     onOver: over => setDrag(d => d && { ...d, over }),
     onEnd: async (id, section) => {
       setDrag(null);
-      if (section) setNote(await latestPlace.current(id, section));
+      if (section) setNote(problemNote(await latestPlace.current(id, section)));
     },
+    onMenu: (id, row, point) => latestMenu.current(id, row, point),
   }), []);
 
   // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it.
@@ -191,7 +200,7 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
 
   useEffect(() => {
     if (!note) return;
-    const timer = setTimeout(() => setNote(''), 6000);
+    const timer = setTimeout(() => setNote(null), note.undo ? 10_000 : 6000);
     return () => clearTimeout(timer);
   }, [note]);
 
@@ -204,13 +213,53 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     setBack(null);
   }, [back]);
 
+  // Once an archived row has left the list, the focus goes to the row beside it, so the keyboard stays in the list.
+  useLayoutEffect(() => {
+    if (!after) return;
+    const row = box.current.querySelector(`a.row[data-id="${CSS.escape(after)}"]`);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+    setAfter(null);
+  }, [after]);
+
   // Sends one change to the layout. It resolves with what the server made, changed or removed, or with null when it refused,
   // and then shows the reason at the top of the list.
   async function change(path, body) {
     const { problem, made } = await edit(path, body);
-    setNote(problem);
+    setNote(problemNote(problem));
     return problem ? null : made;
   }
+
+  // Archives a session and says so with a way to undo it, or says why it could not. The row is gone at once, so the focus moves on.
+  async function archiveRow(id, title) {
+    const ids = [...box.current.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id);
+    const done = archive(id, true);
+    setAfter(neighbour(ids, id));
+    const { problem, stopped } = await done;
+    setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title } });
+  }
+
+  // Takes an archive back. The row returns when the server's list arrives.
+  async function undo({ id, title }) {
+    const { problem } = await archive(id, false);
+    setNote(problem ? problemNote(problem) : { text: `Unarchived ${title}.` });
+  }
+
+  // The menu of a row, opened by a right click, the menu key or a long press. A chat Capcom is running is stopped as it is archived.
+  latestMenu.current = (id, row, point) => {
+    const r = findRow(ix, id);
+    if (!r) return;
+    const title = r.title || UNTITLED;
+    const running = r.state === 'working' || r.state === 'waiting';
+    setShown({
+      key: `row-${++opened.current}`,
+      session: id,
+      anchor: row,
+      point,
+      label: `Actions for ${title}`,
+      items: [{ label: running ? 'Stop and archive' : 'Archive', danger: running, run: () => archiveRow(id, title) }],
+    });
+  };
 
   const closeForm = (...focus) => { setForm(null); setBack(focus); };
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
@@ -285,7 +334,9 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
       </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
-    <div role="status">${note ? html`<p class="problem" id="moveNote">${note}</p>` : null}</div>
+    <div role="status">${note
+      ? html`<p class=${note.problem ? 'problem' : 'note'} id="listNote">${note.text}${note.undo ? html` <button class="link" type="button" onClick=${() => undo(note.undo)}>Undo</button>` : null}</p>`
+      : null}</div>
     ${banner}
     ${topForm}
     <div class="sections" id="sections" ref=${box}>
@@ -297,6 +348,6 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
       <a href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
-    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} label=${shown.label} items=${shown.items} onClose=${() => setShown(null)} />` : null}
+    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.items} onClose=${() => setShown(null)} />` : null}
   </nav>`;
 }

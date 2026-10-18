@@ -1,5 +1,6 @@
 // Drags a session row onto a section with pointer events, so a mouse and a finger share the code. A mouse drags after a few
-// pixels, so a click still opens the session. A finger drags after a long press, so a swipe still scrolls the list.
+// pixels, so a click still opens the session. A finger drags after a long press, so a swipe still scrolls the list. A right click,
+// or a long press let go without moving, asks for the row's menu instead.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
 const HOLD_SLOP = 8;
@@ -7,8 +8,10 @@ const EDGE = 56;
 const SCROLL_STEP = 16;
 
 // `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
-// the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. Returns a function that stops it.
-export function dragRows(box, { onStart, onOver, onEnd }) {
+// the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
+// element, and where the click was when that is inside the row, or null when it was a long press or the menu key.
+// Returns a function that stops it.
+export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   let press = null;
   let drag = null;
   let stop = null;
@@ -20,6 +23,8 @@ export function dragRows(box, { onStart, onOver, onEnd }) {
   function down(e) {
     const row = e.target.closest('a.row[data-id]');
     if (!row || !e.isPrimary || e.button !== 0) return;
+    // On a Mac a Ctrl click is a right click, which asks for the menu, so it must not start a drag.
+    if (e.ctrlKey && e.pointerType === 'mouse') return;
     if (stop) lost();
     clearTimeout(quiet);
     window.removeEventListener('click', swallowClick, true);
@@ -49,7 +54,7 @@ export function dragRows(box, { onStart, onOver, onEnd }) {
   }
 
   function lift(x, y) {
-    const { row, start } = press;
+    const { row, start, touch } = press;
     const at = row.getBoundingClientRect();
     const copy = row.cloneNode(true);
     copy.classList.add('lifted');
@@ -60,7 +65,7 @@ export function dragRows(box, { onStart, onOver, onEnd }) {
     document.body.classList.add('dragging');
     clearTimeout(press.timer);
     press = null;
-    drag = { id: row.dataset.id, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null };
+    drag = { id: row.dataset.id, row, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null };
     window.addEventListener('click', swallowClick, true);
     onStart(drag.id);
     follow();
@@ -114,9 +119,11 @@ export function dragRows(box, { onStart, onOver, onEnd }) {
       Object.assign(carried, { x: e.clientX, y: e.clientY });
       follow();
     }
-    const target = dropped ? carried.over : null;
+    const still = dropped && carried.touch && Math.hypot(carried.x - carried.start.x, carried.y - carried.start.y) <= HOLD_SLOP;
+    const target = dropped && !still ? carried.over : null;
     release();
     if (carried) onEnd(carried.id, target);
+    if (still) onMenu(carried.id, carried.row, null);
   }
 
   function escape(e) {
@@ -134,11 +141,25 @@ export function dragRows(box, { onStart, onOver, onEnd }) {
     if (carried) onEnd(carried.id, null);
   }
 
+  // The click's place if it is inside the row. The menu key reports one that can be far from the row, so it gets null.
+  function inside(row, e) {
+    const r = row.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
+  }
+
+  function menu(e) {
+    if (press?.touch || drag) return e.preventDefault();
+    const row = e.target.closest('a.row[data-id]');
+    if (!row) return;
+    e.preventDefault();
+    onMenu(row.dataset.id, row, inside(row, e));
+  }
+
   const life = new AbortController();
   const { signal } = life;
   box.addEventListener('pointerdown', down, { signal });
   box.addEventListener('dragstart', e => e.preventDefault(), { signal });
-  box.addEventListener('contextmenu', e => { if (press?.touch || drag) e.preventDefault(); }, { signal });
+  box.addEventListener('contextmenu', menu, { signal });
   // NOTE: [15 Oct 2026] EK - Keep this touchmove listener non-passive and registered up front, not added at the long press.
   // dnd-kit does the same to stop the list scrolling under a touch drag, and says iOS Safari needs it.
   // See https://github.com/clauderic/dnd-kit/blob/master/packages/core/src/sensors/touch/TouchSensor.ts.
