@@ -1,6 +1,6 @@
 # List sessions from transcripts and Desktop's records, read only
 
-- Status: Accepted, amended 2026-10-15
+- Status: Accepted, amended 2026-10-18
 - Deciders: Eli
 - Date: 2026-10-06
 - Tags: sessions, claude-desktop, groups, read-only
@@ -33,6 +33,8 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 **Amended 2026-10-08.** The owner asked whether Capcom could write to Desktop's sidebar. Desktop's code shows that Desktop loads its session list and sidebar settings at launch, keeps them in memory and writes them back over the files. A write from Capcom would be overwritten or ignored. The check on 8 Oct was a read of Desktop's code, with no live test. Capcom stays read only.
 
 **Amended 2026-10-15.** Capcom now keeps its own groups and pins in `layout.json`, copied once from Desktop's on its first start, so the list no longer follows Desktop's groups after that. Desktop's records are still read, read only, for titles, folders, archive state and routines. See [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md).
+
+**Amended 2026-10-18.** Desktop names a claude.ai connector's tools by an id, so Capcom also reads each connector's id and name from the session's record (`remoteMcpServersConfig`) to show the connector by its name. Only the id and the name reach the page, with that session's messages. The connector's address, tools and instructions are dropped as the record is read.
 
 ### Consequences
 
