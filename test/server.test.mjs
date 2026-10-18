@@ -98,7 +98,7 @@ test('a signed-out visitor gets the sign-in page and its scripts, and a 401 from
     assert.equal(script.status, 200, file);
     assert.match(script.headers['content-type'], /javascript/, file);
   }
-  for (const [method, url] of [['GET', '/api/sessions'], ['GET', listUrl(s.origin)], ['POST', '/api/passkeys/options'], ['POST', '/api/passkeys/remove'], ['POST', '/renew']]) {
+  for (const [method, url] of [['GET', '/api/sessions'], ['GET', '/api/sessions/sess-1/images'], ['GET', listUrl(s.origin)], ['POST', '/api/passkeys/options'], ['POST', '/api/passkeys/remove'], ['POST', '/renew']]) {
     assert.equal((await request(s, method, url, method === 'POST' ? { json: {} } : {})).status, 401, `${method} ${url}`);
   }
 });
@@ -120,6 +120,61 @@ test('a picture a tool returned is served by its r ref to a signed-in browser an
   assert.equal(got.headers.vary, 'Cookie', 'a copy kept under one sign-in cookie must not be reused without it');
   assert.equal(got.text, bytes);
   for (const ref of ['0.r0.u2', '0.0.u1', '0.r1.u1']) assert.equal((await request(s, 'GET', url(ref), { headers: as(token) })).status, 404, ref);
+});
+
+test('the pictures of a whole chat are listed with refs and never bytes, only those before a byte offset when asked, and only to a signed-in browser', async () => {
+  const s = await start();
+  const folder = path.join(path.dirname(s.state), '.claude', 'projects', '-work');
+  fs.mkdirSync(folder, { recursive: true });
+  const picture = bytes => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: Buffer.from(bytes).toString('base64') } });
+  const entries = [
+    { type: 'user', uuid: 'u1', message: { role: 'user', content: [{ type: 'text', text: 'look at this' }, picture('the first picture, sent by the owner')] } },
+    { type: 'assistant', uuid: 'a1', message: { id: 'm1', role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }] } },
+    { type: 'user', uuid: 'u2', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: [picture('the second picture, from a tool')] }] } },
+    { type: 'user', uuid: 'u3', message: { role: 'user', content: [picture('the third picture, sent after')] } },
+  ];
+  fs.writeFileSync(path.join(folder, 'sess-1.jsonl'), entries.map(e => `${JSON.stringify(e)}\n`).join(''));
+  const at = [0];
+  entries.forEach((e, n) => at.push(at[n] + Buffer.byteLength(`${JSON.stringify(e)}\n`)));
+  const list = '/api/sessions/sess-1/images';
+
+  for (const url of [list, `${list}?before=${at[2]}`, `${list}?before=nope`]) assert.equal((await request(s, 'GET', url)).status, 401, url);
+
+  const { token } = await signIn(s);
+  const all = await request(s, 'GET', list, { headers: as(token) });
+  assert.equal(all.status, 200);
+  assert.match(all.headers['content-type'], /application\/json/);
+  assert.equal(all.headers['cache-control'], 'no-store');
+  assert.deepEqual(all.body(), { items: [
+    { kind: 'user', images: [{ ref: `${at[0]}.0.u1`, type: 'image/png' }] },
+    { kind: 'tool', name: 'Read', images: [{ ref: `${at[2]}.r0.u2`, type: 'image/png' }] },
+    { kind: 'user', images: [{ ref: `${at[3]}.0.u3`, type: 'image/png' }] },
+  ] });
+  for (const bytes of ['the first picture', 'the second picture', 'the third picture']) {
+    assert.equal(all.text.includes(bytes), false, bytes);
+    assert.equal(all.text.includes(Buffer.from(bytes).toString('base64').slice(0, 20)), false, bytes);
+  }
+
+  const refsBefore = async offset => (await request(s, 'GET', `${list}?before=${offset}`, { headers: as(token) })).body().items.flatMap(item => item.images.map(img => img.ref));
+  assert.deepEqual(await refsBefore(at[3]), [`${at[0]}.0.u1`, `${at[2]}.r0.u2`], 'the call is on line 1, so the tool picture is before line 3 even though its result is on line 2');
+  assert.deepEqual(await refsBefore(at[2]), [`${at[0]}.0.u1`, `${at[2]}.r0.u2`], 'a page that starts at the result has not seen the call, so that picture still counts as before');
+  assert.deepEqual(await refsBefore(at[1]), [`${at[0]}.0.u1`]);
+  assert.deepEqual(await refsBefore(0), []);
+  assert.deepEqual(await refsBefore('00'), []);
+
+  for (const bad of ['', 'nope', '-1', '1.5', '1e3', '0x10', ' 7', '7 ']) {
+    const refused = await request(s, 'GET', `${list}?before=${encodeURIComponent(bad)}`, { headers: as(token) });
+    assert.equal(refused.status, 400, JSON.stringify(bad));
+    assert.match(refused.body().error, /byte offset/);
+  }
+  const unknown = await request(s, 'GET', '/api/sessions/no-such-chat/images', { headers: as(token) });
+  assert.equal(unknown.status, 404);
+  assert.match(unknown.body().error, /No session/);
+
+  const one = await request(s, 'GET', `${list}/${at[2]}.r0.u2`, { headers: as(token) });
+  assert.equal(one.status, 200);
+  assert.equal(one.headers['content-type'], 'image/png');
+  assert.equal(one.text, 'the second picture, from a tool');
 });
 
 test('renew sends the cookie again at most once a day, and pushes the expiry 90 days out', async () => {

@@ -6,7 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
-import { readAfter, readBefore, readHead, readImage } from '../lib/transcripts.mjs';
+import { listImages, readAfter, readBefore, readHead, readImage } from '../lib/transcripts.mjs';
+import { threadImages } from '../public/ui/gallery.js';
+import { absorb, prepend } from '../public/ui/thread.js';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-transcripts-test-'));
 
@@ -472,4 +474,205 @@ test('readImage gives nothing for the wrong uuid, a ref that is badly formed, a 
   for (const bad of ['', undefined, null, 'abc', `${at2}`, `${at2}.u1`, `${at2}.r.u1`, `${at2}.R0.u1`, `${at2}.rr0.u1`, `${at2}.r-1.u1`, `${at2}.r0.u1.x`, `${at2}.r0`, `-1.r0.u1`, `${at2}.r0.u 1`, `${at2}.r0.u1/..`]) {
     assert.equal(readImage(t, bad), null, String(bad));
   }
+});
+
+// ---- the list of every picture, for the viewer ----------------------------------------------------
+
+const use = (id, name) => assistant(`msg_${id}`, [{ type: 'tool_use', id, name, input: {} }]);
+const lineStarts = t => {
+  const bytes = fs.readFileSync(t.file);
+  const starts = [0];
+  for (let n = bytes.indexOf(0x0a); n !== -1; n = bytes.indexOf(0x0a, n + 1)) starts.push(n + 1);
+  return starts;
+};
+const addressOf = ref => `api/sessions/s1/images/${ref}`;
+const drawn = items => threadImages(items, [], addressOf).map(i => i.key);
+const emptyThread = () => ({ items: [], orphans: new Map() });
+const asRead = (t, from = 0) => drawn(absorb(emptyThread(), readAfter(t, from, '', 8000).items).items);
+
+const SHOT = { sent: 'sent first', a1: 'from A one', a2: 'from A two', b: 'from B', later: 'sent after C was called', c: 'from C', orphan: 'no call', side: 'in a subagent', queued: 'queued with a message' };
+// Lines 3 and 4 call A and B, which answer in the opposite order on lines 6 and 5. Line 7 calls C, line 8 sends a picture, and C answers on line 9.
+const CHAT = [
+  line('u0', 'a message with café and 日本 in it'),
+  line('u1', [picture(SHOT.sent)]),
+  assistant('m1', [{ type: 'text', text: 'Looking.' }]),
+  use('toolu_a', 'Read'),
+  use('toolu_b', 'mcp__claude-in-chrome__computer'),
+  line('u2', [toolResult('toolu_b', [{ type: 'text', text: 'shot' }, picture(SHOT.b)])]),
+  line('u3', [toolResult('toolu_a', [picture(SHOT.a1), picture(SHOT.a2, 'image/jpeg')])]),
+  use('toolu_c', 'Bash'),
+  line('u4', [picture(SHOT.later)]),
+  line('u5', [toolResult('toolu_c', [picture(SHOT.c)])]),
+  line('u6', [toolResult('toolu_gone', [picture(SHOT.orphan)])]),
+  { ...use('toolu_side', 'Read'), isSidechain: true },
+  { ...line('u7', [toolResult('toolu_side', [picture(SHOT.side)])]), isSidechain: true },
+  { ...queued([{ type: 'text', text: 'redirect' }, picture(SHOT.queued)], 'prompt'), uuid: 'u8' },
+  assistant('m2', [{ type: 'text', text: 'Done.' }]),
+  line('u9', 'thanks'),
+];
+// Where each picture sits in the thread, with the line its bytes are on.
+const drawnInOrder = at => [
+  [`${at[1]}.0.u1`, SHOT.sent],
+  [`${at[6]}.r0.u3`, SHOT.a1],
+  [`${at[6]}.r1.u3`, SHOT.a2],
+  [`${at[5]}.r0.u2`, SHOT.b],
+  [`${at[9]}.r0.u5`, SHOT.c],
+  [`${at[8]}.0.u4`, SHOT.later],
+  [`${at[13]}.0.u8`, SHOT.queued],
+];
+
+test('the list holds every picture of the chat as the thread draws it, a tool\'s at its call, and never a picture\'s bytes', () => {
+  const t = file('every-picture', CHAT);
+  const at = lineStarts(t);
+  const list = listImages(t);
+  assert.deepEqual(list, [
+    { kind: 'user', images: [{ ref: `${at[1]}.0.u1`, type: 'image/png' }] },
+    { kind: 'tool', name: 'Read', images: [{ ref: `${at[6]}.r0.u3`, type: 'image/png' }, { ref: `${at[6]}.r1.u3`, type: 'image/jpeg' }] },
+    { kind: 'tool', name: 'mcp__claude-in-chrome__computer', images: [{ ref: `${at[5]}.r0.u2`, type: 'image/png' }] },
+    { kind: 'tool', name: 'Bash', images: [{ ref: `${at[9]}.r0.u5`, type: 'image/png' }] },
+    { kind: 'user', images: [{ ref: `${at[8]}.0.u4`, type: 'image/png' }] },
+    { kind: 'user', images: [{ ref: `${at[13]}.0.u8`, type: 'image/png' }] },
+  ], 'B answered first and A second, but A was called first; the result with no call and the subagent\'s are left out');
+  assert.deepEqual(drawn(list), drawnInOrder(at).map(([ref]) => ref));
+  assert.deepEqual(drawn(list), asRead(t), 'the order is the one the page builds from the same lines');
+  for (const bytes of Object.values(SHOT)) assert.equal(JSON.stringify(list).includes(Buffer.from(bytes).toString('base64')), false, bytes);
+});
+
+test('each ref in the list is served by readImage with the bytes of its picture', () => {
+  const t = file('served', CHAT);
+  const refs = listImages(t).flatMap(item => item.images.map(img => img.ref));
+  assert.deepEqual(refs, drawnInOrder(lineStarts(t)).map(([ref]) => ref));
+  drawnInOrder(lineStarts(t)).forEach(([ref, bytes]) => assert.equal(readImage(t, ref).bytes.toString(), bytes, ref));
+});
+
+test('split the file at any line and the pictures listed before it, then those the thread reads from it, are the whole chat', () => {
+  const t = file('split', CHAT);
+  const whole = asRead(t);
+  assert.equal(whole.length, 7);
+  for (const start of lineStarts(t)) {
+    assert.deepEqual([...drawn(listImages(t, start)), ...asRead(t, start)], whole, `split at byte ${start}`);
+  }
+});
+
+test('the same holds at every stage of loading earlier, the way the page loads a chat a chunk at a time, while each tool id is used once', () => {
+  const t = file('stages', CHAT);
+  const whole = asRead(t);
+  for (const chunk of [150, 400, 900]) {
+    let read = readBefore(t, t.size, chunk, '', 8000);
+    let thread = absorb(emptyThread(), read.items);
+    for (let stage = 0; ; stage++) {
+      assert.deepEqual([...drawn(listImages(t, read.start)), ...drawn(thread.items)], whole, `chunk ${chunk}, stage ${stage}, start ${read.start}`);
+      if (!read.start) break;
+      read = readBefore(t, read.start, chunk, '', 8000);
+      thread = prepend(thread, read.items);
+    }
+  }
+});
+
+test('a call before the split whose result comes after it counts as before, and a picture sent after the call does not', () => {
+  const t = file('call-before', CHAT);
+  const at = lineStarts(t);
+  const [sent, a1, a2, b, c] = drawnInOrder(at).map(([ref]) => ref);
+  assert.deepEqual(drawn(listImages(t, at[5])), [sent, a1, a2, b], 'A and B were called before line 5, though both answer on or after it');
+  assert.deepEqual(drawn(listImages(t, at[8])), [sent, a1, a2, b, c], 'C was called on line 7, so its picture is before line 8, which holds the picture sent after the call');
+  assert.deepEqual(drawn(listImages(t, at[4])), [sent, a1, a2], 'B is called on line 4, so only A is before it');
+  assert.deepEqual(drawn(listImages(t, 0)), []);
+});
+
+test('a second result for a call replaces the first one\'s pictures, and a result without pictures leaves them, as on a page that read the whole file', () => {
+  const t = file('twice', [
+    use('toolu_x', 'Read'),
+    line('u1', [toolResult('toolu_x', [picture('first answer')])]),
+    line('u2', [toolResult('toolu_x', [picture('second answer')])]),
+    use('toolu_y', 'Read'),
+    line('u3', [toolResult('toolu_y', [picture('only answer')])]),
+    line('u4', [toolResult('toolu_y', [{ type: 'text', text: 'and no picture' }])]),
+  ]);
+  const at = lineStarts(t);
+  assert.deepEqual(drawn(listImages(t)), [`${at[2]}.r0.u2`, `${at[4]}.r0.u3`]);
+  assert.deepEqual(drawn(listImages(t)), asRead(t));
+});
+
+test('a picture appended to the file is added, half a line waits for its end, and a late result takes its call\'s place', () => {
+  const t = file('growing', [use('toolu_x', 'Read'), line('u1', [picture('sent')])]);
+  const append = text => fs.appendFileSync(t.file, text);
+  assert.equal(listImages(t).length, 1);
+  append(`${JSON.stringify(line('u2', [toolResult('toolu_x', [picture('late')])]))}\n`);
+  let at = lineStarts(t);
+  assert.deepEqual(drawn(listImages(t)), [`${at[2]}.r0.u2`, `${at[1]}.0.u1`], 'the result is drawn at its call, ahead of the picture sent after the call');
+  const half = JSON.stringify(line('u3', [picture('half')]));
+  append(half.slice(0, 50));
+  assert.equal(listImages(t).length, 2, 'half a line is not read yet');
+  append(`${half.slice(50)}\n`);
+  at = lineStarts(t);
+  assert.deepEqual(drawn(listImages(t)), [`${at[2]}.r0.u2`, `${at[1]}.0.u1`, `${at[3]}.0.u3`]);
+  assert.deepEqual(drawn(listImages(t)), asRead(t));
+});
+
+test('a file rewritten with other content lists only what it holds now, whether the new content is longer or shorter', () => {
+  const others = (tag, count) => Array.from({ length: count }, (_, n) => line(`${tag}${n}`, [picture(`${tag} picture ${n}`)]));
+  const t = file('rewritten', CHAT);
+  assert.equal(listImages(t).length, 6);
+  for (const [tag, count] of [['long', 40], ['short', 3]]) {
+    fs.writeFileSync(t.file, others(tag, count).map(e => `${JSON.stringify(e)}\n`).join(''));
+    const listed = listImages(t);
+    assert.equal(listed.length, count, tag);
+    assert.deepEqual(listed, listImages(file(`${tag}-copy`, others(tag, count))), `${tag}: the same as reading that content cold`);
+  }
+});
+
+test('a scan that throws half way is dropped, so the next call reads the file again instead of adding to it', () => {
+  const t = file('half-done', [line('u1', [picture('one')])]);
+  assert.equal(listImages(t).length, 1);
+  const poison = { type: 'user', message: { role: 'user', content: { type: 'image' } } };
+  fs.appendFileSync(t.file, [line('u2', [picture('two')]), poison].map(e => `${JSON.stringify(e)}\n`).join(''));
+  assert.throws(() => listImages(t), TypeError);
+  fs.writeFileSync(t.file, [line('u1', [picture('one')]), line('u2', [picture('two')])].map(e => `${JSON.stringify(e)}\n`).join(''));
+  const at = lineStarts(t);
+  assert.deepEqual(drawn(listImages(t)), [`${at[0]}.0.u1`, `${at[1]}.0.u2`], 'two, which the failed scan had read, is not listed twice');
+});
+
+const bytesRead = work => {
+  const real = fs.readSync;
+  let total = 0;
+  fs.readSync = (...args) => { const got = real(...args); total += got; return got; };
+  try { work(); } finally { fs.readSync = real; }
+  return total;
+};
+const bulky = (tag, lines) => [line(`${tag}p`, [picture(tag)]), ...Array.from({ length: lines }, (_, n) => line(`${tag}${n}`, 'x'.repeat(50_000)))];
+
+test('a second call reads little more than the end of the file, and one after an append reads what was added', () => {
+  const t = file('incremental', bulky('inc', 40));
+  const cold = bytesRead(() => listImages(t));
+  const warm = bytesRead(() => listImages(t));
+  assert.ok(cold > 2_000_000, `cold read ${cold}`);
+  assert.ok(warm < 100_000, `warm read ${warm}`);
+  fs.appendFileSync(t.file, `${JSON.stringify(line('incz', [picture('added')]))}\n`);
+  let list;
+  const after = bytesRead(() => { list = listImages(t); });
+  assert.ok(after < 100_000, `read after an append ${after}`);
+  assert.equal(list.length, 2);
+});
+
+test('the scans of sixteen files are kept, and the one used least recently goes first', () => {
+  const files = Array.from({ length: 17 }, (_, n) => file(`lru${n}`, bulky(`lru${n}`, 4)));
+  const read = n => bytesRead(() => listImages(files[n]));
+  for (let n = 0; n < 16; n++) read(n);
+  assert.ok(read(0) < 100_000, 'the first of sixteen is still kept, and using it makes it the newest');
+  read(16);
+  assert.ok(read(0) < 100_000, 'so it outlasts the seventeenth');
+  assert.ok(read(1) > 150_000, 'and the second, now the oldest, was the one dropped');
+});
+
+test('a line longer than a chunk is read whole, and a line that crosses from one chunk to the next is not lost', () => {
+  const MiB = 1024 * 1024;
+  const t = file('long-lines', [
+    line('u1', [picture(Buffer.alloc(3 * MiB, 1))]),
+    line('u2', [picture(Buffer.alloc(3 * MiB, 2))]),
+    line('u3', [picture(Buffer.alloc(7 * MiB, 3))]),
+    line('u4', [picture('small')]),
+  ]);
+  const at = lineStarts(t);
+  assert.deepEqual(drawn(listImages(t)), [`${at[0]}.0.u1`, `${at[1]}.0.u2`, `${at[2]}.0.u3`, `${at[3]}.0.u4`]);
+  assert.equal(readImage(t, `${at[2]}.0.u3`).bytes.length, 7 * MiB);
 });

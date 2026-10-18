@@ -18,6 +18,8 @@ const settle = (tool, result) => ({ ...tool, status: result.status, output: resu
 
 // Assistant text arrives one block per line, so consecutive blocks of one message are joined back up.
 // A result whose tool sits in a chunk not loaded yet waits in `orphans` until that chunk arrives.
+// NOTE: [18 Oct 2026] EK - A tool's pictures sit at the tool call's place, and a result whose call is not here yet adds none.
+// listImages in lib/transcripts.mjs lists the viewer's earlier pictures in this order, so change the two together or its count drifts.
 export function absorb({ items, orphans }, incoming) {
   const list = items.slice();
   const waiting = new Map(orphans);

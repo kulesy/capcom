@@ -1,15 +1,20 @@
 // The image viewer: one picture of a chat over the page, with the others a step away. It sits beside the app so the
 // app can be made inert while it is open.
-import { dataUrlToBlob, isDataUrl, nearestThumb, position, stepIndex, swipeStep, tabTarget } from './gallery.js';
+import { dataUrlToBlob, isDataUrl, joinEarlier, nearestThumb, position, stepKey, swipeStep, tabTarget } from './gallery.js';
 import { useStore } from './hooks.js';
-import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { createStore } from './store.js';
 
-const viewer = createStore({ open: null });
+const viewer = createStore({ open: null, earlier: [] });
 
 // `current`, if given, returns the list as it stands when the viewer closes: a message still being sent gets new keys when it is saved.
-export const openViewer = (images, index, from, current) => viewer.set({ open: { images, index, from, current } });
-export const closeViewer = () => viewer.set({ open: null });
+// `later`, if given, is a promise of the pictures from before `images`; the viewer keeps to `images` if it fails.
+export function openViewer(images, index, from, current, later) {
+  const open = { images, index, from, current };
+  viewer.set({ open, earlier: later ? null : [] });
+  later?.catch(() => []).then(list => { if (viewer.get().open === open) viewer.set({ earlier: list }); });
+}
+export const closeViewer = () => viewer.set({ open: null, earlier: [] });
 
 const Close = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>`;
 const NewTab = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M8.5 5H5.5A1.5 1.5 0 0 0 4 6.5v8A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5v-3M11.5 4H16v4.5M16 4l-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
@@ -21,18 +26,25 @@ const isBackdrop = el => el.dataset?.backdrop !== undefined;
 // A thumbnail someone can see. Chromium and WebKit keep the boxes of what a closed details hides, so having a box is not enough.
 const isOnScreen = el => !!el?.isConnected && el.getClientRects().length > 0 && !el.closest('details:not([open])');
 
-function Viewer({ images, start, from, current }) {
+function Viewer({ images, start, from, current, earlier }) {
   const root = useRef(null);
   const press = useRef({ backdrop: false, swipe: null });
-  const [at, setAt] = useState(start);
+  const [key, setKey] = useState(images[start].key);
   const [actual, setActual] = useState(false);
   const actualNow = useRef(actual);
   actualNow.current = actual;
   const [seen, setSeen] = useState({});
-  const total = images.length;
-  const image = images[at];
+  const waiting = earlier === null;
+  const all = useMemo(() => (waiting ? images : joinEarlier(earlier, images)), [images, earlier]);
+  const allNow = useRef(all);
+  allNow.current = all;
+  const at = Math.max(0, all.findIndex(i => i.key === key));
+  const total = all.length;
+  const image = all[at];
 
-  const step = by => setAt(i => stepIndex(i, by, total));
+  // The picture on screen is held by its key, so earlier pictures arriving in front of it do not move it.
+  // The latest list is read from a ref because the key listener is added once.
+  const step = by => setKey(k => stepKey(allNow.current, k, by));
 
   // Keys are caught before the page behind sees them, so Esc closes this instead of also stopping a running chat.
   // With the app inert, Tab would leave through the browser's own controls, so it is kept moving among ours.
@@ -77,8 +89,8 @@ function Viewer({ images, start, from, current }) {
   }, []);
 
   useEffect(() => {
-    for (const near of [images[at - 1], images[at + 1]]) if (near && !isDataUrl(near.src)) new Image().src = near.src;
-  }, [at]);
+    for (const near of [all[at - 1], all[at + 1]]) if (near && !isDataUrl(near.src)) new Image().src = near.src;
+  }, [at, all]);
 
   const mark = state => setSeen(s => (s[image.key] === state ? s : { ...s, [image.key]: state }));
   const status = seen[image.key];
@@ -119,9 +131,9 @@ function Viewer({ images, start, from, current }) {
         onLoad=${() => mark('ready')} onError=${() => mark('failed')} />
       ${note}
     </div>
-    ${total > 1 ? html`<div class="viewer-pager" data-backdrop>
+    ${total > 1 || waiting ? html`<div class="viewer-pager" data-backdrop>
       <button class="icon-btn" type="button" aria-label="Previous image" title="Previous (←)" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
-      <p class="viewer-count" aria-live="polite" aria-atomic="true">${position(at, total)}</p>
+      <p class="viewer-count" aria-live="polite" aria-atomic="true">${waiting ? '' : position(at, total)}</p>
       <button class="icon-btn" type="button" aria-label="Next image" title="Next (→)" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
     </div>` : null}
   </div>`;
@@ -129,5 +141,6 @@ function Viewer({ images, start, from, current }) {
 
 export function ViewerHost() {
   const open = useStore(viewer, s => s.open);
-  return open ? html`<${Viewer} key=${open} images=${open.images} start=${open.index} from=${open.from} current=${open.current} />` : null;
+  const earlier = useStore(viewer, s => s.earlier);
+  return open ? html`<${Viewer} key=${open} images=${open.images} start=${open.index} from=${open.from} current=${open.current} earlier=${earlier} />` : null;
 }

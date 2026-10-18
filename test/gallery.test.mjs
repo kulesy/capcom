@@ -1,7 +1,7 @@
 // Run with `npm test`. What the image viewer decides is plain functions on plain data, so it runs here without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dataUrlToBlob, draftImages, fromTool, imageKey, isDataUrl, nearestThumb, overflow, position, stepIndex, swipeStep, tabTarget, threadImages, tileLabel, toolShots } from '../public/ui/gallery.js';
+import { dataUrlToBlob, draftImages, fromTool, imageKey, isDataUrl, joinEarlier, nearestThumb, overflow, position, stepIndex, stepKey, swipeStep, tabTarget, threadImages, tileLabel, toolShots } from '../public/ui/gallery.js';
 
 const url = ref => `api/sessions/s1/images/${ref}`;
 
@@ -123,6 +123,28 @@ test('closing the viewer prefers the picture opened on, then its place in the th
 test('stepping stops at the first and the last picture instead of wrapping', () => {
   assert.deepEqual([[0, -1], [0, 1], [3, 1], [4, 1], [4, -1]].map(([at, by]) => stepIndex(at, by, 5)), [0, 1, 4, 4, 3]);
   assert.equal(stepIndex(0, 1, 1), 0);
+});
+
+test('the pictures from before the loaded messages go in front of the loaded ones, leaving out any the loaded list already has', () => {
+  const shot = key => ({ key, src: url(key), alt: 'Attached image' });
+  const loaded = ['c', 'd', 'e'].map(shot);
+  const keys = list => list.map(i => i.key);
+  assert.deepEqual(keys(joinEarlier(['a', 'b'].map(shot), loaded)), ['a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(keys(joinEarlier(['a', 'c', 'x'].map(shot), loaded)), ['a', 'x', 'c', 'd', 'e'], 'c is loaded already, so it keeps its place there');
+  assert.equal(joinEarlier([], loaded), loaded, 'with nothing earlier the loaded list itself comes back');
+  assert.deepEqual(joinEarlier(['a'].map(shot), []), [shot('a')]);
+  assert.deepEqual(keys(loaded), ['c', 'd', 'e'], 'the loaded list is not changed');
+});
+
+test('stepping by key moves from the picture on screen, stops at both ends, and a key that is not in the list steps from the first picture', () => {
+  const list = ['a', 'b', 'c', 'd'].map(key => ({ key }));
+  assert.deepEqual([['b', 1], ['b', -1], ['a', -1], ['d', 1], ['a', 3], ['d', -3]].map(([key, by]) => stepKey(list, key, by)), ['c', 'a', 'a', 'd', 'd', 'a']);
+  assert.equal(stepKey(list, 'gone', 1), 'b');
+  assert.equal(stepKey(list, 'gone', -1), 'a');
+  assert.equal(stepKey(list.slice(0, 1), 'a', 1), 'a');
+  const before = ['c', 'd'].map(key => ({ key }));
+  assert.equal(stepKey(before, 'd', -1), 'c');
+  assert.equal(stepKey(joinEarlier(['a', 'b'].map(key => ({ key })), before), 'd', -1), 'c', 'pictures arriving in front do not move the one on screen');
 });
 
 test('the count reads from one', () => {

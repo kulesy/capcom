@@ -51,14 +51,15 @@ export function Transcript({ ctrl }) {
     ctrl.loadEarlier();
   };
 
-  // The viewer steps through the pictures as the thread holds them when one is clicked, and closes with the chat.
+  // The viewer steps through the pictures the thread holds when one is clicked, and back through those of the unloaded messages, which the server lists. It closes with the chat.
   const viewImage = useCallback((key, from) => {
     const thread = () => {
       const { items: saved, sending: unsent } = ctrl.store.get();
       return threadImages(saved, unsent, ctrl.imageUrl);
     };
     const images = thread();
-    openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from, thread);
+    const earlier = ctrl.store.get().hasEarlier ? ctrl.earlierImages().then(list => threadImages(list, [], ctrl.imageUrl)) : null;
+    openViewer(images, Math.max(0, images.findIndex(i => i.key === key)), from, thread, earlier);
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 

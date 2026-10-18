@@ -56,3 +56,65 @@ test('a chat keeps its 100 newest undelivered messages and drops the oldest firs
   assert.equal(kept.length, 100);
   assert.deepEqual([kept[0], kept.at(-1)], ['m5', 'm104']);
 });
+
+// A fake server for one test: the chat opens on `starts[0]`, each Load earlier moves to the next start, and `pictures` answers the list of pictures.
+async function withServer({ starts, pictures }, run) {
+  const real = globalThis.fetch;
+  const asked = [];
+  let moved = 0;
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async url => {
+    const address = String(url);
+    if (address.includes('/images?')) { asked.push(address); return pictures(address); }
+    if (address.endsWith('/chips')) return reply({ chips: [] });
+    const start = starts[address.includes('/messages?before=') ? ++moved : 0];
+    return reply({ items: [], start, end: 900, hasEarlier: start > 0 });
+  };
+  try { await run(asked); } finally { globalThis.fetch = real; }
+}
+const failure = error => ({ status: 500, ok: false, json: async () => ({ error }) });
+const listing = ref => ({ status: 200, ok: true, json: async () => ({ items: [{ kind: 'user', images: [{ ref, type: 'image/png' }] }] }) });
+
+test('the viewer asks for the pictures before the loaded messages once for each start, again after Load earlier, and again after a failed answer', async () => {
+  let failing = false;
+  const pictures = address => (failing ? failure('Could not list the pictures.') : listing(`${/before=(\d+)/.exec(address)[1]}.0.u`));
+  await withServer({ starts: [600, 200, 100], pictures }, async asked => {
+    const { chat } = await openChat('chat-pictures');
+    const refs = async () => (await chat.earlierImages()).map(item => item.images[0].ref);
+    assert.deepEqual(await refs(), ['600.0.u']);
+    assert.deepEqual(await refs(), ['600.0.u']);
+    assert.deepEqual(asked, ['api/sessions/chat-pictures/images?before=600'], 'once for the start the chat opened with');
+
+    await chat.loadEarlier();
+    assert.deepEqual(await refs(), ['200.0.u']);
+    assert.deepEqual(await refs(), ['200.0.u']);
+    assert.deepEqual(asked.slice(1), ['api/sessions/chat-pictures/images?before=200'], 'and once more now that the start has moved');
+
+    await chat.loadEarlier();
+    failing = true;
+    await assert.rejects(chat.earlierImages(), /Could not list the pictures/);
+    failing = false;
+    assert.deepEqual(await refs(), ['100.0.u'], 'a failed answer is not kept');
+    assert.deepEqual(await refs(), ['100.0.u']);
+    assert.equal(asked.length, 4);
+    chat.close();
+  });
+});
+
+test('an answer that fails after the start has moved on is dropped without taking away the answer for the new start', async () => {
+  let failSlow;
+  const pictures = address => (address.endsWith('before=600')
+    ? new Promise(resolve => { failSlow = () => resolve(failure('Too slow.')); })
+    : listing('200.0.u'));
+  await withServer({ starts: [600, 200], pictures }, async asked => {
+    const { chat } = await openChat('chat-moved-on');
+    const slow = assert.rejects(chat.earlierImages(), /Too slow/);
+    await chat.loadEarlier();
+    const fresh = await chat.earlierImages();
+    failSlow();
+    await slow;
+    assert.equal(await chat.earlierImages(), fresh, 'the answer for the new start is still the one kept');
+    assert.equal(asked.length, 2);
+    chat.close();
+  });
+});

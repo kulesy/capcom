@@ -49,6 +49,19 @@ export function nearestThumb(shown, keys, start, opened) {
 
 export const stepIndex = (index, by, total) => Math.min(Math.max(index + by, 0), total - 1);
 
+// The pictures from before the loaded messages go in front of the loaded ones, leaving out any the loaded list already has.
+export function joinEarlier(earlier, images) {
+  if (!earlier.length) return images;
+  const loaded = new Set(images.map(i => i.key));
+  return [...earlier.filter(i => !loaded.has(i.key)), ...images];
+}
+
+// The key of the picture `by` steps from `key`. A key that is not in the list steps from the first picture.
+export function stepKey(list, key, by) {
+  const at = Math.max(0, list.findIndex(i => i.key === key));
+  return list[stepIndex(at, by, list.length)].key;
+}
+
 export const position = (index, total) => `${index + 1} of ${total}`;
 
 const SWIPE = 48;

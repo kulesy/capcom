@@ -48,6 +48,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   let again = false;
   // Once a turn ends the streamed text stays up until the transcript has the real message, so it never blinks out.
   let ended = false;
+  let earlier = null;
 
   const keepEnded = holdsEnded => { endedByChat.set(id, holdsEnded); return { holdsEnded }; };
   const notice = text => store.set({ notice: text || '' });
@@ -167,6 +168,20 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     } finally {
       if (!closed) store.set({ loadingEarlier: false });
     }
+  }
+
+  // The viewer's pictures from before the loaded messages. The answer is kept for this `start`, so the viewer opens at once the
+  // next time, and dropped when it fails so the next open asks again.
+  function earlierImages() {
+    const { start } = state();
+    if (earlier?.start !== start) {
+      const asked = api(`api/sessions/${enc(id)}/images?before=${start}`).then(r => r.items, err => {
+        if (earlier?.asked === asked) earlier = null;
+        throw err;
+      });
+      earlier = { start, asked };
+    }
+    return earlier.asked;
   }
 
   // ---- talking to Claude -------------------------------------------------------------------------------
@@ -296,7 +311,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const imageUrl = ref => `api/sessions/${enc(id)}/images/${enc(ref)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier,
+    id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages,
     send, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
   };
 }

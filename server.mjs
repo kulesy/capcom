@@ -8,7 +8,7 @@ import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { makeLayout } from './lib/layout.mjs';
-import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, completeEnd } from './lib/transcripts.mjs';
+import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
@@ -512,6 +512,14 @@ async function api(req, res, u) {
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
+  // The pictures of the whole chat as items with refs and no bytes, for the viewer to count and step through.
+  if (req.method === 'GET' && action === 'images' && !parts[4]) {
+    const before = u.searchParams.get('before');
+    if (before !== null && !/^\d+$/.test(before)) return send(res, 400, { error: 'before must be a byte offset.' });
+    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    if (!t) return send(res, 404, { error: 'No session with that id on this Mac.' });
+    return send(res, 200, { items: listImages(t, before === null ? Infinity : Number(before)) });
+  }
   // An image from a message in the transcript. The ref comes from the item, and the bytes never travel in the messages.
   if (req.method === 'GET' && action === 'images') {
     const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
