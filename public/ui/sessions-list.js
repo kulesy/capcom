@@ -234,8 +234,10 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
   // and back to the row if it returns.
   async function archiveRow(id, title) {
     const ids = [...box.current.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id);
+    // A routine's next run takes the place of its latest, so the focus goes to that run and not past the routine.
+    const next = ix.routines.find(g => g.latest.id === id)?.earlier[0]?.id;
     const done = archive(id, true);
-    setAfter(neighbour(ids, id));
+    setAfter(next ?? neighbour(ids, id));
     const { problem, stopped } = await done;
     if (problem) setAfter(id);
     setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title } });
