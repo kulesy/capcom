@@ -155,7 +155,8 @@ function walk(e, box) {
 }
 
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
-// `edit(path, body)` sends a change to projects or groups the same way.
+// `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
+// group the server made, changed or removed.
 export function SessionList({ ix, error, current, place, edit, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [openRoutines, setOpenRoutines] = useState(new Set());
@@ -199,18 +200,20 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
     return () => clearTimeout(timer);
   }, [note]);
 
-  // Focus goes back to what a closed form replaced or came from, as soon as the list has been drawn without the form.
+  // Focus goes to the project or group a closed form made, or back to what it replaced or came from, as soon as the list has been
+  // drawn without the form. It scrolls into view, so `focus()` must never be given preventScroll.
   useLayoutEffect(() => {
     if (back === null) return;
     nav.current.querySelector(back)?.focus();
     setBack(null);
   }, [back]);
 
-  // Sends one change to the layout. It resolves true when the server took it, and otherwise shows the reason at the top of the list.
+  // Sends one change to the layout. It resolves with what the server made, changed or removed, or with null when it refused,
+  // and then shows the reason at the top of the list.
   async function change(path, body) {
-    const problem = await edit(path, body);
+    const { problem, made } = await edit(path, body);
     setNote(problem);
-    return !problem;
+    return problem ? null : made;
   }
 
   const closeForm = focus => { setForm(null); if (focus) setBack(focus); };
@@ -231,9 +234,9 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
   }
 
   async function addGroup(name, project) {
-    const done = await change('api/layout/group/add', { name, project });
-    if (done) { closeForm(project ? headOf(project) : '.add'); if (project) expand(project); }
-    return done;
+    const made = await change('api/layout/group/add', { name, project });
+    if (made) { closeForm(headOf(made.id)); if (project) expand(project); }
+    return !!made;
   }
 
   const tree = {
@@ -257,13 +260,13 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
       onSubmit=${async name => {
         const done = await change('api/layout/project/rename', { id: p.id, name });
         if (done) closeForm(headOf(p.id));
-        return done;
+        return !!done;
       }} />`,
     deleteForm: (p, groups) => html`<${DeleteProject} name=${p.name} groups=${groups} onCancel=${() => closeForm(headOf(p.id))}
       onConfirm=${async () => {
         const done = await change('api/layout/project/remove', { id: p.id });
         if (done) closeForm('.add');
-        return done;
+        return !!done;
       }} />`,
   };
 
@@ -271,9 +274,9 @@ export function SessionList({ ix, error, current, place, edit, onFind, passkeys,
   const topForm = !top ? null : top.kind === 'project'
     ? html`<${NameForm} label="New project" action="Create" onCancel=${() => closeForm('.add')}
         onSubmit=${async name => {
-          const done = await change('api/layout/project/add', { name });
-          if (done) closeForm('.add');
-          return done;
+          const made = await change('api/layout/project/add', { name });
+          if (made) closeForm(headOf(made.id));
+          return !!made;
         }} />`
     : html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`;
 
