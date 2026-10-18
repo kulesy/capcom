@@ -89,14 +89,20 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   shows recent sessions and a New session action. Typing filters by title, folder, branch or routine.
   The up and down arrows and Enter open a result, and Esc closes it. Archived sessions stay out of the
   list and turn up here, under their own chip, most recently archived first, and after the live
-  matches in any search. Sending a message to an archived session brings it back into the list, in the group
-  or pin it had, and the open page shows it at once. Desktop's record stays archived, so Capcom remembers the
-  change in `layout.json`.
+  matches in any search.
+- **Archiving.** Right-click a session in the list, or press the menu key or Shift+F10 on it, for a menu
+  with Archive. On a phone, long-press the row and let go without moving it. This works for any session,
+  whichever app started it. A note at the top of the list then offers Undo for 10 seconds. When the chat is
+  working or waiting for an approval, the item reads Stop and archive: the turn ends, the approval is
+  denied and the chat's process closes. In the search, each archived result has an Unarchive button, and
+  Shift+Enter unarchives the selected one. Unarchiving, or sending the session a message, brings it back to
+  the group, pin or routine it had. Desktop's records are read only, so Capcom keeps these choices in
+  `layout.json`, and its choice wins over Desktop's archive flag in both directions.
 - **Keyboard in the list.** The up and down arrows move through the project and section headers and the
   sessions, Home and End jump to either end, and left and right fold a project, a section or a routine's
-  runs. Enter opens the focused session. With no chat open, up or down steps into the list. Tab reaches the
-  dots on a header, and Enter or Space on them opens the menu. In a menu the up and down arrows, Home and
-  End move between items, Esc closes it, and Tab leaves it.
+  runs. Enter opens the focused session, and the menu key or Shift+F10 opens its menu. With no chat open,
+  up or down steps into the list. Tab reaches the dots on a header, and Enter or Space on them opens the
+  menu. In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab leaves it.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.
