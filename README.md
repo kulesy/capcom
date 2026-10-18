@@ -376,6 +376,15 @@ An http address keeps working, because it sends no such header. The cookie is al
 `SameSite=Lax`, so a signed-in browser that follows a link to Capcom from another website arrives signed in,
 and the cookie is not sent with a form or script request from that website.
 
+The browser keeps each picture it has shown for a year, so a chat opens fast. A picture comes with
+`Vary: Cookie`, so the browser reuses its copy only while it holds the sign-in cookie it fetched the picture
+with. Once Sign out has cleared that cookie, or the cookie has run out, opening a picture's address asks Capcom
+again and gets a 401. Sign out also sends `Clear-Site-Data: "cache"`, and Chrome and Edge, and Firefox from
+version 138, then delete their copies, at an https address or at localhost. Safari 27 keeps its copies, and so
+does any browser at a plain http address, but neither shows one without the cookie. After a new password ends
+every sign-in, a browser keeps its old cookie until it signs in again, and until then it can show a picture it
+kept. Sign out clears that cookie too, but only from a tab that has not yet gone back to the sign-in page.
+
 Passkeys need an https address. A phone that reaches Capcom over plain http, as on a private network without
 https, signs in with the password only, and the sign-in page says why. To use passkeys remotely, serve
 Capcom over https and list the address in `config.local.json`:

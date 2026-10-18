@@ -117,6 +117,7 @@ test('a picture a tool returned is served by its r ref to a signed-in browser an
   assert.equal(got.status, 200);
   assert.equal(got.headers['content-type'], 'image/png');
   assert.equal(got.headers['cache-control'], 'private, max-age=31536000, immutable');
+  assert.equal(got.headers.vary, 'Cookie', 'a copy kept under one sign-in cookie must not be reused without it');
   assert.equal(got.text, bytes);
   for (const ref of ['0.r0.u2', '0.0.u1', '0.r1.u1']) assert.equal((await request(s, 'GET', url(ref), { headers: as(token) })).status, 404, ref);
 });
@@ -163,7 +164,7 @@ test('renew stops pushing the expiry past 365 days after sign-in, and the cookie
   assert.equal(JSON.parse(fs.readFileSync(s.tokens, 'utf8'))[token].expires, new Date(made + 365 * DAY).toISOString());
 });
 
-test('signing out clears the cookie, with Secure behind an https proxy, and ends that session', async () => {
+test('signing out clears the cookie, with Secure behind an https proxy, ends that session and has the browser drop its cache', async () => {
   const s = await start();
   const { token } = await signIn(s);
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(token) })).status, 200);
@@ -171,8 +172,21 @@ test('signing out clears the cookie, with Secure behind an https proxy, and ends
   const out = await request(s, 'POST', '/logout', { headers: { ...as(token), ...HTTPS }, json: {} });
   assert.equal(out.status, 303);
   assert.equal(out.headers.location, './');
+  assert.equal(out.headers['clear-site-data'], '"cache"');
   assert.equal(out.headers['set-cookie'][0], 'capcom=; HttpOnly; SameSite=Lax; Max-Age=0; Secure');
   assert.equal((await request(s, 'GET', listUrl(s.origin), { headers: as(token) })).status, 401);
+});
+
+test('signing out from a tab whose sign-in a new password already ended still clears the cookie and the cache', async () => {
+  const s = await start();
+  const { token } = await signIn(s);
+  rewriteTokens(s, tokens => { delete tokens[token]; });
+
+  const out = await request(s, 'POST', '/logout', { headers: as(token), json: {} });
+  assert.equal(out.status, 303);
+  assert.equal(out.headers.location, './');
+  assert.equal(out.headers['clear-site-data'], '"cache"');
+  assert.equal(out.headers['set-cookie'][0], 'capcom=; HttpOnly; SameSite=Lax; Max-Age=0');
 });
 
 test('a token file in the old shape keeps its browsers signed in, and an expired token stays out', async () => {

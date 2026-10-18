@@ -489,7 +489,9 @@ async function api(req, res, u) {
     const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
     const image = t && readImage(t, parts[4]);
     if (!image) return send(res, 404, { error: 'No such image.' });
-    return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' });
+    // NOTE: [18 Oct 2026] EK - Vary: Cookie, so the browser reuses its copy only while it holds the cookie it fetched it with. Sign-out's
+    // Clear-Site-Data deletes the copy in Chrome and Firefox, but Safari 27 ignores it, and no browser acts on it at a plain http address.
+    return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', vary: 'Cookie', 'x-content-type-options': 'nosniff' });
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   const body = JSON.parse(await readBody(req, action === 'send' ? MAX_BODY_BYTES : undefined) || '{}');
@@ -560,6 +562,14 @@ const server = http.createServer(async (req, res) => {
       return send(res, 303, '', 'text/plain', { location: './?signed-in', 'set-cookie': auth.cookie(auth.issue(agent), secure) });
     }
     if (req.method === 'POST' && (u.pathname === '/passkey-options' || u.pathname === '/passkey-login')) return await passkeySignIn(req, res, u, { secure, agent });
+    // Ahead of the session check, so a tab whose sign-in a new password already ended still clears its cookie and cache.
+    if (u.pathname === '/logout' && req.method === 'POST') {
+      const live = auth.check(req);
+      if (live) auth.revoke(live);
+      // NOTE: [18 Oct 2026] EK - Only "cache". Cookies ignore ports, so "cookies" would sign out every app on localhost,
+      // and "storage" would empty the storage of every app that shares this origin.
+      return send(res, 303, '', 'text/plain', { location: './', 'clear-site-data': '"cache"', 'set-cookie': sessionCookie('', 0, secure) });
+    }
     const token = auth.check(req);
     if (!token) {
       if (u.pathname.startsWith('/api/') || u.pathname === '/renew') return send(res, 401, { error: 'Signed out.' });
@@ -568,10 +578,6 @@ const server = http.createServer(async (req, res) => {
     auth.touch(token, agent);
     if (u.pathname === '/renew' && req.method === 'POST') {
       return send(res, 200, { ok: true }, 'application/json', auth.cookieDue(token) ? { 'set-cookie': auth.cookie(token, secure) } : {});
-    }
-    if (u.pathname === '/logout' && req.method === 'POST') {
-      auth.revoke(token);
-      return send(res, 303, '', 'text/plain', { location: './', 'set-cookie': sessionCookie('', 0, secure) });
     }
     if (u.pathname === '/login') return send(res, 303, '', 'text/plain', { location: './' });
     if (u.pathname.startsWith('/api/')) return await api(req, res, u);
