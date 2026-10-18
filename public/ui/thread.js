@@ -1,8 +1,6 @@
 // The transcript as a list of display items. These are plain functions on plain data: items are never changed in
 // place, so a row can tell by identity whether it needs to draw again.
-import { fullToolLabel, plural } from './format.js';
-
-export const CHROME = 'mcp__claude-in-chrome__';
+import { chromeTool, fullToolLabel, plural } from './format.js';
 
 let counter = 0;
 const nextKey = () => `i${++counter}`;
@@ -76,7 +74,7 @@ const KINDS = {
   other: n => `used ${plural(n, 'tool')}`,
 };
 const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Editing', web: 'Searching the web', fetch: 'Fetching', agent: 'Running an agent', skill: 'Using a skill', todo: 'Updating the to-do list', message: 'Sending a message', peers: 'Looking up other sessions', chrome: 'Using Chrome', other: 'Using' };
-const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || ((name || '').startsWith(CHROME) ? 'chrome' : 'other'));
+const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || (chromeTool(name) !== null ? 'chrome' : 'other'));
 
 // What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.
 export function activity(work, names) {

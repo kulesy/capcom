@@ -119,7 +119,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   fourth thumbnail is dimmed with a count such as "+7" for the pictures that have no thumbnail of their own, and
   a click on it opens the viewer at that picture. Each thumbnail opens the viewer. A call to an MCP tool shows
   its server first, as in "Chrome computer" or "Gmail search threads", and its thumbnails are labelled with
-  where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop". Desktop names a
+  where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop". Some older
+  Desktop chats name Chrome's server `Claude_in_Chrome`, where the CLI says `claude-in-chrome`. Capcom
+  reads both as Chrome, in tool rows and in group titles such as "Used Chrome 3 times". Desktop names a
   claude.ai connector by an id, so in a Desktop session it shows by the name that session's Desktop record
   gives it, or as "connector" when the record has none. A picture a tool returned in a form the page cannot
   draw still shows as "[image]" in the call's output. A message to another chat reads "to name: summary"

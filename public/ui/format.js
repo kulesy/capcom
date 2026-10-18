@@ -1,4 +1,5 @@
-// Small text helpers with no DOM in them. The caller passes the home folder where one is needed.
+// Small text helpers with no DOM and no imports, so lib/transcripts.mjs shares them with the page.
+// The caller passes the home folder where one is needed.
 
 export const tilde = (path, home) => (home ? String(path).replace(home, '~') : String(path));
 
@@ -39,20 +40,29 @@ export function modelLabel(m = '') {
 
 export const settingsLine = s => [modelLabel(s?.shownModel || s?.model || ''), s?.effort && `${s.effort} effort`].filter(Boolean).join(', ');
 
-export const toolLabel = name => name.replace(/^mcp__.+__/, '').replace(/_/g, ' ');
+export const toolLabel = name => (chromeTool(name) ?? name.replace(/^mcp__.+__/, '')).replace(/_/g, ' ');
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const CONNECTOR = 'connector';
+// claude-in-chrome is the CLI's id for the Chrome extension's server, and Claude_in_Chrome the one some older Desktop chats used.
+// It is matched from the front, as lib/runner.mjs and the CLI's ask rule match it, so a Chrome tool whose name holds __ stays Chrome's.
+const CHROME = /^mcp__claude[-_]in[-_]chrome__/i;
 // Split at the last __, because a server's name can hold one, as in mcp__PowerPoint__By_Anthropic___add_slide.
 const serverId = name => /^mcp__(.+)__/.exec(name)?.[1] ?? '';
 // `names` is a session's connectors as the server sends them, UUID to name. Only an own entry counts.
 const connectorName = (id, names) => (names && Object.hasOwn(names, id) ? names[id] : '');
 
+// A Chrome tool's own name within its server, such as 'navigate', or null for any other tool or a name that is not a string.
+export function chromeTool(name) {
+  const server = typeof name === 'string' ? CHROME.exec(name) : null;
+  return server ? name.slice(server[0].length) : null;
+}
+
 // The MCP server a tool comes from as the page names it, or '' for a built-in tool or Capcom's own. Desktop names a claude.ai
 // connector by a UUID, which `names` resolves, else "connector". The CLI starts its name with claude_ai_, Desktop's apps with ccd_.
 export function serverLabel(name, names) {
+  if (chromeTool(name) !== null) return 'Chrome';
   const id = serverId(name);
-  if (/^claude[-_]in[-_]chrome$/i.test(id)) return 'Chrome';
   if (/^ccd_/.test(id)) return 'Desktop';
   if (id === 'capcom') return '';
   if (UUID.test(id)) return connectorName(id, names) || CONNECTOR;

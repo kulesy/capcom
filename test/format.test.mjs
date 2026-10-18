@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { duration, fullToolLabel, groupHolds, holdCause, holdEnd, preview, serverLabel, tokenCount, toolLabel, toolSource } from '../public/ui/format.js';
+import { chromeTool, duration, fullToolLabel, groupHolds, holdCause, holdEnd, preview, serverLabel, tokenCount, toolLabel, toolSource } from '../public/ui/format.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -80,6 +80,29 @@ test('a server name of only separators is no server, and one with separators aro
 
 test('only the whole name claude-in-chrome is Chrome, and only a whole UUID is a connector', () => {
   assert.deepEqual(['mcp__chrome-devtools__take_screenshot', 'mcp__claude-in-chrome-beta__computer', 'mcp__0d2c4b1a-9e8f__read'].map(serverLabel), ['chrome devtools', 'claude in chrome beta', '0d2c4b1a 9e8f']);
+});
+
+test('a Chrome tool is named by its own name within its server, whichever id the extension goes by', () => {
+  const tools = {
+    'mcp__claude-in-chrome__navigate': 'navigate',
+    'mcp__Claude_in_Chrome__browser_batch': 'browser_batch',
+    'mcp__Claude_in_Chrome__tabs_context_mcp': 'tabs_context_mcp',
+  };
+  assert.deepEqual(Object.keys(tools).map(chromeTool), Object.values(tools));
+});
+
+test('a Chrome tool whose own name holds __ is still Chrome, as the runner and the CLI see it, with all of that name its own', () => {
+  const names = ['mcp__claude-in-chrome__tab__close', 'mcp__Claude_in_Chrome__tab__close'];
+  assert.deepEqual(names.map(n => [chromeTool(n), serverLabel(n)]), names.map(() => ['tab__close', 'Chrome']));
+});
+
+test('a name that ends at the Chrome server is still a Chrome tool, with no name of its own, so a caller tests for null and not for empty', () => {
+  assert.equal(chromeTool('mcp__claude-in-chrome__'), '');
+});
+
+test('any other tool is not a Chrome tool, and nor is a name that is not a string, even one that reads like a Chrome tool', () => {
+  const others = ['mcp__claude-in-chrome-beta__computer', 'mcp__chrome-devtools__take_screenshot', 'mcp__Claude_Browser__computer', 'Bash', '', null, undefined, 42, ['mcp__claude-in-chrome__navigate']];
+  assert.deepEqual(others.map(chromeTool), others.map(() => null));
 });
 
 test('a server named like a property every object has keeps its own name', () => {

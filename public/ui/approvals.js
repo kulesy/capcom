@@ -1,8 +1,7 @@
 // The cards above the prompt box: what Claude is about to do, and its multiple-choice questions.
-import { clip, pre, toolLabel, toolSource } from './format.js';
+import { chromeTool, clip, pre, toolLabel, toolSource } from './format.js';
 import { useStore } from './hooks.js';
 import { html, useState } from './html.js';
-import { CHROME } from './thread.js';
 
 const CHROME_FORMS = new Map(Object.entries({
   navigate: i => ['open a page', [['URL', i.url], ['Tab', i.tabId]]],
@@ -33,7 +32,8 @@ function cardParts(p, names) {
   if (p.tool === 'WebSearch') return { title: 'WebSearch wants to search the web', fields: [['Query', i.query]] };
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
   if (p.tool === 'SendMessage') return { title: 'Claude wants to message another session', fields: [['To', i.to], ['Message', clip(i.message, 12)]] };
-  if (p.tool?.startsWith(CHROME)) return chromeCard(p.tool.slice(CHROME.length), i);
+  const chrome = chromeTool(p.tool);
+  if (chrome !== null) return chromeCard(chrome, i);
   const mcp = p.tool?.match(/^mcp__(.+?)__(.+)$/);
   const fields = Object.entries(i).filter(([, v]) => v !== '' && v != null).slice(0, 8).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v, null, 2)]);
   return { title: mcp ? `${capitalised(toolSource(p.tool, names))} wants to use ${toolLabel(p.tool)}` : `${p.label} wants to run`, fields };
@@ -57,11 +57,11 @@ function useDecide(p, onDecide) {
   return [busy, decide];
 }
 
+// Always allow shows only where the runner says it sticks. The runner drops it for Chrome, so the page keeps no list of its own.
 function ApprovalCard({ p, names, onDecide }) {
   const [busy, decide] = useDecide(p, onDecide);
   const c = cardParts(p, names);
   const fields = (c.fields || []).filter(([, v]) => v !== undefined && v !== null && v !== '');
-  const always = p.suggestions?.length && !p.tool?.startsWith(CHROME);
   return html`<article class="approval" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>${c.title}</h3>
     ${fields.length ? html`<dl class="fields">${fields.map(([k, v]) => html`<dt>${k}</dt><dd><pre>${pre(v)}</pre></dd>`)}</dl>` : null}
@@ -70,7 +70,7 @@ function ApprovalCard({ p, names, onDecide }) {
     <details><summary>All input</summary><pre>${JSON.stringify(p.input ?? {}, null, 2)}</pre></details>
     <div class="approval-actions">
       <button class="button send" type="button" data-decision="allow" disabled=${busy} onClick=${() => decide('allow')}>Allow</button>
-      ${always ? html`<button class="button" type="button" data-decision="always" disabled=${busy} onClick=${() => decide('always')}>Always allow</button>` : null}
+      ${p.always ? html`<button class="button" type="button" data-decision="always" disabled=${busy} onClick=${() => decide('always')}>Always allow</button>` : null}
       <button class="button" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Deny</button>
     </div></article>`;
 }

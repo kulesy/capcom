@@ -1,6 +1,6 @@
 # Turn Claude in Chrome on by default in all chats and modes, as Desktop does
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-15 and 2026-10-18
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: chrome, permissions, bypass, tools
@@ -34,6 +34,7 @@ Chosen option: "Match Desktop", because Capcom can give the owner the same Bypas
 - In Bypass, Capcom answers Chrome's asks with allow, so no card shows. In Auto and the asking modes, a card shows. Capcom cannot run Auto's own safety check. Chrome cards have no Always allow.
 - **Amended 2026-10-15.** The owner had the per-chat switch removed the same day. Chrome is always on, and the `chrome` setting in `config.json` turns it off for all of Capcom. Capcom ignores the per-session choices already saved in `picks.json`.
 - Each process launches with `--allow-dangerously-skip-permissions`, so a chat can switch into Bypass mid-session. `setMode` waits for the CLI's reply and keeps the old mode if the CLI refuses the switch.
+- **Amended 2026-10-18.** Desktop served Chrome from its own process as a server named "Claude in Chrome", so some older Desktop chats call it `Claude_in_Chrome`. Capcom draws those calls as Chrome. The ask rule, the allow in Bypass and the hidden Always allow still cover `claude-in-chrome` only. A chat Capcom runs cannot load Desktop's server: on CLI 2.1.302 its servers include `claude-in-chrome` and no `Claude_in_Chrome`, and no MCP config names one. Recheck this if a chat Capcom runs ever lists a server by that name. The runner now tells the page whether a card may offer Always allow, so the page keeps no copy of the Chrome prefix.
 
 ### Consequences
 

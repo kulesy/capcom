@@ -39,6 +39,13 @@ test('a group that thought says so first, then what its calls did', () => {
   assert.equal(summarize([tool('Bash', { status: 'pending' }), think('z')]).note, 'running');
 });
 
+test('Chrome calls are counted as Chrome whichever server id the extension goes by, and a server that only starts like it is not', () => {
+  const desktop = name => tool(`mcp__Claude_in_Chrome__${name}`);
+  assert.equal(summarize([desktop('navigate'), desktop('computer'), desktop('find')]).title, 'Used Chrome 3 times');
+  assert.equal(summarize([tool('mcp__claude-in-chrome__navigate'), desktop('javascript_tool')]).title, 'Used Chrome 2 times');
+  assert.equal(summarize([tool('mcp__claude-in-chrome-beta__computer')]).title, 'Used 1 tool');
+});
+
 test('sending a message to another session and looking up who can receive one are named in a group, not counted as other tools', () => {
   const g = summarize([tool('ListAgents'), tool('SendMessage', { input: { to: 'Worker' } }), tool('SendMessage', { input: { to: 'Worker' } })]);
   assert.equal(g.title, 'Looked up other sessions, sent 2 messages');
@@ -53,6 +60,12 @@ test('the status line names the one tool running, with what it works on', () => 
   assert.deepEqual(activity({ tools: [{ name: 'mcp__claude-in-chrome__navigate', summary: 'https://example.com' }] }), { doing: 'Using Chrome', detail: 'https://example.com' });
   assert.deepEqual(activity({ tools: [{ name: 'mcp__visualize__show_widget', summary: '' }] }), { doing: 'Using', detail: 'visualize show widget' });
   assert.deepEqual(activity({ tools: [{ name: 'mcp__Claude_Browser__computer', summary: 'screenshot' }] }), { doing: 'Using', detail: 'Claude Browser computer: screenshot' });
+});
+
+test('the status line says Using Chrome for a Chrome tool under either server id, with what it works on', () => {
+  for (const name of ['mcp__claude-in-chrome__navigate', 'mcp__Claude_in_Chrome__navigate']) {
+    assert.deepEqual(activity({ tools: [{ name, summary: 'https://example.com/docs' }] }), { doing: 'Using Chrome', detail: 'https://example.com/docs' });
+  }
 });
 
 test('several tools at once are counted and named once each', () => {

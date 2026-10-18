@@ -251,3 +251,47 @@ test('a line the CLI prints that is not an object costs only itself: the chat ca
   assert.deepEqual(heard.filter(e => e.type === 'turn-end').map(e => e.data), [{ error: false, message: '', cost: 0.01 }]);
   assert.deepEqual([chat.status().running, chat.status().lastError], [true, '']);
 });
+
+test('Always allow is offered and kept for a tool with suggestions but never for Chrome, and Bypass allows Chrome with no card', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = path.join(dir, 'asking-claude.mjs');
+  const rule = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'ls' }], behavior: 'allow', destination: 'localSettings' }];
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import path from 'node:path';",
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "const mode = process.argv[process.argv.indexOf('--permission-mode') + 1];",
+    `const ask = (id, tool_name) => out({ type: 'control_request', request_id: id, request: { subtype: 'can_use_tool', tool_name, input: {}, permission_suggestions: ${JSON.stringify(rule)} } });`,
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    `  fs.appendFileSync(path.join(${JSON.stringify(dir)}, mode + '.log'), line + '\\n');`,
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  if (m.message.content === 'start') return out({ type: 'system', subtype: 'init', session_id: `sess-always-${mode}`, model: 'stub' });",
+    "  ask('ask-chrome', 'mcp__claude-in-chrome__navigate');",
+    "  ask('ask-bash', 'Bash');",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const answers = mode => fs.readFileSync(path.join(dir, `${mode}.log`), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))
+    .filter(m => m.type === 'control_response').map(m => [m.response.request_id, m.response.response.behavior, m.response.response.updatedPermissions]);
+
+  const chat = await startChat({ cwd: dir, mode: 'default', text: 'start', images: [], claude: cli, chrome: true, chips: null });
+  // A failed assertion must not leave the CLI running, or the test run never ends.
+  t.after(() => chat.stop());
+  chat.send('ask', []);
+  await until(() => chat.status().pending.length === 2);
+  assert.deepEqual(chat.status().pending.map(p => [p.tool, p.always]), [['mcp__claude-in-chrome__navigate', false], ['Bash', true]]);
+  chat.answer('ask-chrome', 'always');
+  chat.answer('ask-bash', 'always');
+  await until(() => answers('default').length === 2);
+  assert.deepEqual(answers('default'), [['ask-chrome', 'allow', undefined], ['ask-bash', 'allow', rule]], 'Always allow on Chrome allows this one call and keeps no rule');
+
+  const bypass = await startChat({ cwd: dir, mode: 'bypassPermissions', text: 'start', images: [], claude: cli, chrome: true, chips: null });
+  t.after(() => bypass.stop());
+  bypass.send('ask', []);
+  await until(() => bypass.status().pending.length === 1 && answers('bypassPermissions').length === 1);
+  assert.deepEqual(bypass.status().pending.map(p => p.tool), ['Bash']);
+  assert.deepEqual(answers('bypassPermissions'), [['ask-chrome', 'allow', undefined]]);
+});

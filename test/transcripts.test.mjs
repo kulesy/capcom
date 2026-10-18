@@ -790,6 +790,21 @@ test('a Chrome computer call whose coordinate is not a list is still listed, wit
   assert.equal(toolSummary('mcp__claude-in-chrome__computer', { action: 'left_click', coordinate: '[512, 300]' }, '/work'), 'left_click', 'the same summary an approval card is given');
 });
 
+test('a Chrome call is summarised by what it does under either server id, and one with no summary of its own by its first text input', () => {
+  const calls = [
+    ['navigate', { url: 'https://example.com/docs', tabId: 1 }, 'https://example.com/docs'],
+    ['computer', { action: 'left_click', coordinate: [640, 360], tabId: 1 }, 'left_click at 640,360'],
+    ['javascript_tool', { text: 'document.title\nreturn 1', tabId: 1 }, 'document.title'],
+    ['find', { query: 'Sign up button', tabId: 1 }, 'Sign up button'],
+    ['form_input', { ref: 'ref_3', value: 'hello', tabId: 1 }, 'ref_3 = hello'],
+    ['read_page', { tabId: 1, filter: 'interactive' }, 'interactive'],
+    ['tabs_context_mcp', { createIfEmpty: true }, ''],
+  ];
+  for (const server of ['claude-in-chrome', 'Claude_in_Chrome']) {
+    for (const [tool, input, summary] of calls) assert.equal(toolSummary(`mcp__${server}__${tool}`, input, '/work'), summary, `${server} ${tool}`);
+  }
+});
+
 test('a block that is not an object costs only itself in a message queued mid-turn, whose picture keeps the number it has without the block', () => {
   for (const [n, bad] of [undefined, ...NOT_OBJECTS].entries()) {
     const t = file(`bad-queued-${n}`, [{ ...queued(among(bad, [textBlock('redirect'), picture(SENT_0)]), 'prompt'), uuid: 'u1' }]);
