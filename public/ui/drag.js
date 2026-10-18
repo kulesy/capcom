@@ -40,10 +40,16 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     window.addEventListener('blur', lost, { signal });
   }
 
+  // The drag's place. A touch that leaves the circle it was held in has moved for good, even if it comes back.
+  function reach(d, x, y) {
+    Object.assign(d, { x, y });
+    if (Math.hypot(x - d.start.x, y - d.start.y) > HOLD_SLOP) d.moved = true;
+  }
+
   function move(e) {
     if (!e.isPrimary) return;
     if (drag) {
-      Object.assign(drag, { x: e.clientX, y: e.clientY });
+      reach(drag, e.clientX, e.clientY);
       return follow();
     }
     if (!press) return;
@@ -65,7 +71,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     document.body.classList.add('dragging');
     clearTimeout(press.timer);
     press = null;
-    drag = { id: row.dataset.id, row, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null };
+    drag = { id: row.dataset.id, row, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
     window.addEventListener('click', swallowClick, true);
     onStart(drag.id);
     follow();
@@ -82,10 +88,11 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   }
 
   // Near the top or bottom of the list it scrolls, faster the closer the pointer is to the edge, so a far section can be reached.
+  // A finger that has not moved since the long press holds still, so the list holds still under it.
   function autoscroll() {
     if (!drag) return;
     const r = box.getBoundingClientRect();
-    const pull = drag.x < r.left || drag.x > r.right ? 0 : Math.max(drag.y - (r.bottom - EDGE), 0) - Math.max(r.top + EDGE - drag.y, 0);
+    const pull = !drag.moved || drag.x < r.left || drag.x > r.right ? 0 : Math.max(drag.y - (r.bottom - EDGE), 0) - Math.max(r.top + EDGE - drag.y, 0);
     if (pull) {
       const was = box.scrollTop;
       box.scrollTop += Math.sign(pull) * Math.ceil(SCROLL_STEP * Math.min(Math.abs(pull), EDGE) / EDGE);
@@ -116,10 +123,10 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     const carried = drag;
     const dropped = carried && e.type === 'pointerup';
     if (dropped) {
-      Object.assign(carried, { x: e.clientX, y: e.clientY });
+      reach(carried, e.clientX, e.clientY);
       follow();
     }
-    const still = dropped && carried.touch && Math.hypot(carried.x - carried.start.x, carried.y - carried.start.y) <= HOLD_SLOP;
+    const still = dropped && carried.touch && !carried.moved;
     const target = dropped && !still ? carried.over : null;
     release();
     if (carried) onEnd(carried.id, target);
