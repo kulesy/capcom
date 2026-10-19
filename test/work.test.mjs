@@ -206,3 +206,178 @@ test('a tool call whose name is not a string, or is missing, is tracked with an 
     ], how);
   }
 });
+
+// ---- the phrases a widget call opens with --------------------------------------------------------------------------------------
+
+const WIDGET = 'mcp__capcom__show_widget';
+const pieces = (json, size) => json.match(new RegExp(`[\\s\\S]{1,${size}}`, 'g'));
+// Each list of phrases the page was sent for the first tool, in order. A report that leaves the list alone shares the array the one
+// before it sent, so it shows once here, and a list that was changed after it was sent would show as its grown self in both places.
+function phrases(t) {
+  const lists = [];
+  for (const [type, work] of t.heard) {
+    const list = type === 'work' ? work?.tools[0]?.loading : undefined;
+    if (list && list !== lists.at(-1)) lists.push(list);
+  }
+  return lists;
+}
+
+// A widget call as the API streams it: the input as JSON cut into pieces that can end anywhere. A name given as undefined stays so.
+function widgetCall(t, json, size, options = {}) {
+  t.feed(messageStart('msg_w'), toolStart(0, options.id ?? 'toolu_w', 'name' in options ? options.name : WIDGET));
+  for (const piece of pieces(json, size)) t.feed(toolInput(0, piece));
+  t.feed(blockStop(0));
+}
+
+test('a widget call\'s phrases are reported as each one is finished, whichever delta ends it, and a report never changes a list already sent', () => {
+  const t = turn();
+  t.work.begin();
+  t.feed(messageStart('msg_1'), toolStart(0, 'toolu_1', WIDGET));
+  t.feed(toolInput(0, '{"loading_messages": ["Plott'));
+  assert.deepEqual(phrases(t), [], 'a phrase that is not finished yet is not sent');
+  t.feed(toolInput(0, 'ing the values", "Draw'));
+  t.feed(toolInput(0, 'ing the bars"'));
+  assert.deepEqual(phrases(t), [['Plotting the values'], ['Plotting the values', 'Drawing the bars']]);
+  const sent = t.heard.length;
+  t.feed(toolInput(0, '], "title": "q4_sales", "widget_code": "<svg viewBox=\\"0 0 4 4\\"></svg>"}'));
+  assert.equal(t.heard.length, sent, 'once the list is closed nothing in the rest of the input is reported');
+  t.feed(blockStop(0));
+  assert.deepEqual(phrases(t).at(-1), ['Plotting the values', 'Drawing the bars']);
+  assert.deepEqual(phrases(t)[0], ['Plotting the values'], 'the list sent first did not grow when the second was made');
+  assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_1', name: WIDGET, summary: 'q4_sales', loading: ['Plotting the values', 'Drawing the bars'] }]);
+});
+
+test('a phrase is read the same however the input is cut, down to one character at a time, and escapes and accents come out as written', () => {
+  const json = '{"loading_messages":["Say \\"hi\\" to caf\\u00e9","Crème brûlée \\\\ \\/ tab\\there"],"title":"x","widget_code":"<p></p>"}';
+  for (const size of [1, 2, 3, 5, 8, 13, 400]) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, json, size);
+    assert.deepEqual(t.work.snapshot().tools[0].loading, ['Say "hi" to café', 'Crème brûlée \\ / tab here'], `pieces of ${size}`);
+  }
+});
+
+test('the phrases are found wherever the key sits in the input, and however it is cut, even behind a long widget', () => {
+  const rest = '"loading_messages":  [ "Late one" ,\n "Second" ],"title":"x"}';
+  const json = `{"widget_code":"${'<p>padding</p>'.repeat(40)}",${rest}`;
+  for (const size of [1, 2, 3, 7, 31, 63, 64, 65, 66, 1000]) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, json, size);
+    assert.deepEqual(t.work.snapshot().tools[0].loading, ['Late one', 'Second'], `pieces of ${size}`);
+  }
+  for (let at = json.length - rest.length - 3; at < json.length - 20; at++) {
+    const t = turn();
+    t.work.begin();
+    t.feed(messageStart('msg_w'), toolStart(0, 'toolu_w', WIDGET), toolInput(0, json.slice(0, at)), toolInput(0, json.slice(at)), blockStop(0));
+    assert.deepEqual(t.work.snapshot().tools[0].loading, ['Late one', 'Second'], `cut at ${at}`);
+  }
+});
+
+test('the same words inside the widget\'s own code are not its phrases, but the real key after them is', () => {
+  const fake = '<script>const config = {"loading_messages":["Not this"], "other": 1}</script>';
+  const alone = turn();
+  alone.work.begin();
+  widgetCall(alone, JSON.stringify({ title: 'x', widget_code: fake }), 6);
+  assert.deepEqual(alone.work.snapshot().tools, [{ id: 'toolu_w', name: WIDGET, summary: 'x' }], 'no phrases, and no empty list either');
+  const both = turn();
+  both.work.begin();
+  widgetCall(both, JSON.stringify({ widget_code: fake, loading_messages: ['Real one'], title: 'x' }), 6);
+  assert.deepEqual(both.work.snapshot().tools[0].loading, ['Real one']);
+  assert.deepEqual(phrases(both), [['Real one']]);
+});
+
+test('at most four phrases are kept, empty ones are dropped, each is one trimmed line of at most eighty characters, and the rest of the list is not read', () => {
+  const given = ['', '  Plotting \n  the   values\t', 'x'.repeat(200), '\u{1F600}'.repeat(100), 'c', 'd', 'e'];
+  const expected = ['Plotting the values', 'x'.repeat(80), '\u{1F600}'.repeat(80), 'c'];
+  const t = turn();
+  t.work.begin();
+  widgetCall(t, JSON.stringify({ loading_messages: given, title: 'x', widget_code: '<p></p>' }), 9);
+  assert.deepEqual(t.work.snapshot().tools[0].loading, expected);
+  assert.deepEqual(phrases(t).at(-1), expected);
+  assert.equal(phrases(t).every(list => list.length <= 4), true);
+  const spaces = turn();
+  spaces.work.begin();
+  widgetCall(spaces, JSON.stringify({ loading_messages: [`${'a'.repeat(79)} ${'b'.repeat(10)}`, '   ', 'ok'], title: 'x', widget_code: '' }), 9);
+  assert.deepEqual(spaces.work.snapshot().tools[0].loading, ['a'.repeat(79), 'ok'], 'a cut that ends on a space is trimmed');
+});
+
+test('a phrase that is far too long, or a list that holds something other than text, ends the reading with what was read before it', () => {
+  for (const [list, expected] of [[['ok', 'y'.repeat(500), 'never read'], ['ok']], [['one', 7, 'two'], ['one']], [['one', null], ['one']], [['one', ['two']], ['one']]]) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, JSON.stringify({ loading_messages: list, title: 'x', widget_code: '<p></p>' }), 11);
+    assert.deepEqual(t.work.snapshot().tools[0].loading, expected, JSON.stringify(list).slice(0, 40));
+  }
+});
+
+test('an empty list, text where the list should be, or no key at all gives no phrases', () => {
+  for (const input of [{ loading_messages: [] }, { loading_messages: ['', '  '] }, { loading_messages: 'Plotting' }, { loading_messages: null }, { loading_messages: { 0: 'Plotting' } }, {}]) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, JSON.stringify({ ...input, title: 'x', widget_code: '<p></p>' }), 8);
+    assert.deepEqual(t.work.snapshot().tools, [{ id: 'toolu_w', name: WIDGET, summary: 'x' }], JSON.stringify(input));
+    assert.deepEqual(phrases(t), []);
+  }
+});
+
+test('any server\'s show_widget is read the same way, and no other tool is', () => {
+  const json = JSON.stringify({ loading_messages: ['Plotting'], title: 'x', widget_code: '<p></p>', command: 'ls' });
+  const read = ['mcp__capcom__show_widget', 'mcp__visualize__show_widget', 'mcp__0f8a1c2e-1111-4a2b-9c3d-123456789abc__show_widget'];
+  const left = ['Bash', 'show_widget', 'mcp__capcom__show_widget_later', 'mcp__capcom__widget_guide', 'mcp__capcom__show_widgets', '', undefined, 7];
+  for (const name of read) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, json, 10, { name });
+    assert.deepEqual(t.work.snapshot().tools[0].loading, ['Plotting'], name);
+  }
+  for (const name of left) {
+    const t = turn();
+    t.work.begin();
+    widgetCall(t, json, 10, { name });
+    assert.equal('loading' in t.work.snapshot().tools[0], false, String(name));
+  }
+});
+
+test('two widget calls in one message keep their own phrases', () => {
+  const t = turn();
+  t.work.begin();
+  t.feed(messageStart('msg_1'), toolStart(0, 'a', WIDGET), toolStart(1, 'b', WIDGET));
+  t.feed(toolInput(0, '{"loading_messages":["First'), toolInput(1, '{"loading_messages":["Second","Third"]'), toolInput(0, ' one"]'));
+  assert.deepEqual(t.work.snapshot().tools.map(x => x.loading), [['First one'], ['Second', 'Third']]);
+});
+
+test('a CLI that streams nothing partial gives the phrases from the finished message, cleaned the same way', () => {
+  const finished = (id, input) => ({ type: 'assistant', message: { id: `msg_${id}`, content: [{ type: 'tool_use', id, name: WIDGET, input }] } });
+  const t = turn();
+  t.work.begin();
+  t.feed(finished('a', { loading_messages: ['', ' Plotting  the values ', 7, null, 'x'.repeat(200), 'c', 'd', 'e'], title: 'chart', widget_code: '<p></p>' }));
+  assert.deepEqual(t.work.snapshot().tools, [{ id: 'a', name: WIDGET, summary: 'chart', loading: ['Plotting the values', 'x'.repeat(80), 'c', 'd'] }]);
+  t.feed(finished('b', { loading_messages: 'Plotting', title: 'x' }), finished('c', { title: 'x' }), finished('d', { loading_messages: [], title: 'x' }));
+  assert.deepEqual(t.work.snapshot().tools.slice(1), [{ id: 'b', name: WIDGET, summary: 'x' }, { id: 'c', name: WIDGET, summary: 'x' }, { id: 'd', name: WIDGET, summary: 'x' }]);
+  t.feed({ type: 'assistant', message: { id: 'msg_e', content: [{ type: 'tool_use', id: 'e', name: 'Bash', input: { loading_messages: ['No'], command: 'ls' } }] } });
+  assert.equal('loading' in t.work.snapshot().tools.at(-1), false);
+});
+
+test('the finished message adds nothing when the stream already gave the same phrases, and fills in what the stream missed', () => {
+  const t = turn();
+  t.work.begin();
+  widgetCall(t, '{"loading_messages":["One","Two"],"title":"chart","widget_code":"<p></p>"}', 12);
+  const before = t.heard.length;
+  const input = { loading_messages: ['One', 'Two'], title: 'chart', widget_code: '<p></p>' };
+  t.feed({ type: 'assistant', message: { id: 'msg_w', content: [{ type: 'tool_use', id: 'toolu_w', name: WIDGET, input }] } });
+  assert.equal(t.heard.length, before, 'the same phrases are not sent again');
+  t.feed({ type: 'assistant', message: { id: 'msg_w', content: [{ type: 'tool_use', id: 'toolu_w', name: WIDGET, input: { ...input, loading_messages: ['One', 'Two', 'Three'] } }] } });
+  assert.deepEqual(phrases(t).at(-1), ['One', 'Two', 'Three']);
+  t.feed({ type: 'assistant', message: { id: 'msg_w', content: [{ type: 'tool_use', id: 'toolu_w', name: WIDGET, input: { title: 'chart' } }] } });
+  assert.deepEqual(t.work.snapshot().tools[0].loading, ['One', 'Two', 'Three'], 'a finished message with none does not take back what was streamed');
+});
+
+test('a widget\'s phrases go with its tool, so they are gone when its result is back', () => {
+  const t = turn();
+  t.work.begin();
+  widgetCall(t, '{"loading_messages":["One"],"title":"chart","widget_code":"<p></p>"}', 12);
+  assert.deepEqual(t.work.snapshot().tools.map(x => x.loading), [['One']]);
+  t.feed(toolResult('toolu_w'));
+  assert.deepEqual(t.work.snapshot().tools, []);
+});

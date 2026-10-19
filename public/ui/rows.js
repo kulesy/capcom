@@ -98,18 +98,18 @@ function Thumbs({ images, url, onOpen }) {
   })}</div>`;
 }
 
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors
+const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors }) {
+export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt }) {
   if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? lf(i.text) : null}</li>`;
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;
-    if (/__show_widget$/.test(i.name) && i.input?.widget_code) return html`<${Widget} t=${i} />`;
+    if (/__show_widget$/.test(i.name) && i.input?.widget_code) return html`<${Widget} t=${i} onPrompt=${onPrompt} />`;
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;
     return html`<${ToolRow} t=${i} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`;
   }

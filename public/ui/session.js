@@ -210,6 +210,9 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
+  // A widget's button sends its text as the owner's message, in the mode the prompt box would use for a plain message.
+  const prompt = text => send(text, [], (state().status || { mode: 'manual' }).mode);
+
   async function stop() {
     try { await api(`api/sessions/${enc(id)}/stop`, {}); } catch (e) { notice(e.message); }
   }
@@ -321,6 +324,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   return {
     id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages,
-    send, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
   };
 }

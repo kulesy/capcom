@@ -1,6 +1,6 @@
 import { html, useLayoutEffect, useRef, useState } from './html.js';
 
-const escapeCancels = cancel => e => {
+export const escapeCancels = cancel => e => {
   if (e.key !== 'Escape') return;
   e.preventDefault();
   e.stopPropagation();

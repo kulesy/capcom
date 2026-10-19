@@ -8,7 +8,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { writePassword } from '../lib/auth.mjs';
 import { makeAuthenticator } from './authenticator.mjs';
-import { as, CHROME, PASSWORD, request, signIn, start, tokenIn } from './harness.mjs';
+import { as, CHROME, PASSWORD, request, ROOT, signIn, start, tokenIn } from './harness.mjs';
 
 const DAY = 24 * 3600_000;
 const COOKIE = /^capcom=[0-9a-f]{64}; HttpOnly; SameSite=Lax; Max-Age=\d+$/;
@@ -100,6 +100,59 @@ test('a signed-out visitor gets the sign-in page and its scripts, and a 401 from
   }
   for (const [method, url] of [['GET', '/api/sessions'], ['GET', '/api/sessions/sess-1/images'], ['GET', listUrl(s.origin)], ['POST', '/api/passkeys/options'], ['POST', '/api/passkeys/remove'], ['POST', '/renew']]) {
     assert.equal((await request(s, method, url, method === 'POST' ? { json: {} } : {})).status, 401, `${method} ${url}`);
+  }
+});
+
+test('the icon font is served before sign-in, byte for byte, as font/woff2 with a weak tag made from its size and modified time', async () => {
+  const s = await start();
+  const file = path.join(ROOT, 'public', 'vendor', 'tabler-icons.woff2');
+  const stat = fs.statSync(file);
+  const font = await fetch(`http://127.0.0.1:${s.port}/vendor/tabler-icons.woff2`);
+  assert.equal(font.status, 200);
+  assert.equal(font.headers.get('content-type'), 'font/woff2');
+  assert.equal(font.headers.get('cache-control'), 'no-cache');
+  assert.equal(font.headers.get('etag'), `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"`);
+  assert.ok(Buffer.from(await font.arrayBuffer()).equals(fs.readFileSync(file)));
+});
+
+test('every file served from public/ carries a tag, and a request that sends it back gets a 304 with no body and the same tag and cache rule', async () => {
+  const s = await start();
+  const files = ['/app.js', '/app.css', '/ui/widget.js', '/vendor/preact.mjs', '/vendor/tabler-icons.min.css', '/vendor/tabler-icons.woff2', '/icon.png', '/manifest.webmanifest'];
+  for (const file of files) {
+    const first = await request(s, 'GET', file);
+    assert.equal(first.status, 200, file);
+    assert.match(first.headers.etag, /^W\/"[0-9a-f]+-[0-9a-f]+"$/, file);
+    const again = await request(s, 'GET', file, { headers: { 'if-none-match': first.headers.etag } });
+    assert.equal(again.status, 304, file);
+    assert.equal(again.text, '', file);
+    assert.equal(again.headers.etag, first.headers.etag, file);
+    assert.equal(again.headers['cache-control'], 'no-cache', file);
+  }
+});
+
+test('a tag is matched the way a browser may write it: with or without W/, in a list, or as *, and a different tag or an empty one gets the file', async () => {
+  const s = await start();
+  const url = '/vendor/tabler-icons.woff2';
+  const tag = (await request(s, 'GET', url)).headers.etag;
+  const ask = value => request(s, 'GET', url, { headers: { 'if-none-match': value } });
+  for (const [label, value] of [['the tag', tag], ['the tag without W/', tag.slice(2)], ['a list holding it', `W/"1-1", ${tag}`], ['any tag', '*']]) {
+    assert.equal((await ask(value)).status, 304, label);
+  }
+  for (const [label, value] of [['another tag', 'W/"1-1"'], ['a list without it', 'W/"1-1", "2-2"'], ['an empty header', '']]) {
+    assert.equal((await ask(value)).status, 200, label);
+  }
+});
+
+test('the vendor license texts and notes are not served, signed in or out, because their names have no extension on the served list', async () => {
+  const s = await start();
+  const { token } = await signIn(s);
+  for (const name of ['LICENSE-tabler-icons', 'LICENSE-preact', 'LICENSE-htm', 'README.md']) {
+    const out = await request(s, 'GET', `/vendor/${name}`);
+    assert.match(out.text, /id="password"/, `${name} signed out is the sign-in page`);
+    assert.equal(out.headers.etag, undefined, name);
+    const signedIn = await request(s, 'GET', `/vendor/${name}`, { headers: as(token) });
+    assert.equal(signedIn.status, 404, `${name} signed in`);
+    assert.equal(signedIn.headers.etag, undefined, name);
   }
 });
 

@@ -241,14 +241,22 @@ const PUBLIC = path.join(ROOT, 'public');
 const page = name => fs.readFileSync(path.join(PUBLIC, name), 'utf8');
 // NOTE: [15 Oct 2026] EK - Every file under public/ with one of these extensions is served before sign-in. The page templates
 // (.html) and the vendor license texts are not on the list, so keep anything private out of public/.
-const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 
+// The weak tag is the file's size and modified time. It is taken before the file is read, so a file changed in between costs one more download, never a stale copy.
 function asset(pathname) {
   const type = TYPES[path.extname(pathname)];
   const file = path.join(PUBLIC, pathname);
   if (!type || !file.startsWith(PUBLIC + path.sep)) return null;
-  try { return fs.statSync(file).isFile() ? { file, type } : null; } catch { return null; }
+  try {
+    const stat = fs.statSync(file);
+    return stat.isFile() ? { file, type, etag: `W/"${stat.size.toString(16)}-${Math.round(stat.mtimeMs).toString(16)}"` } : null;
+  } catch { return null; }
 }
+
+const opaque = tag => tag.trim().replace(/^W\//, '');
+// Whether the browser's If-None-Match holds this tag. Weak comparison, so the W/ in front does not count.
+const held = (header, etag) => !!header && header.split(',').some(t => t.trim() === '*' || opaque(t) === opaque(etag));
 
 function send(res, status, body, type = 'application/json', headers = {}) {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...headers });
@@ -605,7 +613,11 @@ const server = http.createServer(async (req, res) => {
   try {
     if (u.pathname === '/healthz') return send(res, 200, 'ok', 'text/plain');
     const file = asset(u.pathname);
-    if (file) return send(res, 200, fs.readFileSync(file.file), file.type, { 'cache-control': 'no-cache' });
+    if (file) {
+      const headers = { 'cache-control': 'no-cache', etag: file.etag };
+      if (held(req.headers['if-none-match'], file.etag)) { res.writeHead(304, headers); return res.end(); }
+      return send(res, 200, fs.readFileSync(file.file), file.type, headers);
+    }
     // NOTE: [16 Oct 2026] EK - The cookie is SameSite=Lax (lib/auth.mjs), so a link from another site arrives signed in.
     // A GET must never write, and every write must be a POST past this check.
     if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });

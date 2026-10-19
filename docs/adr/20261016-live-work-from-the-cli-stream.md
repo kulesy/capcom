@@ -1,6 +1,6 @@
 # Show Claude's live work from the CLI's stream, and ask the CLI for thinking summaries
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-19
 - Deciders: Eli
 - Date: 2026-10-16
 - Tags: live-work, thinking, stream-json, status-line
@@ -36,6 +36,8 @@ Chosen option: "Track the work from the stream on the server, ask the CLI for th
 - **Tokens.** The sum of each finished reply's `output_tokens` from `message_delta`. A later count for the same message replaces the earlier one, and the sum is hidden at zero. It moves when a reply ends, so during a long thought the timer is the sign of life.
 - **No text.** If the CLI sends no thinking text, no block appears and the status line says "Thinking" beside the timer.
 - **Checked.** On CLI 2.1.301 with Haiku 5.5 only. In a probe of a redacted turn the estimate read 206 tokens where the final count was 83.
+
+**Amended 2026-10-19.** The tracker also reads `loading_messages` from the partial input of a `show_widget` call while the call is written. A tool in a `work` event can then carry `loading`, a list of up to four phrases, each cut to one line of 80 characters with empty ones dropped. The tracker finds the key in the streamed input and reports a phrase only once its closing quote has arrived, so a phrase is never sent half written, and it reports again only when the list grows. A finished message supplies the same list for a CLI that streams no partial messages. The page shows the phrases in a placeholder where the widget will draw. See [Draw widgets the way Desktop does](20261019-widgets-render-like-desktop.md).
 
 ### Consequences
 

@@ -1,6 +1,6 @@
 # Serve Desktop-style tools from Capcom's own MCP server
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-19
 - Deciders: Eli
 - Date: 2026-10-07
 - Tags: tools, mcp, chips, widgets, security
@@ -34,6 +34,8 @@ Capcom declares a server named `capcom` in the CLI's `initialize` request and an
 - `show_widget` draws HTML or SVG in an iframe sandboxed to `allow-scripts`. A content policy blocks network requests from the frame, apart from script loads from two public script hosts.
 
 Capcom allows its own tools by exact name, with no approval card.
+
+**Amended 2026-10-19.** The server has a fifth tool, `widget_guide`. It takes no input and returns a guide to writing a widget for Capcom (`lib/widget-guide.md`), which `show_widget`'s shorter description asks the model to read once per chat. `show_widget` also takes a new first field, `loading_messages`. The frame's content policy now lets a widget load scripts, styles, images and fonts, and make requests, to four public hosts (cdnjs.cloudflare.com, esm.sh, cdn.jsdelivr.net and unpkg.com), and load styles and fonts from Google Fonts, because widgets written for Desktop load Chart.js from cdnjs and mermaid from esm.sh. The frame also gets host styles, icons, and a gate on what a widget sends and opens. See [Draw widgets the way Desktop does](20261019-widgets-render-like-desktop.md).
 
 ### Consequences
 

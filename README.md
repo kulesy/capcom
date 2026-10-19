@@ -210,7 +210,12 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
   sessions created can be started too.
 - **Chapters** (`mark_chapter`) show as titled dividers.
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
-  that blocks network requests, so model-written HTML cannot reach Capcom or its cookie.
+  that limits requests to cdnjs, esm.sh, jsDelivr, unpkg and Google Fonts, so model-written HTML
+  cannot reach Capcom or its cookie. The frame carries Desktop's variable names, SVG classes and
+  colour ramps (with Capcom's own values) and the Tabler icons, so a widget written for Desktop draws
+  the same. `sendPrompt` sends a message at once on a click inside the widget and asks you first for
+  anything else, and links always ask first. `widget_guide` tells the model how to write one, once per
+  chat, and its `loading_messages` show in a placeholder while it writes.
 - **Questions** (`AskUserQuestion`) show as option buttons, plus a box for your own answer.
 - **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. The
   `chrome` setting turns it off for all of Capcom (see Configuration). Capcom starts the CLI
