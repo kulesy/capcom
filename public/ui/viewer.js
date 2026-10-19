@@ -3,6 +3,7 @@
 import { dataUrlToBlob, isDataUrl, joinEarlier, nearestThumb, position, stepKey, swipeStep, tabTarget } from './gallery.js';
 import { useStore } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { shortcut } from './shortcuts.js';
 import { createStore } from './store.js';
 import { atOwnSize, boxOf, DOUBLE_TAP_ZOOM, DRAG_PX, FIT, isDoubleTap, isTap, panBy, pinchOf, pinchTo, rebox, rectOf, settle, TAP_PX, toFit, travelled, WHEEL_QUIET_MS, wheelPx, wheelZoom, zoomAt } from './zoom.js';
 
@@ -85,7 +86,8 @@ function Viewer({ images, start, from, current, earlier }) {
     const controls = () => [...el.querySelectorAll('button:not(:disabled), a[href]')];
     const onKey = e => {
       if (e.isComposing) return;
-      if (e.altKey || e.ctrlKey || e.metaKey) { e.stopPropagation(); return; }
+      // Capcom's own shortcuts do nothing here, and are kept from Chrome too, or Cmd+N in the app would open a second window.
+      if (e.altKey || e.ctrlKey || e.metaKey) { if (shortcut(e)) e.preventDefault(); e.stopPropagation(); return; }
       const dx = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
       const dy = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
       const panning = zoomedNow();

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from './html.js';
+import { modifier, onAppChange } from './shortcuts.js';
 import { local } from './storage.js';
 
 // Re-renders when the selected slice of the store changes. A selector must return an existing value, not a new object.
@@ -28,6 +29,13 @@ export function useLocal(key, fallback) {
     setValue(v);
   }, [key]);
   return [value, set];
+}
+
+// The modifier a shortcut hint names, kept up to date as Capcom moves between a tab and the installed app.
+export function useModifier() {
+  const [mod, setMod] = useState(modifier);
+  useEffect(() => onAppChange(() => setMod(modifier())), []);
+  return mod;
 }
 
 export function useDocumentTitle(title) {

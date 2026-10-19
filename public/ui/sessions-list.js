@@ -4,7 +4,7 @@ import { dragRows } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { DeleteProject, NameForm } from './forms.js';
 import { folderName, STATE_LABEL, when } from './format.js';
-import { useLocal } from './hooks.js';
+import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
@@ -159,6 +159,7 @@ const problemNote = text => (text ? { text, problem: true } : null);
 // { problem, stopped }: the reason when the server refuses, and whether it stopped a chat that was running.
 export function SessionList({ ix, error, current, place, edit, archive, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
+  const mod = useModifier();
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
   const [note, setNote] = useState(null);
@@ -335,7 +336,7 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
       <div class="list-actions">
         <button class="icon-btn add" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} disabled=${!ix} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        <button class="icon-btn find" type="button" aria-label="Find a session" title="Find a session (Ctrl+K)" onClick=${onFind}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="icon-btn find" type="button" aria-label="Find a session" title=${`Find a session (${mod}+K)`} onClick=${onFind}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>

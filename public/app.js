@@ -1,9 +1,11 @@
 import { api } from './ui/api.js';
 import { ChatPane } from './ui/chat.js';
+import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
+import { shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
@@ -28,6 +30,7 @@ function App() {
   const shown = useRef(0);
   const writing = useRef(0);
   const [offering, stopOffering] = usePasskeyOffer();
+  const mod = useModifier();
   useRenewal();
 
   // A list is drawn only if it is newer than the one on screen, so a slow answer cannot put an older list back, and once a load
@@ -119,13 +122,14 @@ function App() {
     };
   }, []);
 
-  // Ctrl+N starts a session and Ctrl+K finds one. Browsers keep Cmd+N for a new window, so N has no Cmd form.
+  // Ctrl+N starts a session and Ctrl+K finds one. Cmd+K works too, and so does Cmd+N in the installed app.
   useEffect(() => {
     const onKey = e => {
-      if (e.altKey || e.shiftKey || e.isComposing) return;
-      const key = e.key.toLowerCase();
-      if (key === 'n' && e.ctrlKey && !e.metaKey) { e.preventDefault(); setFinding(false); location.hash = '#/new'; }
-      else if (key === 'k' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setFinding(open => !open); }
+      const asked = shortcut(e);
+      if (!asked) return;
+      e.preventDefault();
+      if (asked === 'new') { setFinding(false); location.hash = '#/new'; }
+      else setFinding(open => !open);
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -142,7 +146,7 @@ function App() {
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
-        <p>Pick a session, press Ctrl+K to find one, or Ctrl+N to start a new one.</p>
+        <p>Pick a session, press ${mod}+K to find one, or ${mod}+N to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}

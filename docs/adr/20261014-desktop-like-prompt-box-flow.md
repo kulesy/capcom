@@ -37,6 +37,8 @@ Chosen option: "Build all four changes", because the owner wants Capcom to work 
 
 **Amended 2026-10-16.** A thought among the calls joins the row, as in "Thought, ran 2 commands", and opens with the calls. A thought with no call beside it is a row of its own. See [Show Claude's live work](20261016-live-work-from-the-cli-stream.md).
 
+**Amended 2026-10-19.** Cmd+N also starts a new session in the installed app, at the owner's request. In a tab, Chrome lists New Window among its reserved commands (`kReservedCommandIds` in [accelerator_table.cc](https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/accelerator_table.cc)) and runs it before the page gets the key. In an app's window `BrowserCommandController::IsReservedCommandOrKey` reserves no keys ([browser_command_controller.cc](https://source.chromium.org/chromium/chromium/src/+/main:chrome/browser/ui/browser_command_controller.cc)), so the page gets Cmd+N first and Capcom calls `preventDefault` to keep it from Chrome. Capcom takes Cmd+N only while `(display-mode: standalone)` matches. A full-screen app window reports `fullscreen`, so Capcom treats it as a tab. The hints in the search, on the Find button and on the empty page name Cmd in the app on a Mac, since only a Mac has a Cmd key, and Ctrl everywhere else. The page never sees the key on the sign-in page or while a widget's sandboxed frame has focus, so there Cmd+N still opens a second Capcom window, and File > New Window always does.
+
 ### Consequences
 
 - ✅ New sessions, settings and stopping work as they do in Desktop.

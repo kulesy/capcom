@@ -4,6 +4,7 @@
 import { api } from './api.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
+import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
@@ -26,7 +27,7 @@ function newestFirst(ix) {
 const item = r => ({ key: r.id, r });
 
 // What the spotlight shows for a chip and a query: titled sections of items, each a session or an action.
-function sectionsFor(chip, ix, archived, query) {
+function sectionsFor(chip, ix, archived, query, mod) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const keep = words.length ? matcher(words) : () => true;
   const live = newestFirst(ix);
@@ -36,7 +37,7 @@ function sectionsFor(chip, ix, archived, query) {
   if (!words.length) {
     return [
       { title: 'Recents', items: live.slice(0, RECENT).map(item) },
-      { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: 'Ctrl N', hash: '#/new' }] },
+      { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: `${mod} N`, hash: '#/new' }] },
     ];
   }
   return [
@@ -79,6 +80,7 @@ export function Spotlight({ ix, archive, onClose }) {
   const [note, setNote] = useState(null);
   const input = useRef(null);
   const list = useRef(null);
+  const mod = useModifier();
 
   useEffect(() => {
     let live = true;
@@ -95,8 +97,8 @@ export function Spotlight({ ix, archive, onClose }) {
   const sections = useMemo(() => {
     if (!ix) return [];
     const kept = archived.filter(r => !gone.includes(r.id));
-    return sectionsFor(chip, ix, kept, query).filter(s => s.items.length);
-  }, [ix, archived, gone, chip, query]);
+    return sectionsFor(chip, ix, kept, query, mod).filter(s => s.items.length);
+  }, [ix, archived, gone, chip, query, mod]);
   const flat = sections.flatMap(s => s.items);
   const keys = flat.map(it => it.key);
   const pick = selectedIn(keys, held);

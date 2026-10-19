@@ -63,8 +63,16 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
-- **New sessions** start with Ctrl+N: an empty chat with a folder picker above the prompt box (the home
-  folder, or a recent one). The first message starts the session in that folder.
+- **New sessions** start with Ctrl+N, or Cmd+N in the installed app: an empty chat with a folder picker
+  above the prompt box (the home folder, or a recent one). The first message starts the session in that
+  folder. In a browser tab Chrome runs Cmd+N as New Window before the page sees the key, so it still
+  opens a window there. In the app's window Chrome gives the page the key first, so there Cmd+N starts
+  a session instead. Capcom tells a tab from the app's window with the `(display-mode: standalone)`
+  media query, and treats a full-screen app window as a tab, because Chrome reports it as full screen.
+  In the app Cmd+N still opens a second Capcom window on the sign-in page and while a widget has focus,
+  because Capcom's page never sees the key there. File > New Window in the menu bar opens one too. The
+  New session action in the search, the Find button's tooltip and the line on the empty page name the
+  modifier that works where Capcom is running: Cmd in the app on a Mac, and Ctrl everywhere else.
 - **The list** shows routines first, then pinned sessions, your projects with their groups, your other
   groups, the sessions started here, ungrouped ones and terminal sessions. A group lists its sessions by
   title, A to Z, with the titles that start with an emoji first, and numbers in number order. Every other
