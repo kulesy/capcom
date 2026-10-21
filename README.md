@@ -155,14 +155,28 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   goes to and the message.
 - **Live work.** While Claude works, its thinking streams into a Thinking block above the status line.
   The block folds into a Thought row when the thought ends, and a tap opens it again. Each tool call shows
-  as soon as it starts. The status line names the step, such as "Running npm test", "Reading
-  lib/runner.mjs" or "Writing", with the time the turn has run and the output tokens of the replies Claude
-  has finished. That count moves when a reply ends, not while one is written, because the CLI reports an
-  exact count only then. A headless CLI redacts its thinking, so Capcom asks it for summaries when the
-  process starts, and the CLI saves them in the transcript. If the CLI sends no thinking text, no block
-  appears and the status line says "Thinking" beside the timer. A thinking block saved with no text shows
-  nothing, and a turn stopped mid-thought keeps none of it, because the CLI saves a block only when it
-  ends. Checked on CLI 2.1.301 with Haiku 5.5.
+  as soon as it starts. The status line sits under the last row, as in Desktop. Three lamps light in turn,
+  then come the time the turn has run, the output tokens of the replies Claude has finished and what it is
+  doing, as in "2m 26s · 804 tokens · Thinking" or "2m 26s · 804 tokens · Running a command". The token
+  count moves when a reply ends, not while one is written, because the CLI reports an exact count only
+  then. The last group of tool calls in a running turn is a live row. Four lamps turn where its chevron
+  sits, its title is the step Claude is on, such as "Running npm test" or "Reading lib/runner.mjs", and its
+  own timer counts from the group's first row. When the step changes, the old text fades out as the new
+  text fades in, and the last step fades into the group's summary when the turn ends. With reduced motion
+  on, the lamps stay lit and the text changes at once. A headless CLI redacts its thinking, so Capcom asks
+  it for summaries when the process starts, and the CLI saves them in the transcript. If the CLI sends no
+  thinking text, no block appears and the status line says "Thinking" after the timer. A thinking block
+  saved with no text shows nothing, and a turn stopped mid-thought keeps none of it, because the CLI saves
+  a block only when it ends. Checked on CLI 2.1.301 with Haiku 5.5. A chat that Desktop or a terminal runs
+  shows the same line and row, and its header lamp reads working. Those apps send Capcom no stream, so
+  Capcom reads the chat's transcript. It counts the chat as working while the transcript ends inside a
+  turn, Capcom's own headless CLI did not write that turn, and the transcript or one of the chat's agents'
+  files changed in the last 10 minutes. The time and tokens move when a step is saved. Such a chat has no
+  thinking text. It reads as running while Desktop waits for an approval, because a call that waits for one
+  looks the same in the transcript as a call that runs, and for up to 10 minutes after an app quits in the
+  middle of a turn. A prompt from another app, or one that comes more than 10 minutes after the turn's last
+  entry, starts a new turn, so a turn that never ended is not joined by the next one. A command you run with
+  `!` in a terminal neither starts a turn nor ends one, because Claude does not reply to it.
 - **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
   failed or was stopped, a line from a monitor, a message from another session or a subagent, the CLI's
   report on a message this chat sent to another session, and a command you ran with `!`. Capcom shows each

@@ -1,10 +1,11 @@
 // The rows of the transcript. Each is memoised, so a row draws again only when its own item changes.
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
-import { clip, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
+import { clip, duration, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
-import { Fragment, html, memo, useState } from './html.js';
-import { summarize } from './thread.js';
+import { Fragment, html, memo, useReducer, useRef, useState } from './html.js';
+import { useClock } from './hooks.js';
+import { groupStart, step, summarize } from './thread.js';
 import { Widget } from './widget.js';
 
 const STATUS_LABEL = { pending: 'running', ok: 'ok', failed: 'failed', denied: 'denied' };
@@ -54,13 +55,37 @@ const ThinkRow = memo(function ThinkRow({ t }) {
   return html`<li class="think"><${Thought} text=${t.text} name="Thought" /></li>`;
 });
 
-const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors }) {
+// Shows a text and, when it changes, fades the old one out above the new one, which fades in. The old text sits out of flow so a
+// longer one never holds the row's height, and it goes when its animation ends. The first text appears with no fade, and nor does
+// one that replaces another while `fade` is off. Two at most wait to go, because with reduced motion no animation ends to take them away.
+function Swap({ text, fade = true }) {
+  const [, redraw] = useReducer(n => n + 1, 0);
+  const held = useRef({ text, count: 0, fading: [] });
+  const h = held.current;
+  if (h.text !== text) {
+    if (fade) h.fading = [...h.fading, { id: ++h.count, text: h.text }].slice(-2);
+    h.text = text;
+  }
+  const drop = id => { h.fading = h.fading.filter(f => f.id !== id); redraw(); };
+  return html`<span class="swap"><span class=${h.count ? 'swap-in' : ''} key=${h.count}>${text}</span>${h.fading.map(f => html`<span class="swap-out" key=${`out${f.id}`} aria-hidden="true" onAnimationEnd=${() => drop(f.id)}>${f.text}</span>`)}</span>`;
+}
+
+// A running group says which step it is on and how long it has been going, in place of what it did, and its chevron gives way to the
+// moving lamps. Anything else about it is as when it is finished. The step fades in over the step before it and the summary over the
+// last step, but not over the summary the group showed before it was known to be running: a chat opens on its rows before its
+// status arrives, and that summary would flash and fade for no reason.
+const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors, running }) {
   const g = summarize(rows);
-  return html`<li class="tool-group" data-status=${g.status}><details data-k=${`g:${rows[0].key}`}><summary><span class="group-sum">${g.title}</span>
-    <span class="group-meta">${g.edited ? html`<span class="add">+${g.added}</span> <span class="del">-${g.removed}</span>` : null}<span class="tool-status">${g.note}</span></span></summary>
+  const began = running ? groupStart(rows) : null;
+  useClock(began !== null);
+  const was = useRef(running);
+  const starting = running && !was.current;
+  was.current = running;
+  return html`<li class="tool-group" data-status=${g.status} data-running=${running ? '' : undefined}><details data-k=${`g:${rows[0].key}`}><summary><span class="group-sum">${running ? html`<span class="step-lamps" aria-hidden="true"><span></span><span></span><span></span><span></span></span>` : null}<${Swap} text=${running ? step(rows, connectors) : g.title} fade=${!starting} /></span>
+    <span class="group-meta">${g.edited ? html`<span class="add">+${g.added}</span> <span class="del">-${g.removed}</span>` : null}<span class="tool-status">${began === null ? g.note : duration(Date.now() - began)}</span></span></summary>
     <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} />` : html`<${ToolRow} key=${r.key} t=${r} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`))}</ul></details>
     <${ToolPictures} shots=${toolShots(rows, connectors)} url=${imageUrl} onOpen=${onImage} /></li>`;
-}, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && sameRows(a.rows, b.rows));
+}, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.running === b.running && sameRows(a.rows, b.rows));
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
 function ChipCard({ t, chip, cwd, onChip }) {
@@ -98,12 +123,12 @@ function Thumbs({ images, url, onOpen }) {
   })}</div>`;
 }
 
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt
+const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt }) {
+export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running }) {
   if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? lf(i.text) : null}</li>`;
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text) }}></li>`;
   if (i.kind === 'tool') {
@@ -114,7 +139,7 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onI
     return html`<${ToolRow} t=${i} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`;
   }
   if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} />`;
-  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`;
+  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} running=${running} />`;
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;

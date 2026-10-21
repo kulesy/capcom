@@ -10,8 +10,9 @@ import { createChat } from './session.js';
 import { Transcript } from './transcript.js';
 
 function ChatHead({ ctrl }) {
-  const { session, status } = useFields(ctrl.store, 'session', 'status');
+  const { session, status, outside } = useFields(ctrl.store, 'session', 'status', 'outside');
   const draft = !!ctrl.draft;
+  const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · Capcom' : session?.title ? `${session.title} · Capcom` : 'Capcom');
   const meta = draft
     ? 'Starts Claude Code in the folder you pick'
@@ -22,7 +23,7 @@ function ChatHead({ ctrl }) {
       <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
       <p class="chat-meta" id="meta">${meta}</p>
     </div>
-    <span class="lamp" id="chatLamp" data-state=${status?.state || 'idle'} aria-hidden="true"></span>
+    <span class="lamp" id="chatLamp" data-state=${state === 'idle' && outside ? 'working' : state} aria-hidden="true"></span>
   </header>`;
 }
 

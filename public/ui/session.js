@@ -43,7 +43,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
-    live: '', think: null, work: null, turnStart: 0, holdsEnded: endedByChat.get(id) || [],
+    live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0,
@@ -107,11 +107,13 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), notice: '' }); fetchNew(); });
-    on('state', d => { patchStatus({ state: d.state }); if (d.state === 'idle') store.set({ work: null, turnStart: 0 }); });
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '' }); fetchNew(); });
+    // Capcom's own work takes over from a turn another app was running, and the old line must not flash back when its turn ends.
+    on('state', d => { patchStatus({ state: d.state }); store.set(d.state === 'idle' ? { work: null, turnStart: 0 } : { outside: null, outsideStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
     on('think', d => store.set(s => ({ think: thought(s.think, d) })));
     on('work', d => store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })));
+    on('outside', d => store.set(s => ({ outside: d, outsideStart: !d ? 0 : s.outside?.startedAt === d.startedAt ? Math.min(s.outsideStart, began(d)) : began(d) })));
     on('changed', () => fetchNew());
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));

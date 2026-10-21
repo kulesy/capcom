@@ -154,3 +154,85 @@ test('connector names that Desktop gives after the chat opened reach it, and the
     globalThis.fetch = real;
   }
 });
+
+// The page times a turn by its own clock, so the tests below set the clock the handlers read and put it back after.
+const turnOf = (startedAt, turnMs) => ({ tools: [], tokens: 0, turnMs, startedAt });
+async function onClock(id, run) {
+  const { chat, stream } = await openChat(id);
+  const real = Date.now;
+  const clock = at => { Date.now = () => at; };
+  try {
+    run({ stream, clock, now: () => chat.store.get() });
+  } finally {
+    Date.now = real;
+    chat.close();
+  }
+}
+
+test('the start of a turn another app runs only moves earlier while it is the same turn, begins again for a new turn, and clears when the turn ends', async () => {
+  await onClock('chat-outside-start', ({ stream, clock, now }) => {
+    clock(1_000_000);
+    stream.emit('outside', turnOf(5000, 30_000));
+    assert.deepEqual([now().outside.startedAt, now().outsideStart], [5000, 970_000], 'timed from the page\'s clock');
+
+    clock(1_002_000);
+    stream.emit('outside', turnOf(5000, 31_000));
+    assert.equal(now().outsideStart, 970_000, 'a report that is late for the same turn does not step the timer back');
+
+    clock(1_003_000);
+    stream.emit('outside', turnOf(5000, 40_000));
+    assert.equal(now().outsideStart, 963_000, 'one that puts the start earlier moves it');
+
+    clock(1_004_000);
+    stream.emit('outside', turnOf(9000, 2000));
+    assert.equal(now().outsideStart, 1_002_000, 'a new turn starts the timer again, though that is later');
+
+    stream.emit('outside', null);
+    assert.deepEqual([now().outside, now().outsideStart], [null, 0]);
+
+    clock(1_005_000);
+    stream.emit('outside', turnOf(9000, 4000));
+    assert.equal(now().outsideStart, 1_001_000, 'after an end the same start is a turn of its own, with nothing earlier to keep');
+  });
+});
+
+test('the status sets the turn another app runs and its timer, and a status without one clears them', async () => {
+  await onClock('chat-outside-status', ({ stream, clock, now }) => {
+    clock(2_000_000);
+    stream.emit('status', { state: 'idle', pending: [], outside: turnOf(7000, 60_000) });
+    assert.deepEqual([now().outside.startedAt, now().outsideStart], [7000, 1_940_000]);
+    assert.equal(now().work, null);
+    assert.equal(now().turnStart, 0);
+
+    stream.emit('status', { state: 'idle', pending: [], outside: null });
+    assert.deepEqual([now().outside, now().outsideStart], [null, 0], 'a status with no turn');
+
+    stream.emit('status', { state: 'idle', pending: [], outside: turnOf(7000, 60_000) });
+    stream.emit('status', { state: 'idle', pending: [] });
+    assert.deepEqual([now().outside, now().outsideStart], [null, 0], 'and one from a server that does not say');
+  });
+});
+
+test('Capcom\'s work in a chat takes over from the turn another app ran, and the end of that work leaves a turn that came back as it is', async () => {
+  await onClock('chat-outside-state', ({ stream, clock, now }) => {
+    clock(3_000_000);
+    stream.emit('outside', turnOf(7000, 60_000));
+    stream.emit('work', { thinking: false, writing: false, tools: [], tokens: 5, turnMs: 1000 });
+    assert.deepEqual([now().outsideStart, now().turnStart], [2_940_000, 2_999_000]);
+
+    for (const state of ['working', 'waiting']) {
+      stream.emit('outside', turnOf(7000, 60_000));
+      stream.emit('state', { state });
+      assert.deepEqual([now().outside, now().outsideStart], [null, 0], `the turn of the other app goes when the chat is ${state}`);
+      assert.equal(now().status.state, state);
+      assert.equal(now().work.tokens, 5, 'and Capcom\'s own work stays');
+      assert.equal(now().turnStart, 2_999_000);
+    }
+
+    stream.emit('outside', turnOf(7000, 61_000));
+    stream.emit('state', { state: 'idle' });
+    assert.deepEqual([now().work, now().turnStart], [null, 0], 'Capcom\'s work goes when the chat is idle');
+    assert.deepEqual([now().outside.startedAt, now().outsideStart], [7000, 2_939_000], 'and a turn of another app is left alone');
+    assert.equal(now().status.state, 'idle');
+  });
+});

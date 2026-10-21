@@ -1,7 +1,7 @@
 // Run with `npm test`. The page's thread logic is plain functions on plain data, so it runs here without a browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { absorb, activity, display, prepend, summarize } from '../public/ui/thread.js';
+import { absorb, activity, display, doingNow, groupStart, prepend, step, summarize } from '../public/ui/thread.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -94,6 +94,83 @@ test('with no tool the status line says thinking, writing or just working', () =
   assert.equal(activity({ tools: [], thinking: false, writing: true }).doing, 'Writing');
   assert.equal(activity({ tools: [], thinking: false, writing: false }).doing, 'Working');
   assert.equal(activity(null).doing, 'Working');
+});
+
+const running = (name, summary = '') => ({ tools: [{ name, summary }] });
+
+test('the status line phrase names the one tool running by its kind, without what it works on', () => {
+  const phrase = name => doingNow(running(name, 'detail the row would show'));
+  assert.equal(phrase('Bash'), 'Running a command');
+  assert.equal(phrase('Read'), 'Reading a file');
+  assert.equal(phrase('NotebookRead'), 'Reading a file');
+  for (const name of ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']) assert.equal(phrase(name), 'Editing a file');
+  assert.equal(phrase('Grep'), 'Searching');
+  assert.equal(phrase('Glob'), 'Searching');
+  assert.equal(phrase('WebSearch'), 'Searching the web');
+  assert.equal(phrase('WebFetch'), 'Fetching a page');
+  assert.equal(phrase('Agent'), 'Running an agent');
+  assert.equal(phrase('Task'), 'Running an agent');
+  assert.equal(phrase('Skill'), 'Using a skill');
+  assert.equal(phrase('TodoWrite'), 'Updating the to-do list');
+  assert.equal(phrase('SendMessage'), 'Sending a message');
+  assert.equal(phrase('ListAgents'), 'Looking up other sessions');
+  for (const name of ['mcp__claude-in-chrome__navigate', 'mcp__Claude_in_Chrome__navigate']) assert.equal(phrase(name), 'Using Chrome');
+  assert.equal(phrase('mcp__visualize__show_widget'), 'Using visualize show widget');
+});
+
+test('the status line phrase counts several tools, and with none says thinking, writing or working', () => {
+  assert.equal(doingNow({ tools: [{ name: 'Read' }, { name: 'Grep' }, { name: 'Bash' }] }), 'Running 3 tools');
+  assert.equal(doingNow({ tools: [{ name: 'Read' }, { name: 'Read' }] }), 'Running 2 tools');
+  assert.equal(doingNow({ tools: [], thinking: true, writing: false }), 'Thinking');
+  assert.equal(doingNow({ tools: [], thinking: false, writing: true }), 'Writing');
+  assert.equal(doingNow({ tools: [], thinking: false, writing: false }), 'Working');
+  assert.equal(doingNow({ thinking: true }), 'Thinking');
+  assert.equal(doingNow(null), 'Working');
+});
+
+test('the status line phrase names a connector by the name its session gives it, and as a connector when it gives none', () => {
+  const names = { [MAILBOX]: 'Mailbox' };
+  const one = running(`mcp__${MAILBOX}__search_threads`, 'invoices');
+  assert.equal(doingNow(one, names), 'Using Mailbox search threads');
+  assert.equal(doingNow(one), 'Using connector search threads');
+  assert.equal(doingNow(running('Bash'), names), 'Running a command');
+});
+
+test('a running group names the call still waiting for its result, the last of them when several wait', () => {
+  const rows = [tool('Read', { status: 'pending', summary: 'a.mjs' }), tool('Bash', { status: 'pending', summary: 'npm test' }), tool('Grep', { status: 'ok', summary: 'todo' })];
+  assert.equal(step(rows), 'Running npm test');
+  assert.equal(step([...rows.slice(0, 1), think('next'), tool('Grep', { status: 'ok', summary: 'todo' })]), 'Reading a.mjs');
+});
+
+test('a running group with no call waiting names its last call, and thinking never counts as one', () => {
+  const rows = [tool('Bash', { summary: 'npm test' }), tool('Read', { summary: 'lib/runner.mjs' }), think('what next')];
+  assert.equal(step(rows), 'Reading lib/runner.mjs');
+  assert.equal(step([think('only thinking')]), '');
+  assert.equal(step([]), '');
+});
+
+test('a running group with a detail to show reads as its row does, and with none reads as the status line does, with no trailing space', () => {
+  const names = { [MAILBOX]: 'Mailbox' };
+  assert.equal(step([tool('mcp__x__y', { status: 'pending', summary: 'z' })]), 'Using x y: z');
+  assert.equal(step([tool(`mcp__${MAILBOX}__search_threads`, { status: 'pending', summary: 'invoices' })], names), 'Using Mailbox search threads: invoices');
+  assert.equal(step([tool('ListAgents', { status: 'pending', summary: '' })]), 'Looking up other sessions');
+  assert.equal(step([tool('Bash', { status: 'pending' })]), 'Running a command');
+  assert.equal(step([tool('Read', { status: 'pending', summary: '' })]), 'Reading a file');
+  assert.equal(step([tool('Edit', { status: 'pending', summary: '' })]), 'Editing a file');
+  assert.equal(step([tool('WebFetch', { status: 'pending', summary: '' })]), 'Fetching a page');
+  assert.equal(step([tool('Grep', { status: 'pending', summary: '' })]), 'Searching');
+  assert.equal(step([tool(`mcp__${MAILBOX}__search_threads`, { status: 'pending', summary: '' })], names), 'Using Mailbox search threads');
+  assert.equal(step([tool('', { status: 'pending', summary: '' })]), 'Using');
+  assert.equal(step([tool('Bash', { status: 'pending', summary: 'npm test' })]), 'Running npm test');
+});
+
+test('a group began when its first row with a readable time did, and has no start when none has', () => {
+  const at = iso => ({ at: iso });
+  const first = '2026-10-21T10:00:05.000Z';
+  assert.equal(groupStart([tool('Bash', at(first)), tool('Read', at('2026-10-21T10:00:09.000Z'))]), Date.parse(first));
+  assert.equal(groupStart([think('no time'), tool('Bash', at(null)), tool('Read', at('not a time')), tool('Grep', at(first))]), Date.parse(first));
+  assert.equal(groupStart([think('no time'), tool('Bash', at(null))]), null);
+  assert.equal(groupStart([]), null);
 });
 
 const fresh = () => ({ items: [], orphans: new Map() });

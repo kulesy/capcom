@@ -76,7 +76,7 @@ const KINDS = {
 const DOING = { read: 'Reading', search: 'Searching', run: 'Running', edit: 'Editing', web: 'Searching the web', fetch: 'Fetching', agent: 'Running an agent', skill: 'Using a skill', todo: 'Updating the to-do list', message: 'Sending a message', peers: 'Looking up other sessions', chrome: 'Using Chrome', other: 'Using' };
 const toolKind = name => (EDITS.includes(name) ? 'edit' : KIND_OF[name] || (chromeTool(name) !== null ? 'chrome' : 'other'));
 
-// What the status line says Claude is doing, from the live snapshot: the tool being run, else thinking or writing.
+// What Claude is doing, from the live snapshot: the tool being run with what it works on, else thinking or writing. A running group's title is made from it.
 export function activity(work, names) {
   const tools = work?.tools || [];
   if (tools.length > 1) return { doing: `Running ${plural(tools.length, 'tool')}`, detail: [...new Set(tools.map(t => fullToolLabel(t.name, names)))].join(', ') };
@@ -86,6 +86,37 @@ export function activity(work, names) {
     return { doing: DOING[kind], detail: kind === 'other' ? [fullToolLabel(t.name, names), t.summary].filter(Boolean).join(': ') : t.summary };
   }
   return { doing: work?.thinking ? 'Thinking' : work?.writing ? 'Writing' : 'Working', detail: '' };
+}
+
+// The words for one tool on the status line. Kinds that read better with an object get one, so a file or a command is not named twice.
+const OBJECT = { read: 'a file', run: 'a command', edit: 'a file', fetch: 'a page' };
+
+// The phrase after the time and tokens on the status line: what Claude is doing, without the detail a row can carry.
+export function doingNow(work, names) {
+  const tools = work?.tools || [];
+  if (tools.length > 1) return `Running ${plural(tools.length, 'tool')}`;
+  if (!tools.length) return work?.thinking ? 'Thinking' : work?.writing ? 'Writing' : 'Working';
+  const kind = toolKind(tools[0].name);
+  return (kind === 'other' ? ['Using', fullToolLabel(tools[0].name, names)] : [DOING[kind], OBJECT[kind]]).filter(Boolean).join(' ');
+}
+
+// What a running group says it is doing: the call still waiting for its result, else the last call. A call with nothing to say about
+// what it works on reads as the status line says it, so a bare verb never stands alone.
+export function step(rows, names) {
+  const tools = rows.filter(r => r.kind === 'tool');
+  const tool = [...tools].reverse().find(t => t.status === 'pending') || tools[tools.length - 1];
+  if (!tool) return '';
+  const { doing, detail } = activity({ tools: [tool] }, names);
+  return detail ? `${doing} ${detail}` : doingNow({ tools: [tool] }, names);
+}
+
+// When the group began, from its first row that has a time, or null when none has.
+export function groupStart(rows) {
+  for (const r of rows) {
+    const at = Date.parse(r.at);
+    if (!Number.isNaN(at)) return at;
+  }
+  return null;
 }
 
 const splitLines = text => (text ? text.replace(/\n$/, '').split('\n') : []);

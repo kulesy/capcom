@@ -4,7 +4,7 @@ import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { useClock, useFields, useStick, useStore } from './hooks.js';
 import { isChip, Row, Thought } from './rows.js';
-import { activity, display } from './thread.js';
+import { display, doingNow } from './thread.js';
 import { closeViewer, openViewer } from './viewer.js';
 import { DEFAULT_TEXT, hasRow, HOLD_MS, nextHold, ROTATE_MS, waitText } from './widget-wait.js';
 
@@ -15,14 +15,21 @@ function LiveThink({ think }) {
   return html`<div class="live-think"><div class="think"><${Thought} text=${think.text} name=${think.done ? 'Thought' : 'Thinking'} open=${!think.done} bodyRef=${body} /></div></div>`;
 }
 
-// What Claude is doing now, how long the turn has run, and the tokens of the replies it has finished.
-function Working({ work, since, on, names }) {
+const OWN_TITLE = 'Time since the turn began, and the tokens in the replies Claude has finished this turn. The count moves when a reply ends, not while it is written.';
+const OUTSIDE_TITLE = 'Another app runs this chat, so Capcom reads the time and tokens from its transcript. They move when a step is saved.';
+
+// Whose turn is on screen: Capcom's own while it works, else one another app is running in a chat Capcom is not working on.
+function turnOf({ status, outside }) {
+  const state = status?.state || 'idle';
+  return state === 'working' ? 'own' : state === 'idle' && outside ? 'outside' : '';
+}
+
+// How long the turn has run, the tokens of the replies Claude has finished, and what it is doing now, after the lamps that run.
+function Working({ work, since, on, outside, names }) {
   useClock(on);
-  const { doing, detail } = activity(work, names);
-  const meta = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`].filter(Boolean).join(' · ');
-  return html`<p class="working" id="working" hidden=${!on}><span class="lamp" data-state="working"></span>
-    <span class="working-text" id="workingText"><span class="working-doing">${doing}</span>${detail ? html`<span class="working-detail">${detail}</span>` : null}</span>
-    <span class="working-meta" title="Time since the turn began, and the tokens in the replies Claude has finished this turn. The count moves when a reply ends, not while it is written.">${meta}</span></p>`;
+  const text = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`, doingNow(work, names)].filter(Boolean).join(' · ');
+  return html`<p class="working" id="working" hidden=${!on}><span class="chaser" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span class="working-text" id="workingText" title=${outside ? OUTSIDE_TITLE : OWN_TITLE}>${text}</span></p>`;
 }
 
 // The phrases Claude sent with the widget call, one after another, where the widget will draw. A different call gets a new one.
@@ -57,14 +64,15 @@ function WidgetWait({ ctrl, work }) {
 
 // The thinking and the reply as they are written, the place held for a widget, and the line that says what Claude is doing.
 function Live({ ctrl, box }) {
-  const { live, think, work, turnStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart');
-  const state = useStore(ctrl.store, s => s.status?.state || 'idle');
+  const { live, think, work, turnStart, outside, outsideStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart', 'outside', 'outsideStart');
+  const turn = useStore(ctrl.store, turnOf);
   const names = useStore(ctrl.store, s => s.session?.connectors);
+  const other = turn === 'outside';
   useStick(box);
   return html`${think ? html`<${LiveThink} think=${think} />` : null}
     <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live) : '' }}></div>
     <${WidgetWait} ctrl=${ctrl} work=${work} />
-    <${Working} work=${work} since=${turnStart} on=${state === 'working'} names=${names} />`;
+    <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
 }
 
 export function Transcript({ ctrl }) {
@@ -74,6 +82,7 @@ export function Transcript({ ctrl }) {
     ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session',
   );
   const rows = useMemo(() => display(items), [items]);
+  const turn = useStore(ctrl.store, turnOf);
   useStick(box);
   // Opening a session and sending a message both end at the bottom; loading earlier keeps what you were looking at.
   useLayoutEffect(() => { if (loaded || jump) box.current.scrollTop = box.current.scrollHeight; }, [loaded, jump]);
@@ -97,11 +106,13 @@ export function Transcript({ ctrl }) {
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 
+  // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.
+  const live = !!turn && !sending.length;
   return html`<div class="transcript" id="transcript" ref=${box}>
     ${ctrl.draft ? html`<p class="quiet pad" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
     <button class="button earlier" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
     <ol class="items" id="items">
-      ${rows.map(i => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} />`)}
+      ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} />`)}
       ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} onImage=${viewImage} />`)}
     </ol>
     <${Live} ctrl=${ctrl} box=${box} />

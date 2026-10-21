@@ -10,6 +10,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
+import { createOutside } from './lib/outside.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
@@ -36,6 +37,7 @@ const savePick = (id, pick) => {
   fs.writeFileSync(picksFile, JSON.stringify({ ...all, [id]: { ...all[id], ...pick } }));
 };
 const viewers = new Map();
+const outside = createOutside();
 
 // ---- the session index ---------------------------------------------------------------------------
 
@@ -320,12 +322,29 @@ function unarchive(id) {
   }
 }
 
+// A chat Capcom is running shows its own work from the CLI's stream, so only a chat it is not running is read from its transcript.
+const outsideFor = id => {
+  const chat = getChat(id);
+  return chat && chat.state !== 'idle' ? null : outside.read(transcriptFor(id));
+};
+
+// What the page redraws from. The clock is left out because it moves on every read.
+const outsideKey = o => (o ? JSON.stringify([o.startedAt, o.tokens, o.tools.map(t => t.id)]) : '');
+
 function events(req, res, id) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
   const write = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
-  const forward = ev => write(ev.type, ev.data);
   const chat = getChat(id);
-  write('status', chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, findRow(id)), live: '', pending: [] });
+  const first = outsideFor(id);
+  // The key of the turn of another app this viewer was last sent, so a change is sent once.
+  let shown = outsideKey(first);
+  // The page drops that turn when Capcom starts work in the chat. If the work ends before the next look at the transcript, the key
+  // would still match and the page would never get the turn back, so the key is cleared and the turn is sent again.
+  const forward = ev => {
+    if (ev.type === 'state' && ev.data.state !== 'idle') shown = '';
+    write(ev.type, ev.data);
+  };
+  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, findRow(id)), live: '', pending: [] }), outside: first });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
   chat?.listeners.add(forward);
@@ -337,6 +356,8 @@ function events(req, res, id) {
     let now;
     try { now = fs.statSync(t.file).size; } catch { return; }
     if (now !== size) { size = now; write('changed', {}); }
+    const out = outsideFor(id);
+    if (outsideKey(out) !== shown) { shown = outsideKey(out); write('outside', out); }
   }, 1500);
   const beat = setInterval(() => res.write(': keep-alive\n\n'), 20_000);
   req.on('close', () => {
