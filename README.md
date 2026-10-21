@@ -63,16 +63,20 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Stop and redirect.** While Claude works and the box is empty, Send turns into Stop, and Esc stops
   too. A message sent while Claude works redirects it without stopping it: Claude reads the message once
   the running tool finishes and adjusts before its next step.
-- **New sessions** start with Ctrl+N, or Cmd+N in the installed app: an empty chat with a folder picker
-  above the prompt box (the home folder, or a recent one). The first message starts the session in that
-  folder. In a browser tab Chrome runs Cmd+N as New Window before the page sees the key, so it still
-  opens a window there. In the app's window Chrome gives the page the key first, so there Cmd+N starts
-  a session instead. Capcom tells a tab from the app's window with the `(display-mode: standalone)`
-  media query, and treats a full-screen app window as a tab, because Chrome reports it as full screen.
-  In the app Cmd+N still opens a second Capcom window on the sign-in page and while a widget has focus,
-  because Capcom's page never sees the key there. File > New Window in the menu bar opens one too. The
-  New session action in the search, the Find button's tooltip and the line on the empty page name the
-  modifier that works where Capcom is running: Cmd in the app on a Mac, and Ctrl everywhere else.
+- **New sessions** start from New session, the first item in the + menu at the top of the list, from
+  the search's New session action, with Ctrl+N, or with Cmd+N in the installed app. Each opens an empty
+  chat with a folder picker above the prompt box (the home folder, or a recent one), and the first
+  message starts the session in that folder. The + and the keys work while the list is still loading.
+  The search shows its action once the list has arrived. In a browser tab Chrome runs Cmd+N as New
+  Window before the page sees the key, so it still opens a window there. In the app's window Chrome
+  gives the page the key first, so there Cmd+N starts a session instead. Capcom tells a tab from the
+  app's window with the `(display-mode: standalone)` media query, and treats a full-screen app window
+  as a tab, because Chrome reports it as full screen. In the app Cmd+N still opens a second Capcom
+  window on the sign-in page and while a widget has focus, because Capcom's page never sees the key
+  there. File > New Window in the menu bar opens one too. New session in the + menu and in the search,
+  the Find button's tooltip and the line on the empty page name the modifier that works where Capcom
+  is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no key beside
+  New session.
 - **The list** shows routines first, then pinned sessions, your projects with their groups, your other
   groups, the sessions started here, ungrouped ones and terminal sessions. A group lists its sessions by
   title, A to Z, with the titles that start with an emoji first, and numbers in number order. Every other
@@ -89,13 +93,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Projects** are an optional level above groups, so the list can run projects, then groups, then
   sessions. A group belongs to at most one project, and one that belongs to none stays at the top level.
   Routines and Pinned stay above the projects. Project and group headers fold, and the browser remembers
-  which are folded. The + at the top of the list makes a project, or a group at the top level. The dots at
-  the end of a project's header open its menu: New group here, Rename and Delete project. Delete asks
-  first, then moves the project's groups to the top level, and no group or session is deleted. The dots on
-  a group's header move it into a project, between projects or back to the top level, and show only when
-  there is somewhere to move it. A right click or the menu key on a header opens the same menu. Every step
-  is a menu, so a phone can do all of them. A name runs to 80 characters at most, and two projects may
-  share one.
+  which are folded. The + at the top of the list starts a session, makes a project, or makes a group at
+  the top level. The dots at the end of a project's header open its menu: New group here, Rename and
+  Delete project. Delete asks first, then moves the project's groups to the top level, and no group or
+  session is deleted. The dots on a group's header move it into a project, between projects or back to
+  the top level, and show only when there is somewhere to move it. A right click or the menu key on a
+  header opens the same menu. Every step is a menu, so a phone can do all of them. A name runs to 80
+  characters at most, and two projects may share one.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
   search laid out like Desktop's. Chips pick what to look through: All, Sessions, Routines and Archived,
   and the left and right arrows move between them from either end of the text. With nothing typed, All

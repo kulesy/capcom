@@ -338,6 +338,10 @@ a { color: var(--focus); }
 
 .menu button.danger { color: var(--bad-text); }
 
+.menu button:has(kbd) { display: flex; align-items: center; justify-content: space-between; }
+
+.menu kbd { margin-left: 1.5rem; }
+
 .name-form {
   display: flex;
   align-items: flex-end;
@@ -375,6 +379,8 @@ a { color: var(--focus); }
   .has-menu .group-head { align-self: stretch; padding-block: 0; }
 
   .menu button { min-height: 2.75rem; }
+
+  .menu kbd { display: none; }
 
   .note .link { min-height: 2.75rem; margin-block: -0.6rem; padding-inline: 0.5rem; }
 
@@ -1314,7 +1320,7 @@ kbd + kbd { margin-left: 0.2rem; }
 .row-time kbd, kbd.row-time { margin-left: 0; }
 
 @media (pointer: coarse) {
-  .spotlight-foot { display: none; }
+  .spotlight-foot, .row.action kbd { display: none; }
 
   button.unarchive { min-height: 2.75rem; }
 }

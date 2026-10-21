@@ -8,7 +8,7 @@ import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
-import { everyRow } from './sessions-list.js';
+import { everyRow, newSession } from './sessions-list.js';
 
 const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
 const RECENT = 8;
@@ -109,7 +109,7 @@ export function Spotlight({ ix, archive, onClose }) {
   useLayoutEffect(() => { setHeld(now => (now.key === null || (now.at === pick && now.key === keys[pick]) ? now : holdAt(keys, pick))); });
   useLayoutEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [pick, sections]);
 
-  const open = it => { onClose(); location.hash = it.hash || `#/s/${encodeURIComponent(it.r.id)}`; };
+  const open = it => { onClose(); if (it.key === 'new') newSession(); else location.hash = `#/s/${encodeURIComponent(it.r.id)}`; };
   const choose = key => { setChip(key); setHeld(FIRST); input.current.focus(); };
   const step = by => {
     setChip(now => CHIPS[Math.max(0, Math.min(CHIPS.length - 1, CHIPS.findIndex(([key]) => key === now) + by))][0]);

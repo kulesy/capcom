@@ -150,6 +150,9 @@ function walk(e, box) {
   }
 }
 
+// Opens a new session. When one is open already the cursor goes to its message box, because setting the same hash does nothing.
+export const newSession = () => { if (location.hash === '#/new') document.getElementById('text')?.focus(); else location.hash = '#/new'; };
+
 // A note about something that did not work, which shows in amber. No reason means no note.
 const problemNote = text => (text ? { text, problem: true } : null);
 
@@ -271,11 +274,16 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
   const pop = (key, { label, items }, anchor) => setShown(open => (open?.key === key ? null : { key, anchor, label, items }));
 
+  // A new session needs nothing from the list, so the + opens before the list has loaded, with only New session until it has.
+  // An open + menu gains the other items when the list arrives.
   const addMenu = {
-    label: 'Add a project or group',
+    label: 'New session, project or group',
     items: [
-      { label: 'New project', run: () => setForm({ kind: 'project' }) },
-      { label: 'New group', run: () => setForm({ kind: 'group', project: null }) },
+      { label: 'New session', hint: `${mod} N`, run: newSession },
+      ...(ix ? [
+        { label: 'New project', run: () => setForm({ kind: 'project' }) },
+        { label: 'New group', run: () => setForm({ kind: 'group', project: null }) },
+      ] : []),
     ],
   };
 
@@ -335,7 +343,7 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     <header class="list-head">
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
       <div class="list-actions">
-        <button class="icon-btn add" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} disabled=${!ix} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="icon-btn add" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="icon-btn find" type="button" aria-label="Find a session" title=${`Find a session (${mod}+K)`} onClick=${onFind}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
@@ -354,6 +362,6 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       <a href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
-    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.items} onClose=${() => setShown(null)} />` : null}
+    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} onClose=${() => setShown(null)} />` : null}
   </nav>`;
 }

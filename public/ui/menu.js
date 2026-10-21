@@ -2,7 +2,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 
 // A menu under the button or row that opened it, or with its top left at `point` ({ x, y }) when a click made it. It is fixed to the
 // screen, so the scrolling list cannot clip it. A choice, Esc, a tap outside it, or a scroll that moves its anchor closes it.
-// `items` are { label, run, danger }.
+// `items` are { label, run, danger, hint }, where `hint` names a key that does the same.
 export function Menu({ anchor, point = null, label, items, onClose }) {
   const box = useRef(null);
   const close = useRef(onClose);
@@ -60,6 +60,6 @@ export function Menu({ anchor, point = null, label, items, onClose }) {
 
   return html`<div class="menu" role="menu" aria-label=${label} ref=${box} onKeyDown=${key}
     style=${at ? `top:${at.top}px;left:${at.left}px` : 'top:0;left:0;visibility:hidden'}>
-    ${items.map(item => html`<button type="button" role="menuitem" class=${item.danger ? 'danger' : null} onClick=${() => { close.current(); item.run(); }}>${item.label}</button>`)}
+    ${items.map(item => html`<button type="button" role="menuitem" class=${item.danger ? 'danger' : null} onClick=${() => { close.current(); item.run(); }}>${item.label}${item.hint ? html`<kbd>${item.hint}</kbd>` : null}</button>`)}
   </div>`;
 }

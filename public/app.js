@@ -4,7 +4,7 @@ import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useRenewal } from './ui/renew.js';
-import { findRow, placeRow, SessionList } from './ui/sessions-list.js';
+import { findRow, newSession, placeRow, SessionList } from './ui/sessions-list.js';
 import { shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { withoutRow } from './ui/tree.js';
@@ -45,7 +45,7 @@ function App() {
     }
   }, []);
 
-  // The first load comes before the route is acted on, so a session opens with its name already known.
+  // A session's route waits for a list, so the session opens with its name already known, unless the first load fails.
   useEffect(() => { loadIndex().then(() => setReady(true)); }, []);
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
@@ -128,7 +128,7 @@ function App() {
       const asked = shortcut(e);
       if (!asked) return;
       e.preventDefault();
-      if (asked === 'new') { setFinding(false); location.hash = '#/new'; }
+      if (asked === 'new') { setFinding(false); newSession(); }
       else setFinding(open => !open);
     };
     document.addEventListener('keydown', onKey);
@@ -136,7 +136,8 @@ function App() {
   }, []);
 
   const route = useMemo(() => parseRoute(hash), [hash]);
-  const view = ready && route.name !== 'list' ? 'chat' : 'list';
+  // A new session needs no list, so it opens at once.
+  const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 

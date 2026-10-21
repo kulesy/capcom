@@ -38,6 +38,8 @@ Chosen option: "One optional level of projects above groups", because it gives t
 - **Page.** The list runs Routines, Pinned, the projects, the groups at the top level, Started here, Ungrouped and Terminal and other. A project header and a group header fold, and each browser remembers which are folded. A project's count is the number of sessions in its groups. While a row is dragged every project is open, so each group is a place to drop it.
 - **Menus.** A project and a group each have a dots button, and a right click or the menu key on a header opens the same menu. The + at the top of the list adds a project, or a group at the top level. A project's menu has New group here, Rename and Delete project. A group's menu has Move to top level and a Move to line for each project it is not in, and its button shows only when there is somewhere to move it. Rows drag as before, and headers do not drag.
 
+**Amended 2026-10-21.** The + also starts a session, and lists New session above New project and New group. It opens before the list has loaded, with only New session until then. See [Match Desktop's flow for new sessions](20261014-desktop-like-prompt-box-flow.md).
+
 ### Consequences
 
 - ✅ Related groups can sit under one header that folds, and a phone can do every step.
