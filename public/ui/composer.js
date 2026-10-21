@@ -171,10 +171,10 @@ export function Composer({ ctrl }) {
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
     <div class="composer-box input-group">
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
+      <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
       <div class="composer-row">
         <button class="btn attach" data-variant="outline" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" title="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
         <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
-        <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
         <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} title=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>
