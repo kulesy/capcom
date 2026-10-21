@@ -1,5 +1,6 @@
-// The list of sessions on the left: routines, pinned sessions, Capcom's projects and groups, and the ones started here or in a
-// terminal. A row can be dragged onto a section to move it there. Everything else is done from menus, so a phone can do it all.
+// The list of sessions on the left, for the view the projects sidebar picks. Home has the routines, the groups outside projects and the
+// sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
+// onto a section to move it there. Everything else is done from menus, so a phone can do it all.
 import { dragRows } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { DeleteProject, NameForm } from './forms.js';
@@ -8,6 +9,8 @@ import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
+import { ProjectsPanel, ProjectsToggle } from './projects.js';
+import { groupsIn, HOME_VIEW } from './scopes.js';
 import { LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted, marked }) {
@@ -84,8 +87,8 @@ export function placeRow(ix, id, section) {
 }
 
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
-// A group always shows, empty or not, and so does a project, so one that was just made can be found and filled.
-function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine, drag, tree }) {
+// A group always shows, empty or not, and so does the project in view, so one that was just made can be found and filled.
+function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRoutine, drag, tree }) {
   const carried = drag && findRow(ix, drag.id);
   const over = drag?.over;
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
@@ -96,6 +99,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
     if (!list.length && !always && !(drag && drop)) return null;
     return html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
   };
+  const home = view === HOME_VIEW;
   const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g) });
   const project = p => {
     const groups = ix.groups.filter(g => g.project === p.id);
@@ -106,17 +110,17 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
       ${editing === 'rename' ? tree.renameForm(p)
         : editing === 'delete' ? tree.deleteForm(p, groups.length)
         : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + g.sessions.length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
-      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<p class="drop-hint">No groups yet. Add one from the project's menu, or move one here from a group's menu.</p>`}</div>` : null}
+      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<p class="drop-hint">No groups yet. Make one with New group, or move one here from a group's menu in Home.</p>`}</div>` : null}
     </section>`;
   };
   const parts = [
-    section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
+    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
-    ...ix.projects.map(project),
-    ...ix.groups.filter(g => !g.project).map(group),
-    section('started', LOOSE_NAMES.started, ix.started, rows(ix.started)),
-    section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
-    section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
+    ...ix.projects.filter(p => p.id === view).map(project),
+    ...(home ? groupsIn(ix, HOME_VIEW).map(group) : []),
+    home && section('started', LOOSE_NAMES.started, ix.started, rows(ix.started)),
+    home && section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
+    home && section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
   ].filter(Boolean);
   return parts.length ? parts : html`<p class="quiet pad">No sessions found.</p>`;
 }
@@ -157,12 +161,14 @@ export const newSession = () => { if (location.hash === '#/new') document.getEle
 // A note about something that did not work, which shows in amber. No reason means no note.
 const problemNote = text => (text ? { text, problem: true } : null);
 
+// `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
 // `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
 // group the server made, changed or removed. `archive(id, archived)` archives or unarchives a session and resolves with
 // { problem, stopped }: the reason when the server refuses, and whether it stopped a chat that was running.
-export function SessionList({ ix, error, current, place, edit, archive, onFind, passkeys, banner }) {
+export function SessionList({ ix, projects, error, current, place, edit, archive, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
+  const { view } = projects;
   const mod = useModifier();
   const [openRoutines, setOpenRoutines] = useState(new Set());
   const [drag, setDrag] = useState(null);
@@ -209,14 +215,31 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     return () => clearTimeout(timer);
   }, [note]);
 
+  // Each view starts at the top of the list. A form left open in the view before closes, so a group is never made in a view that is
+  // off screen and a form does not come back with its view. New project is in the sidebar, so it stays. This comes before the effects
+  // that move the focus, so a header they focus scrolls into sight after the jump to the top.
+  useLayoutEffect(() => {
+    box.current.scrollTop = 0;
+    setForm(open => (open && open.kind !== 'project' ? null : open));
+  }, [view]);
+
   // Focus goes to the project or group a closed form made, or back to what it replaced or came from, as soon as the list has been
   // drawn without the form. The first selector that matches wins, so when the list could not be loaded again focus goes to the next
   // one rather than to the page. It scrolls into view, so `focus()` must never be given preventScroll.
   useLayoutEffect(() => {
     if (back === null) return;
-    back.map(to => nav.current.querySelector(to)).find(Boolean)?.focus();
+    back.map(to => nav.current.querySelector(to) || projects.box.current?.querySelector(to)).find(Boolean)?.focus();
     setBack(null);
   }, [back]);
+
+  // A view picked in the search gets the focus on its header, or on the opener when it has none, once the list shows it.
+  useLayoutEffect(() => {
+    if (!projects.landing) return;
+    const { view: landed } = projects.landing;
+    const head = landed ? nav.current.querySelector(headOf(landed)) : box.current.querySelector('.group-head');
+    (head || projects.opener.current)?.focus();
+    projects.settle();
+  }, [projects.landing]);
 
   // Once an archived row has left the list, the focus goes to the row beside it, so the keyboard stays in the list.
   useLayoutEffect(() => {
@@ -332,21 +355,32 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
   const pop = (key, { label, items }, anchor) => setShown(open => (open?.key === key ? null : { key, anchor, label, items }));
 
   // A new session needs nothing from the list, so the + opens before the list has loaded, with only New session until it has.
-  // An open + menu gains the other items when the list arrives.
+  // An open + menu gains New group when the list arrives. The group goes in the view on screen, and New project is in the sidebar.
   const addMenu = {
-    label: 'New session, project or group',
+    label: 'New session or group',
     items: [
       { label: 'New session', hint: `${mod} N`, run: newSession },
-      ...(ix ? [
-        { label: 'New project', run: () => setForm({ kind: 'project' }) },
-        { label: 'New group', run: () => setForm({ kind: 'group', project: null }) },
-      ] : []),
+      ...(ix ? [{ label: 'New group', run: () => { if (view) expand(view); setForm({ kind: 'group', project: view }); } }] : []),
     ],
   };
 
+  // A moved group leaves the view on screen, so the note says where it went and the focus goes to the group beside it.
   async function moveGroup(g, project) {
-    if (await change('api/layout/group/move', { id: g.id, project }) && project) expand(project);
-    setBack([headOf(g.id)]);
+    const beside = neighbour(groupsIn(ix, view).map(x => x.id), g.id);
+    const to = ix.projects.find(p => p.id === project)?.name ?? 'Home';
+    const moved = await change('api/layout/group/move', { id: g.id, project });
+    if (moved && project) expand(project);
+    if (moved) setNote({ text: `Moved ${g.name} to ${to}.` });
+    setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
+  }
+
+  async function addProject(name) {
+    const { problem, made } = await edit('api/layout/project/add', { name });
+    if (!made) return problem || 'Could not add the project.';
+    projects.choose(made.id);
+    projects.closeLevel(false);
+    closeForm(headOf(made.id), '.add');
+    return '';
   }
 
   async function addGroup(name, project) {
@@ -383,20 +417,14 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     deleteForm: (p, groups) => html`<${DeleteProject} name=${p.name} groups=${groups} onCancel=${() => closeForm(headOf(p.id))}
       onConfirm=${async () => {
         const done = await change('api/layout/project/remove', { id: p.id });
-        if (done) closeForm('.add');
+        if (done) { projects.choose(null); closeForm('.add'); }
         return !!done;
       }} />`,
   };
 
-  const top = form && !form.project && form.kind !== 'session' ? form : null;
-  const topForm = !top ? null : top.kind === 'project'
-    ? html`<${NameForm} label="New project" action="Create" onCancel=${() => closeForm('.add')}
-        onSubmit=${async name => {
-          const made = await change('api/layout/project/add', { name });
-          if (made) closeForm(headOf(made.id), '.add');
-          return !!made;
-        }} />`
-    : html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`;
+  const topForm = form?.kind === 'group' && !form.project
+    ? html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`
+    : null;
 
   // A double click on a row's link renames it, after the first click has opened it as usual. A click with a modifier is left alone.
   const renameAt = e => {
@@ -405,8 +433,12 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     if (id) setForm({ kind: 'session', session: id });
   };
 
-  return html`<nav class="list" aria-label="Sessions" ref=${nav}>
+  return html`<${Fragment}>
+  <${ProjectsPanel} ix=${ix} projects=${projects} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
+    onCancel=${() => closeForm('.new-project')} onCreate=${addProject} />
+  <nav class="list" aria-label="Sessions" ref=${nav}>
     <header class="list-head">
+      <${ProjectsToggle} projects=${projects} />
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
       <div class="list-actions">
         <button class="icon-btn add" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -421,7 +453,7 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt}>
       ${ix
-        ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">
@@ -429,5 +461,6 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
     ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} start=${shown.start} onBack=${shown.onBack} onClose=${() => setShown(null)} />` : null}
-  </nav>`;
+  </nav>
+<//>`;
 }

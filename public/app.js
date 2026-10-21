@@ -3,6 +3,7 @@ import { ChatPane } from './ui/chat.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
+import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, newSession, placeRow, SessionList } from './ui/sessions-list.js';
 import { shortcut } from './ui/shortcuts.js';
@@ -143,11 +144,21 @@ function App() {
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   const row = findRow(ix, id);
+  const current = view === 'chat' ? id : null;
+  const projects = useProjects(ix, current, hash, view === 'list');
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
+
+  // A view picked in the search. Where the list and a chat cannot sit side by side, a chat gives way to the list, and the route is
+  // set in state at once so the list is on screen when the focus moves to it.
+  const showView = viewId => {
+    setFinding(false);
+    if (!projects.wide && view !== 'list') { location.hash = '#/'; setHash(location.hash); }
+    projects.show(viewId);
+  };
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} error=${error} current=${view === 'chat' ? id : null} place=${place} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
@@ -156,7 +167,7 @@ function App() {
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
     </main>
-    ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onClose=${() => setFinding(false)} />` : null}
+    ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />` : null}
   </div>
   <${ViewerHost} />
 <//>`;

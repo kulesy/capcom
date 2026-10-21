@@ -17,9 +17,9 @@ export const looseHome = row => (row.routine ? null : LOOSE_HOME[row.source]);
 // The longest session title the rename form allows. The server holds the same limit as MAX_TITLE in lib/layout.mjs.
 export const TITLE_MAX = 120;
 
-// Where a group can go from where it is: the top level when it is in a project, and each project it is not in.
+// Where a group can go from where it is: Home when it is in a project, and each project it is not in.
 export const moveTargets = (projects, group) => [
-  ...(group.project ? [{ label: 'Move to top level', project: null }] : []),
+  ...(group.project ? [{ label: 'Move to Home', project: null }] : []),
   ...projects.filter(p => p.id !== group.project).map(p => ({ label: `Move to ${p.name}`, project: p.id })),
 ];
 

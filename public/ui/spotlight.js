@@ -1,16 +1,18 @@
 // Ctrl+K searches from anywhere, laid out like Desktop's search. Chips pick what to look through, and the left and right
 // arrows move between them. Archived sessions are only found here, under their own chip, most recently archived first, and
-// only here is one unarchived, by its button or with Shift+Enter.
+// only here is one unarchived, by its button or with Shift+Enter. Home and the projects are found here too, and opening one
+// shows its view in the list.
 import { api } from './api.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
+import { HOME_VIEW, viewsNamed } from './scopes.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
 import { everyRow, newSession } from './sessions-list.js';
 
-const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
+const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['projects', 'Projects'], ['routines', 'Routines'], ['archived', 'Archived']];
 const RECENT = 8;
 const SHOWN = 50;
 
@@ -25,8 +27,9 @@ function newestFirst(ix) {
 }
 
 const item = r => ({ key: r.id, r });
+const viewItem = v => ({ key: `view:${v.id ?? 'home'}`, view: v });
 
-// What the spotlight shows for a chip and a query: titled sections of items, each a session or an action.
+// What the spotlight shows for a chip and a query: titled sections of items, each a session, a view of the list or an action.
 function sectionsFor(chip, ix, archived, query, mod) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const keep = words.length ? matcher(words) : () => true;
@@ -34,13 +37,19 @@ function sectionsFor(chip, ix, archived, query, mod) {
   if (chip === 'archived') return [{ title: 'Archived', items: archived.filter(keep).map(item) }];
   if (chip === 'routines') return [{ title: 'Routines', items: ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(item) }];
   if (chip === 'sessions') return [{ title: 'Sessions', items: live.filter(r => !r.routine).filter(keep).slice(0, SHOWN).map(item) }];
+  const views = viewsNamed(ix, words).map(viewItem);
+  if (chip === 'projects') return [{ title: 'Projects', items: views }];
+  // With no project Home is the only view, and there is nothing to choose between, so All leaves the section out.
+  const projects = ix.projects.length ? [{ title: 'Projects', items: views }] : [];
   if (!words.length) {
     return [
       { title: 'Recents', items: live.slice(0, RECENT).map(item) },
+      ...projects,
       { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: `${mod} N`, hash: '#/new' }] },
     ];
   }
   return [
+    ...projects,
     { title: 'Sessions', items: live.filter(keep).slice(0, SHOWN).map(item) },
     { title: 'Archived', items: archived.filter(keep).slice(0, SHOWN).map(item) },
   ];
@@ -57,6 +66,17 @@ function Hit({ it, selected, onPick, onHover, onUnarchive }) {
         <kbd class="row-time">${it.hint}</kbd>
       </a></li>`;
   }
+  if (it.view) {
+    const { view: v } = it;
+    const meta = [v.id === HOME_VIEW ? 'Everything outside projects' : 'Project', v.lamp && STATE_LABEL[v.lamp]].filter(Boolean).join('  ');
+    return html`<li role="option" aria-selected=${selected} onMouseMove=${onHover}>
+      <a class="row" aria-selected=${selected} onClick=${pick}>
+        <span class="lamp" data-state=${v.lamp || 'idle'} aria-hidden="true"></span>
+        <span class="row-title">${v.name}</span>
+        ${v.count === undefined ? null : html`<span class="row-time">${v.count}</span>`}
+        <span class="row-meta">${meta}</span>
+      </a></li>`;
+  }
   const { r } = it;
   const title = r.title || UNTITLED;
   const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join('  ');
@@ -71,7 +91,8 @@ function Hit({ it, selected, onPick, onHover, onUnarchive }) {
   </li>`;
 }
 
-export function Spotlight({ ix, archive, onClose }) {
+// `onShow(id)` shows a view of the list, a project id or null for Home, and closes the search. Opening anything else closes it here.
+export function Spotlight({ ix, archive, onShow, onClose }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState('all');
   const [held, setHeld] = useState(FIRST);
@@ -109,7 +130,15 @@ export function Spotlight({ ix, archive, onClose }) {
   useLayoutEffect(() => { setHeld(now => (now.key === null || (now.at === pick && now.key === keys[pick]) ? now : holdAt(keys, pick))); });
   useLayoutEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [pick, sections]);
 
-  const open = it => { onClose(); if (it.key === 'new') newSession(); else location.hash = `#/s/${encodeURIComponent(it.r.id)}`; };
+  const open = it => {
+    if (it.view) {
+      onShow(it.view.id);
+      return;
+    }
+    onClose();
+    if (it.key === 'new') newSession();
+    else location.hash = `#/s/${encodeURIComponent(it.r.id)}`;
+  };
   const choose = key => { setChip(key); setHeld(FIRST); input.current.focus(); };
   const step = by => {
     setChip(now => CHIPS[Math.max(0, Math.min(CHIPS.length - 1, CHIPS.findIndex(([key]) => key === now) + by))][0]);

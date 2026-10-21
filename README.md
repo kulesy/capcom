@@ -77,40 +77,63 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the Find button's tooltip and the line on the empty page name the modifier that works where Capcom
   is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no key beside
   New session.
-- **The list** shows routines first, then pinned sessions, your projects with their groups, your other
-  groups, the sessions started here, ungrouped ones and terminal sessions. A group lists its sessions by
-  title, A to Z, with the titles that start with an emoji first, and numbers in number order. Every other
-  section lists its newest session first. A project or a group shows when it is empty, so one that was
-  just made can be found and filled. The other sections show only when they hold a session.
+- **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
+  Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
+  started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
+  project with its groups. A group lists its sessions by title, A to Z, with the titles that start with an
+  emoji first, and numbers in number order. Every other section lists its newest session first. A project
+  or a group shows when it is empty, so one that was just made can be found and filled. The other sections
+  show only when they hold a session.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
   the layout starts empty and it tries again on each later start. Drag a row onto a group to move it there,
   onto Pinned to pin it, or onto Ungrouped, Started here or Terminal and other to take it out of its group.
-  Routines is not a place to drop. A mouse drags after a few pixels of movement, a finger after a long
-  press, and Esc cancels. Move to in a row's menu makes the same moves without a drag. It opens a second
-  menu of Pinned, the groups (a project's groups sit under the project's name) and the loose list the
-  session came from, with the place the session is already in left out. A routine's run that was moved into
-  a group or pinned can go back to Routines from there. There is no screen yet to rename, delete or reorder
-  groups. Edit `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of
-  the list if it cannot.
-- **Projects** are an optional level above groups, so the list can run projects, then groups, then
-  sessions. A group belongs to at most one project, and one that belongs to none stays at the top level.
-  Routines and Pinned stay above the projects. Project and group headers fold, and the browser remembers
-  which are folded. The + at the top of the list starts a session, makes a project, or makes a group at
-  the top level. The dots at the end of a project's header open its menu: New group here, Rename and
-  Delete project. Delete asks first, then moves the project's groups to the top level, and no group or
-  session is deleted. The dots on a group's header move it into a project, between projects or back to
-  the top level, and show only when there is somewhere to move it. A right click or the menu key on a
-  header opens the same menu. Every step is a menu, so a phone can do all of them. A name runs to 80
-  characters at most, and two projects may share one.
+  Routines is not a place to drop. A row drops onto a section on screen. A mouse drags after a few pixels
+  of movement, a finger after a long press, and Esc cancels. Move to in a row's menu makes the same moves
+  without a drag. It opens a second menu of Pinned, the groups (a project's groups sit under the project's
+  name) and the loose list the session came from, with the place the session is already in left out. It
+  lists the groups of every project, so it also moves a session to a view that is not on screen. A
+  routine's run that was moved into a group or pinned can go back to Routines from there. There is no
+  screen yet to rename, delete or reorder groups. Edit `layout.json` for those: Capcom reads it on every
+  refresh, and shows the error at the top of the list if it cannot.
+- **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
+  group belongs to at most one project, and one that belongs to none stays at the top level, which Home
+  shows. Project and group headers fold, and the browser remembers which are folded. The + at the top of
+  the list starts a session, or makes a group in the view you are in: at the top level in Home, and in the
+  project in a project's view. The dots at the end of a project's header open its menu: New group here,
+  Rename and Delete project. Delete asks first, then moves the project's groups to Home and shows Home,
+  and no group or session is deleted. The dots on a group's header move it into a project, between
+  projects or back to Home, and show only when there is somewhere to move it. A note then says where the
+  group went, and the list stays on the view it was in. A right click or the menu key on a header opens
+  the same menu. Every step is a menu, so a phone can do all of them. A name runs to 80 characters at
+  most, and two projects may share one.
+- **The projects sidebar** picks the view the list shows. Home is first, and each project follows it with
+  the number of sessions in its groups. Pinned sessions show in every view. In a window 56rem wide or
+  more, the sidebar is a column on the left, beside the list, and the chat narrows to make room. The
+  Projects button at the left of the list's header opens and closes it, and the browser remembers whether
+  it is open. In a narrower window there is no room beside the list, so the sidebar is a screen of its
+  own, like the list and a chat, and it takes the list's place. Its header has the same button, pressed,
+  with the title Projects beside it. Pressing it, picking Home or a project, and Esc go back to the list.
+  So does opening a chat or another page, a change of view, and the window growing to 56rem. A phone
+  always starts on the list. The browser remembers the view. Opening a chat shows the view that has its
+  row, once for each chat, and a pinned chat leaves the view as it is. A lamp beside Home and each project
+  is green when a chat in it is working and amber when one needs you. When the sidebar is not showing and
+  a chat in another view needs you, the button has an amber dot. New project is the button at the bottom
+  of the sidebar. It asks for a name, shows the reason in the sidebar if Capcom refuses one, and shows
+  the new project when it takes it.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
-  search laid out like Desktop's. Chips pick what to look through: All, Sessions, Routines and Archived,
-  and the left and right arrows move between them from either end of the text. With nothing typed, All
-  shows recent sessions and a New session action. Typing filters by title, folder, branch or routine.
-  The up and down arrows and Enter open a result, and Esc closes it. Archived sessions stay out of the
-  list and turn up here, under their own chip, most recently archived first, and after the live
-  matches in any search.
+  search laid out like Desktop's. Chips pick what to look through: All, Sessions, Projects, Routines and
+  Archived, and the left and right arrows move between them from either end of the text. With nothing
+  typed, All shows recent sessions, then Home and each project, then a New session action. Typing filters
+  by title, folder, branch or routine, and Home and the projects by their name. The up and down arrows and
+  Enter open a result, and Esc closes it. Archived sessions stay out of the list and turn up here, under
+  their own chip, most recently archived first, and after the live matches in any search. Home and the
+  projects are results too, under All and under the Projects chip. Each has its lamp, and a project has
+  its number of sessions. Opening one closes the search and shows that view in the list, with the focus on
+  its header. In a window 56rem wide or more an open chat stays open. In a narrower window the list
+  takes the chat's place. With no project, All leaves the Projects section out, and the chip lists Home
+  alone.
 - **Archiving.** Right-click a session in the list, or press the menu key or Shift+F10 on it, for a menu
   with Rename, Move to and Archive. On a phone, long-press the row and let go without moving it. Archive
   works for any session, whichever app started it. A note at the top of the list then offers Undo for 10
@@ -133,6 +156,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   up or down steps into the list. Tab reaches the dots on a header, and Enter or Space on them opens the
   menu. In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab leaves it.
   In a row's menu the right arrow on Move to opens its list of places, and the left arrow there goes back.
+  In the projects sidebar the up and down arrows, Home and End move between the views and the New project
+  button.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.
@@ -349,8 +374,9 @@ node server.mjs
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
 the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
 live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
-project and group routes, the arrow-key and move rules of the sidebar tree, the session list and what a message
-does to it, the sign-in and the passkey checks, with Node's own test runner. The password is kept only as a
+project and group routes, the arrow-key and move rules of the sidebar tree, which view of the list holds a
+session, what a view's lamp and count show and which views a search finds, the session list and what a
+message does to it, the sign-in and the passkey checks, with Node's own test runner. The password is kept only as a
 scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser out and removes every
 passkey. Until one is set, Capcom refuses every request.
 

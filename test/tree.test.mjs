@@ -28,14 +28,14 @@ test('a key that is not for the walk goes nowhere, and neither does any key when
 
 const PROJECTS = [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Notes' }];
 
-test('a group at the top level can go to any project, and one in a project can also go back to the top level', () => {
+test('a group in Home can go to any project, and one in a project can also go back to Home', () => {
   assert.deepEqual(moveTargets(PROJECTS, { id: 'cg-a', project: null }), [{ label: 'Move to Capcom', project: 'cp-a' }, { label: 'Move to Notes', project: 'cp-b' }]);
-  assert.deepEqual(moveTargets(PROJECTS, { id: 'cg-a', project: 'cp-a' }), [{ label: 'Move to top level', project: null }, { label: 'Move to Notes', project: 'cp-b' }]);
+  assert.deepEqual(moveTargets(PROJECTS, { id: 'cg-a', project: 'cp-a' }), [{ label: 'Move to Home', project: null }, { label: 'Move to Notes', project: 'cp-b' }]);
 });
 
 test('a group has nowhere to go with no project, and in the only project it can only leave', () => {
   assert.deepEqual(moveTargets([], { id: 'cg-a', project: null }), []);
-  assert.deepEqual(moveTargets([PROJECTS[0]], { id: 'cg-a', project: 'cp-a' }), [{ label: 'Move to top level', project: null }]);
+  assert.deepEqual(moveTargets([PROJECTS[0]], { id: 'cg-a', project: 'cp-a' }), [{ label: 'Move to Home', project: null }]);
 });
 
 const PLACES = {

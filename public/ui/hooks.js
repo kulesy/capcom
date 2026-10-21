@@ -38,6 +38,21 @@ export function useModifier() {
   return mod;
 }
 
+// Whether the window is wide enough for the projects to sit in a column beside the list. app.css changes its grid at the same width.
+const WIDE = '(min-width: 56rem)';
+
+export function useWide() {
+  const [wide, setWide] = useState(() => matchMedia(WIDE).matches);
+  useEffect(() => {
+    const query = matchMedia(WIDE);
+    const sync = () => setWide(query.matches);
+    query.addEventListener('change', sync);
+    sync();
+    return () => query.removeEventListener('change', sync);
+  }, []);
+  return wide;
+}
+
 export function useDocumentTitle(title) {
   useEffect(() => { document.title = title; }, [title]);
 }

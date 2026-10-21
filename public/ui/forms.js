@@ -45,7 +45,7 @@ export function DeleteProject({ name, groups, onConfirm, onCancel }) {
     if (!(await onConfirm())) setBusy(false);
   }
 
-  const result = groups ? `Its ${groups === 1 ? 'group moves' : `${groups} groups move`} to the top level. No group or session is deleted.` : 'It has no groups.';
+  const result = groups ? `Its ${groups === 1 ? 'group moves' : `${groups} groups move`} to Home. No group or session is deleted.` : 'It has no groups.';
   return html`<div class="confirm" role="group" aria-label="Delete project" aria-describedby="confirm-text" onKeyDown=${escapeCancels(onCancel)}>
     <p id="confirm-text">Delete <strong>${name}</strong>? ${result}</p>
     <div class="confirm-actions">
