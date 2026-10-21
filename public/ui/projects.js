@@ -123,7 +123,7 @@ function Scope({ home, name, count, lamp, current, onPick }) {
   return html`<li><button class=${home ? 'scope home' : 'scope'} type="button" aria-current=${current ? 'true' : null} onClick=${onPick}>
     <span class="lamp" data-state=${lamp || 'idle'} aria-hidden="true"></span>
     <span class="scope-name">${name}</span>
-    ${count === undefined ? null : html`<span class="badge scope-count" data-variant="secondary">${count}</span>`}
+    ${count === undefined ? null : html`<span class="badge scope-count">${count}</span>`}
     ${lamp ? html`<span class="sr">, ${STATE_LABEL[lamp]}</span>` : null}
   </button></li>`;
 }

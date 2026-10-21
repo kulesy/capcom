@@ -2,13 +2,13 @@
 // sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
 // onto a section to move it there. Everything else is done from menus, so a phone can do it all.
 import { ask } from './ask.js';
-import { dragRows } from './drag.js';
+import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { DeleteProject, NameForm } from './forms.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
-import { Menu } from './menu.js';
+import { icons, layerId, Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
@@ -32,12 +32,13 @@ const rowOf = id => `a.row[data-id="${CSS.escape(id)}"]`;
 const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
 // The header of a project or a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
-// The same menu opens on a right click or the menu key.
+// The same menu opens on a right click, at the pointer, or the menu key, under the button.
 function Head({ id, name, count, open, toggle, menu, tree, project }) {
-  const pop = button => tree.pop(id, menu, button);
-  return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more')); })}>
-    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count" data-variant="secondary">${count}</span></button>
-    ${menu ? html`<button class="btn more" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${tree.shown?.key === id} onClick=${e => pop(e.currentTarget)}>${dots()}</button>` : null}
+  const pop = (button, point) => tree.pop(id, menu, button, { point });
+  const shown = tree.shown?.key === id;
+  return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
+    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span></button>
+    ${menu ? html`<button class="btn more" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} onClick=${e => pop(e.currentTarget)}>${dots()}</button>` : null}
   </div>`;
 }
 
@@ -353,37 +354,34 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     setNote(problem ? { ...problemNote(problem), undo: { id, title, reopen } } : { text: `Unarchived ${title}.` });
   }
 
-  // The menu of a row, opened by a right click, the menu key or a long press. Move to swaps it for a menu of places at the same spot,
-  // headed by Move to again, which brings the first menu back with the focus on Move to, as the left arrow does. A chat the list shows
-  // running is stopped as it is archived, and the item says so. Archive on a chat that turns out to be running asks first, as the key
-  // does.
-  latestMenu.current = (id, row, point, start = 0) => {
+  // The menu of a row, opened by a right click or a long press at the pointer, or by the menu key under the row. Move to opens the
+  // places in a menu beside it. A chat the list shows running is stopped as it is archived, and the item says so. Archive on a chat
+  // that turns out to be running asks first, as the key does.
+  latestMenu.current = (id, row, point) => {
     const r = findRow(ix, id);
     if (!r) return;
     const title = r.title || UNTITLED;
     const running = isRunning(r);
     const targets = sessionTargets(ix, r);
-    const show = menu => setShown({ key: `row-${++opened.current}`, session: id, anchor: row, point, ...menu });
     const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
-    const back = () => latestMenu.current(id, row, point, 1);
-    const moveMenu = {
-      label: `Move ${title} to`,
-      start: 1,
-      onBack: back,
-      items: [
-        { label: 'Move to', back: true, run: back },
-        ...targets.map(t => (t.group
-          ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
-          : choice(t.label, t.section, t.label))),
-      ],
-    };
-    show({
+    const places = targets.flatMap((t, n) => {
+      const entry = t.group
+        ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
+        : choice(t.label, t.section, t.label);
+      return n && (t.group || targets[n - 1].group) ? [{ separator: true }, entry] : [entry];
+    });
+    setShown({
+      id: ++opened.current,
+      key: 'row',
+      session: id,
+      anchor: row,
+      point,
       label: `Actions for ${title}`,
-      start,
       items: [
-        { label: 'Rename', run: () => setForm({ kind: 'session', session: id }) },
-        ...(targets.length ? [{ label: 'Move to', more: true, run: () => show(moveMenu) }] : []),
-        { label: running ? 'Stop and archive' : 'Archive', danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },
+        { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
+        ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places }] : []),
+        { separator: true },
+        { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },
       ],
     });
   };
@@ -420,16 +418,24 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
 
   const closeForm = (...focus) => { setForm(null); setBack(focus); };
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
-  const pop = (key, { label, items }, anchor) => setShown(open => (open?.key === key ? null : { key, anchor, label, items }));
+  // A button's menu closes when its button is pressed again. A key that asks for the first or last item (`entry`) opens it afresh.
+  const pop = (key, { label, items }, anchor, { entry = null, point = null } = {}) =>
+    setShown(open => (open?.key === key && !entry ? null : { id: ++opened.current, key, anchor, point, entry, label, items }));
 
   // A new session needs nothing from the list, so the + opens before the list has loaded, with only New session until it has.
   // An open + menu gains New group when the list arrives. The group goes in the view on screen, and New project is in the sidebar.
   const addMenu = {
     label: 'New session or group',
     items: [
-      { label: 'New session', hint: `${mod} N`, run: newSession },
-      ...(ix ? [{ label: 'New group', run: () => { if (view) expand(view); setForm({ kind: 'group', project: view }); } }] : []),
+      { label: 'New session', icon: icons.messageSquarePlus, hint: `${mod} N`, run: newSession },
+      ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => { if (view) expand(view); setForm({ kind: 'group', project: view }); } }] : []),
     ],
+  };
+
+  const addKey = e => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    pop('add', addMenu, e.currentTarget, { entry: e.key === 'ArrowDown' ? 'first' : 'last' });
   };
 
   // A moved group leaves the view on screen, so the note says where it went and the focus goes to the group beside it.
@@ -470,9 +476,10 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     projectMenu: p => ({
       label: `Actions for ${p.name}`,
       items: [
-        { label: 'New group here', run: () => { expand(p.id); setForm({ kind: 'group', project: p.id }); } },
-        { label: 'Rename', run: () => setForm({ kind: 'rename', project: p.id }) },
-        { label: 'Delete project', danger: true, run: () => setForm({ kind: 'delete', project: p.id }) },
+        { label: 'New group here', icon: icons.folderPlus, run: () => { expand(p.id); setForm({ kind: 'group', project: p.id }); } },
+        { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
+        { separator: true },
+        { label: 'Delete project', icon: icons.trash, danger: true, run: () => setForm({ kind: 'delete', project: p.id }) },
       ],
     }),
     groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} action="Create" onSubmit=${name => addGroup(name, p.id)} onCancel=${() => closeForm(headOf(p.id))} />`,
@@ -509,7 +516,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       <${ProjectsToggle} projects=${projects} />
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
       <div class="list-actions">
-        <button class="btn add" data-variant="ghost" data-size="icon" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn add" data-variant="ghost" data-size="icon" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} onClick=${e => pop('add', addMenu, e.currentTarget)} onKeyDown=${addKey}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon" type="button" aria-label="Find a session" title=${`Find a session (${mod}+K)`} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
@@ -528,7 +535,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
-    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} start=${shown.start} onBack=${shown.onBack} onClose=${() => setShown(null)} />` : null}
+    <${Menu} menu=${shown && (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown)} onClose=${() => setShown(null)} />
   </nav>
 <//>`;
 }

@@ -55,14 +55,30 @@ async function mount() {
 
 afterEach(() => mock.timers.reset());
 
-test('a finger held still near the edge of the list leaves the list where it is, and letting go asks for the row menu', async () => {
+test('a finger held still near the edge of the list leaves the list where it is, and letting go asks for the row menu at the finger', async () => {
   const t = await mount();
   t.down('touch', 100, 600 - EDGE / 2);
   mock.timers.tick(HOLD_MS);
   for (let i = 0; i < 5; i++) t.frame();
   assert.equal(t.box.scrollTop, 100);
   t.up(100, 600 - EDGE / 2);
-  assert.deepEqual(t.log, [['start', 'r1'], ['end', 'r1', null], ['menu', 'r1', true, null]]);
+  assert.deepEqual(t.log, [['start', 'r1'], ['end', 'r1', null], ['menu', 'r1', true, { x: 100, y: 600 - EDGE / 2 }]]);
+  t.stop();
+});
+
+test('the mouse down and click a touch sends after the long press is let go are swallowed for a moment, so the menu keeps the focus', async () => {
+  const t = await mount();
+  const swallowed = type => {
+    let hit = false;
+    window.fire(type, { preventDefault: () => { hit = true; } });
+    return hit;
+  };
+  t.down('touch', 100, 300);
+  mock.timers.tick(HOLD_MS);
+  t.up(100, 300);
+  assert.deepEqual([swallowed('mousedown'), swallowed('click')], [true, true]);
+  mock.timers.tick(250);
+  assert.deepEqual([swallowed('mousedown'), swallowed('click')], [false, false]);
   t.stop();
 });
 

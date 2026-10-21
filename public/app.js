@@ -177,7 +177,7 @@ function App() {
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
-        <p>Pick a session, press ${mod}+K to find one, or ${mod}+N to start a new one.</p>
+        <p>Pick a session, press <kbd>${mod}+K</kbd> to find one, or <kbd>${mod}+N</kbd> to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}

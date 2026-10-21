@@ -7,9 +7,15 @@ const HOLD_SLOP = 8;
 const EDGE = 56;
 const SCROLL_STEP = 16;
 
+// The place of a click if it is inside the element. The menu key reports one that can be far from it, so it gets null.
+export function pointIn(el, e) {
+  const r = el.getBoundingClientRect();
+  return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
+}
+
 // `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
 // the pointer, or null. `onEnd` gets the target dropped on, or null when the drag was cancelled. `onMenu` gets the row's id and
-// element, and where the click was when that is inside the row, or null when it was a long press or the menu key.
+// element, and where the click or the finger was, or null for the menu key.
 // Returns a function that stops it.
 export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   let press = null;
@@ -18,7 +24,10 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   let frame = 0;
   let quiet = 0;
 
-  const swallowClick = e => { e.preventDefault(); e.stopPropagation(); };
+  const swallow = e => { e.preventDefault(); e.stopPropagation(); };
+  const swallowing = on => {
+    for (const type of ['click', 'mousedown']) window[on ? 'addEventListener' : 'removeEventListener'](type, swallow, true);
+  };
 
   function down(e) {
     const row = e.target.closest('a.row[data-id]');
@@ -27,7 +36,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     if (e.ctrlKey && e.pointerType === 'mouse') return;
     if (stop) lost();
     clearTimeout(quiet);
-    window.removeEventListener('click', swallowClick, true);
+    swallowing(false);
     const at = { x: e.clientX, y: e.clientY };
     press = { row, start: at, now: at, touch: e.pointerType !== 'mouse', timer: 0 };
     if (press.touch) press.timer = setTimeout(() => lift(press.now.x, press.now.y), HOLD_MS);
@@ -72,7 +81,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     clearTimeout(press.timer);
     press = null;
     drag = { id: row.dataset.id, row, touch, start, copy, grabX: start.x - at.left, grabY: start.y - at.top, x, y, over: null, moved: !touch };
-    window.addEventListener('click', swallowClick, true);
+    swallowing(true);
     onStart(drag.id);
     follow();
     frame = requestAnimationFrame(autoscroll);
@@ -109,13 +118,14 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
   }
 
   // The click after a drag must not open the session. A touch can send it a moment after the pointer goes up, so it is swallowed for a while.
+  // So is the mouse down before it, which would take the focus off the menu a long press opens.
   function release() {
     clearTimeout(press?.timer);
     press = null;
     stop?.abort();
     stop = null;
     if (drag) discard();
-    quiet = setTimeout(() => window.removeEventListener('click', swallowClick, true), 250);
+    quiet = setTimeout(() => swallowing(false), 250);
   }
 
   function up(e) {
@@ -130,7 +140,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     const target = dropped && !still ? carried.over : null;
     release();
     if (carried) onEnd(carried.id, target);
-    if (still) onMenu(carried.id, carried.row, null);
+    if (still) onMenu(carried.id, carried.row, { x: carried.x, y: carried.y });
   }
 
   function escape(e) {
@@ -148,18 +158,12 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     if (carried) onEnd(carried.id, null);
   }
 
-  // The click's place if it is inside the row. The menu key reports one that can be far from the row, so it gets null.
-  function inside(row, e) {
-    const r = row.getBoundingClientRect();
-    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
-  }
-
   function menu(e) {
     if (press?.touch || drag) return e.preventDefault();
     const row = e.target.closest('a.row[data-id]');
     if (!row) return;
     e.preventDefault();
-    onMenu(row.dataset.id, row, inside(row, e));
+    onMenu(row.dataset.id, row, pointIn(row, e));
   }
 
   const life = new AbortController();
