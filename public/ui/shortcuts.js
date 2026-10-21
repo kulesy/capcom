@@ -13,13 +13,15 @@ export const onMac = () => navigator.platform.startsWith('Mac');
 // works everywhere.
 export const modifier = () => (inApp() && onMac() ? 'Cmd' : 'Ctrl');
 
-// What a key press asks for: 'new' to start a session, 'find' to open the search, 'archive' to archive one, or null.
-// A text field keeps Cmd+A for Select All, and Ctrl+A is left to the browser everywhere.
+// What a key press asks for: 'new' to start a session, 'find' to open the search, 'projects' to show or hide the projects sidebar,
+// 'archive' to archive one, or null. Chrome reserves neither Cmd+K nor Cmd+B, so each works in a tab as well as in the app, as
+// Desktop's Cmd+K and Cmd+B do. A text field keeps Cmd+A for Select All, and Ctrl+A is left to the browser everywhere.
 export function shortcut(e) {
   if (e.altKey || e.shiftKey || e.isComposing) return null;
   // Chrome's autofill sends keydown events with no key.
   const key = e.key?.toLowerCase();
   if (key === 'k' && (e.ctrlKey || e.metaKey)) return 'find';
+  if (key === 'b' && (e.ctrlKey || e.metaKey)) return 'projects';
   if (key === 'n' && (e.ctrlKey ? !e.metaKey : e.metaKey && inApp())) return 'new';
   if (key === 'a' && e.metaKey && !e.ctrlKey && onMac() && !e.target?.closest?.(FIELD)) return 'archive';
   return null;

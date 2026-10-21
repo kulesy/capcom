@@ -1,7 +1,9 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { shortcut } from './shortcuts.js';
 
 // A menu under the button or row that opened it, or with its top left at `point` ({ x, y }) when a click made it. It is fixed to the
-// screen, so the scrolling list cannot clip it. A choice, Esc, a tap outside it, or a scroll that moves its anchor closes it.
+// screen, so the scrolling list cannot clip it. A choice, Esc, a tap outside it, a scroll that moves its anchor, or the key for a new
+// session, the search or the projects sidebar closes it.
 // `items` are { label, run, danger, hint, more, back }, or { group, items } for items under a heading, and the arrows walk them across
 // groups. `hint` names a key that does the same. An item with `more` opens another menu, so it shows a chevron and the right arrow
 // chooses it. That menu starts with the same item marked `back`, which shows it open and goes back when chosen, as the left arrow
@@ -55,6 +57,7 @@ export function Menu({ anchor, point = null, label, items, onClose, onBack = nul
     const buttons = [...box.current.querySelectorAll('button')];
     const go = to => { e.preventDefault(); buttons[(to + buttons.length) % buttons.length].focus(); };
     const here = buttons.indexOf(document.activeElement);
+    const asked = shortcut(e);
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); anchor.focus(); close.current(); }
     else if (e.key === 'ArrowDown') go(here + 1);
     else if (e.key === 'ArrowUp') go(here - 1);
@@ -63,6 +66,9 @@ export function Menu({ anchor, point = null, label, items, onClose, onBack = nul
     else if (e.key === 'ArrowRight' && buttons[here]?.matches('[aria-haspopup="menu"]')) { e.preventDefault(); buttons[here].click(); }
     else if (e.key === 'ArrowLeft' && onBack) { e.preventDefault(); onBack(); }
     else if (e.key === 'Tab') { anchor.focus({ preventScroll: true }); close.current(); }
+    // The key goes on to do its job, which can move the list from under a menu fixed to the screen. Cmd+A is left to the list, which
+    // reads the open menu for the row to archive and closes it when there is one.
+    else if (asked && asked !== 'archive') { anchor.focus({ preventScroll: true }); close.current(); }
   }
 
   const choice = item => html`<button type="button" role="menuitem" class=${item.danger ? 'danger' : item.back ? 'menu-back' : null}

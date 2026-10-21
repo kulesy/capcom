@@ -74,9 +74,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   as a tab, because Chrome reports it as full screen. In the app Cmd+N still opens a second Capcom
   window on the sign-in page and while a widget has focus, because Capcom's page never sees the key
   there. File > New Window in the menu bar opens one too. New session in the + menu and in the search,
-  the Find button's tooltip and the line on the empty page name the modifier that works where Capcom
-  is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no key beside
-  New session.
+  the Find and Projects buttons' tooltips and the line on the empty page name the modifier that works
+  where Capcom is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no
+  key beside New session.
 - **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
   Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
   started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
@@ -112,16 +112,19 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the number of sessions in its groups. Pinned sessions show in every view. In a window 56rem wide or
   more, the sidebar is a column on the left, beside the list, and the chat narrows to make room. The
   Projects button at the left of the list's header opens and closes it, and the browser remembers whether
-  it is open. In a narrower window there is no room beside the list, so the sidebar is a screen of its
-  own, like the list and a chat, and it takes the list's place. Its header has the same button, pressed,
-  with the title Projects beside it. Pressing it, picking Home or a project, and Esc go back to the list.
-  So does opening a chat or another page, a change of view, and the window growing to 56rem. A phone
-  always starts on the list. The browser remembers the view. Opening a chat shows the view that has its
-  row, once for each chat, and a pinned chat leaves the view as it is. A lamp beside Home and each project
-  is green when a chat in it is working and amber when one needs you. When the sidebar is not showing and
-  a chat in another view needs you, the button has an amber dot. New project is the button at the bottom
-  of the sidebar. It asks for a name, shows the reason in the sidebar if Capcom refuses one, and shows
-  the new project when it takes it.
+  it is open. Ctrl+B or Cmd+B opens and closes it too, as Cmd+B shows and hides Desktop's sidebar, and
+  closes the search or a menu if one is open. The focus stays where it was, unless it was in the search or
+  in the column as it closed, when it goes to the button. In a narrower window there is no room beside the
+  list, so the sidebar is a screen of its own, like the list and a chat, and it takes the list's place.
+  Its header has the same button, pressed, with the title Projects beside it. Pressing it, picking Home or
+  a project, and Esc go back to the list. So does opening a chat or another page, a change of view, and
+  the window growing to 56rem. Ctrl+B or Cmd+B opens and closes it there as the button does, and from a
+  chat it shows the list first. A phone always starts on the list. The browser remembers the view. Opening
+  a chat shows the view that has its row, once for each chat, and a pinned chat leaves the view as it is.
+  A lamp beside Home and each project is green when a chat in it is working and amber when one needs you.
+  When the sidebar is not showing and a chat in another view needs you, the button has an amber dot. New
+  project is the button at the bottom of the sidebar. It asks for a name, shows the reason in the sidebar
+  if Capcom refuses one, and shows the new project when it takes it.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
   search laid out like Desktop's. Chips pick what to look through: All, Sessions, Projects, Routines and
   Archived, and the left and right arrows move between them from either end of the text. With nothing

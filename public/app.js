@@ -33,6 +33,7 @@ function App() {
   const writing = useRef(0);
   const [offering, stopOffering] = usePasskeyOffer();
   const mod = useModifier();
+  const flipKey = useRef(null);
   useRenewal();
 
   // A list is drawn only if it is newer than the one on screen, so a slow answer cannot put an older list back, and once a load
@@ -128,14 +129,15 @@ function App() {
     };
   }, []);
 
-  // Ctrl+N starts a session and Ctrl+K finds one. Cmd+K works too, and so does Cmd+N in the installed app. The list takes Cmd+A,
-  // because it knows which row has the focus.
+  // Ctrl+N starts a session, Ctrl+K finds one and Ctrl+B shows or hides the projects sidebar. Cmd+K and Cmd+B work too, and so does
+  // Cmd+N in the installed app. The list takes Cmd+A, because it knows which row has the focus.
   useEffect(() => {
     const onKey = e => {
       const asked = shortcut(e);
-      if (asked !== 'new' && asked !== 'find') return;
+      if (asked !== 'new' && asked !== 'find' && asked !== 'projects') return;
       e.preventDefault();
       if (asked === 'new') { setFinding(false); newSession(); }
+      else if (asked === 'projects') flipKey.current();
       else setFinding(open => !open);
     };
     document.addEventListener('keydown', onKey);
@@ -157,6 +159,16 @@ function App() {
     setFinding(false);
     if (!projects.wide && view !== 'list') { location.hash = '#/'; setHash(location.hash); }
     projects.show(viewId);
+  };
+
+  // Ctrl+B or Cmd+B. The search closes with the focus on the button that opens the sidebar. A chat gives way to the list as it does in
+  // showView, and the level opens in the list's place.
+  flipKey.current = () => {
+    if (finding && projects.wide) projects.opener.current?.focus();
+    setFinding(false);
+    const away = !projects.wide && view !== 'list';
+    if (away) { location.hash = '#/'; setHash(location.hash); }
+    projects.flip(away);
   };
 
   return html`<${Fragment}>

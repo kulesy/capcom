@@ -4,7 +4,7 @@
 // growing to 56rem when the column is open there.
 import { NameForm } from './forms.js';
 import { STATE_LABEL } from './format.js';
-import { useLocal, useWide } from './hooks.js';
+import { useLocal, useModifier, useWide } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { countOf, EVERY_VIEW, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn } from './scopes.js';
 import { nextStop } from './tree.js';
@@ -12,9 +12,10 @@ import { nextStop } from './tree.js';
 const PANEL = 'projectsPanel';
 
 // The view in use, kept in this browser as a project id or null for Home, and whether the column is open. The level is plain state
-// and never kept, so a phone always starts on the list. It shows only while `listed` says the list's place is on screen, and it ends
-// when the route or the view changes, when the list gives way to a chat or a page, and when the window grows wide. Opening the chat at
-// `current` switches to the view that has its row, once for each chat. `box` is the panel and `opener` the button that opens it.
+// and never stored, so a phone always starts on the list. It shows only while `listed` says the list's place is on screen, and it ends
+// when the route or the view changes, when the list gives way to a chat or a page, and when the window grows wide, except that the key
+// can open it from a chat. Opening the chat at `current` switches to the view that has its row, once for each chat. `box` is the panel
+// and `opener` the button that opens it.
 export function useProjects(ix, current, hash, listed) {
   const [chosen, choose] = useLocal('scope', null);
   const [docked, setDocked] = useLocal('projectsDocked', false);
@@ -24,13 +25,18 @@ export function useProjects(ix, current, hash, listed) {
   const opener = useRef(null);
   const box = useRef(null);
   const toOpener = useRef(false);
+  const carry = useRef(false);
   const revealed = useRef(null);
   const view = ix ? viewIn(ix, chosen) : chosen;
   const open = wide ? docked : level && listed;
 
   // This runs before the screen is drawn, so a route that hides the list never shows the level beside it. The first list can open a
-  // chat with no change of route, so the list giving way closes the level too.
-  useLayoutEffect(() => { setLevel(false); }, [hash, view, wide, listed]);
+  // chat with no change of route, so the list giving way closes the level too. The key that opens the level from a chat puts the list
+  // on screen in the same step, so that one change keeps the level.
+  useLayoutEffect(() => {
+    if (carry.current) carry.current = false;
+    else setLevel(false);
+  }, [hash, view, wide, listed]);
 
   // Safari does not focus a button that is clicked, so the focus is put on the opener here once the list shows it again.
   useLayoutEffect(() => {
@@ -49,6 +55,11 @@ export function useProjects(ix, current, hash, listed) {
     revealed.current = current;
     if (held !== EVERY_VIEW && held !== view) choose(held);
   }, [ix, current]);
+
+  const toggle = () => {
+    if (wide) setDocked(on => !on);
+    else { toOpener.current = false; setLevel(true); }
+  };
 
   const closeLevel = (focusOpener = true) => {
     toOpener.current = focusOpener;
@@ -80,9 +91,16 @@ export function useProjects(ix, current, hash, listed) {
     closeLevel,
     show,
     settle: () => setLanding(null),
-    toggle: () => {
-      if (wide) setDocked(on => !on);
-      else { toOpener.current = false; setLevel(true); }
+    toggle,
+    // Ctrl+B or Cmd+B. The column leaves the focus where it is, unless the focus is in the column as it closes, when it goes to the
+    // button that opens it. The level opens and closes as its button does. `away` says a chat is giving way to the list in this step.
+    flip: away => {
+      if (wide && docked && box.current?.contains(document.activeElement)) opener.current?.focus();
+      if (!wide && open) closeLevel();
+      else {
+        carry.current = away;
+        toggle();
+      }
     },
     elsewhere: !!ix && !open && othersWaiting(ix, view),
   };
@@ -93,7 +111,8 @@ const sidebar = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-
 // The button at the left of the list's header. A dot on it says a chat in a view that is not on screen needs you.
 export function ProjectsToggle({ projects }) {
   const { open, toggle, opener, elsewhere } = projects;
-  return html`<button class="icon-btn projects-toggle" type="button" ref=${opener} aria-label="Projects" title="Projects" aria-expanded=${open}
+  const mod = useModifier();
+  return html`<button class="icon-btn projects-toggle" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded=${open}
     aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
     ${sidebar()}
     ${elsewhere ? html`<span class="dot" aria-hidden="true"></span><span class="sr" id="projectsElsewhere">A chat in another view needs you</span>` : null}
@@ -117,6 +136,7 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
   const { view, choose, wide, open, box, closeLevel } = projects;
   const [reason, setReason] = useState('');
   const toggle = useRef(null);
+  const mod = useModifier();
 
   useEffect(() => { if (!open && creating) onCancel(); }, [open, creating]);
 
@@ -150,7 +170,7 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
   const lamp = id => (ix ? lampOf(ix, id) : null);
   return html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
-      ${wide ? null : html`<button class="icon-btn projects-toggle" type="button" ref=${toggle} aria-label="Projects" title="Projects" aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
+      ${wide ? null : html`<button class="icon-btn projects-toggle" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
       <h2 class="rail-title" id="projectsTitle">Projects</h2>
     </div>
     <ul class="scopes">
