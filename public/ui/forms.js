@@ -28,9 +28,9 @@ export function NameForm({ label, value = '', action, max = 80, onSubmit, onCanc
 
   return html`<form class="name-form" ref=${form} onSubmit=${submit} onKeyDown=${escapeCancels(onCancel)}>
     <label class="name-field"><span>${label}</span>
-      <input ref=${input} type="text" value=${text} maxlength=${max} autocomplete="off" enterkeyhint="done" onInput=${e => setText(e.currentTarget.value)} /></label>
-    <button class="button" type="submit" disabled=${busy || !text.trim()}>${action}</button>
-    <button class="button" type="button" onClick=${onCancel}>Cancel</button>
+      <input class="input" ref=${input} type="text" value=${text} maxlength=${max} autocomplete="off" enterkeyhint="done" onInput=${e => setText(e.currentTarget.value)} /></label>
+    <button class="btn" type="submit" disabled=${busy || !text.trim()}>${action}</button>
+    <button class="btn" data-variant="outline" type="button" onClick=${onCancel}>Cancel</button>
   </form>`;
 }
 
@@ -49,8 +49,8 @@ export function DeleteProject({ name, groups, onConfirm, onCancel }) {
   return html`<div class="confirm" role="group" aria-label="Delete project" aria-describedby="confirm-text" onKeyDown=${escapeCancels(onCancel)}>
     <p id="confirm-text">Delete <strong>${name}</strong>? ${result}</p>
     <div class="confirm-actions">
-      <button class="button danger" type="button" disabled=${busy} onClick=${confirm}>Delete project</button>
-      <button class="button" type="button" ref=${cancel} onClick=${onCancel}>Cancel</button>
+      <button class="btn" data-variant="destructive" type="button" disabled=${busy} onClick=${confirm}>Delete project</button>
+      <button class="btn" data-variant="outline" type="button" ref=${cancel} onClick=${onCancel}>Cancel</button>
     </div>
   </div>`;
 }

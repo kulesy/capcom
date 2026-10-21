@@ -98,11 +98,11 @@ function ChipCard({ t, chip, cwd, onChip }) {
     if (!(await onChip(action, t, folder))) setBusy('');
   };
   const actions = status === 'started'
-    ? html`<a class="button" href=${`#/s/${encodeURIComponent(chip.startedId)}`}>Open the session</a>`
+    ? html`<a class="btn" data-variant="outline" href=${`#/s/${encodeURIComponent(chip.startedId)}`}>Open the session</a>`
     : status === 'dismissed'
       ? html`<span class="quiet">Dismissed</span>`
-      : html`<button class="button send" type="button" data-chip="start" data-tool=${t.id} data-folder=${folder} disabled=${busy === 'start'} onClick=${() => act('start')}>Start session</button>
-         <button class="link" type="button" data-chip="dismiss" data-tool=${t.id} disabled=${busy === 'dismiss'} onClick=${() => act('dismiss')}>Dismiss</button>`;
+      : html`<button class="btn" type="button" data-chip="start" data-tool=${t.id} data-folder=${folder} disabled=${busy === 'start'} onClick=${() => act('start')}>Start session</button>
+         <button class="btn" data-variant="ghost" type="button" data-chip="dismiss" data-tool=${t.id} disabled=${busy === 'dismiss'} onClick=${() => act('dismiss')}>Dismiss</button>`;
   return html`<li class="chip-card" data-status=${status}>
     <p class="chip-kind">Suggested task${t.name.startsWith('mcp__capcom__') ? '' : ' from Desktop'}</p>
     <h4>${i.title || 'Untitled task'}</h4>

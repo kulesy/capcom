@@ -55,8 +55,8 @@ function Ask({ action, title, detail, run, back, from }) {
     <p id="ask-text">${action} <strong>${title}</strong>?</p>
     <p id="ask-detail">${detail}</p>
     <div class="ask-actions">
-      <button class="button danger" type="button" onClick=${confirm}>${action}</button>
-      <button class="button" type="button" ref=${cancel} onClick=${decline}>Cancel</button>
+      <button class="btn" data-variant="destructive" type="button" onClick=${confirm}>${action}</button>
+      <button class="btn" data-variant="outline" type="button" ref=${cancel} onClick=${decline}>Cancel</button>
     </div>
   </dialog>`;
 }

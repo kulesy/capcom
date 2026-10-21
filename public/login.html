@@ -15,11 +15,11 @@
   <h1>Capcom</h1>
   <p class="quiet">Sign in to talk to your sessions on this Mac.</p>
   <label class="field">Password
-    <input id="password" name="password" type="password" autocomplete="current-password webauthn" required autofocus>
+    <input class="input" id="password" name="password" type="password" autocomplete="current-password webauthn" required autofocus>
   </label>
   <p class="notice" id="notice" role="alert">{{message}}</p>
-  <button class="button send" type="submit">Sign in</button>
-  <button class="button" id="passkey" type="button" hidden>Sign in with a passkey</button>
+  <button class="btn" type="submit">Sign in</button>
+  <button class="btn" data-variant="outline" id="passkey" type="button" hidden>Sign in with a passkey</button>
   <p class="quiet hint" id="passkey-hint" hidden></p>
 </form>
 <script type="module" src="login.js"></script>

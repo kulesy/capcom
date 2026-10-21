@@ -106,13 +106,13 @@ export function useProjects(ix, current, hash, listed) {
   };
 }
 
-const sidebar = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.75 4v12" stroke="currentColor" stroke-width="1.6"/></svg>`;
+const sidebar = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.75 4v12" stroke="currentColor" stroke-width="1.6"/></svg>`;
 
 // The button at the left of the list's header. A dot on it says a chat in a view that is not on screen needs you.
 export function ProjectsToggle({ projects }) {
   const { open, toggle, opener, elsewhere } = projects;
   const mod = useModifier();
-  return html`<button class="icon-btn projects-toggle" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded=${open}
+  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded=${open}
     aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
     ${sidebar()}
     ${elsewhere ? html`<span class="dot" aria-hidden="true"></span><span class="sr" id="projectsElsewhere">A chat in another view needs you</span>` : null}
@@ -123,12 +123,12 @@ function Scope({ home, name, count, lamp, current, onPick }) {
   return html`<li><button class=${home ? 'scope home' : 'scope'} type="button" aria-current=${current ? 'true' : null} onClick=${onPick}>
     <span class="lamp" data-state=${lamp || 'idle'} aria-hidden="true"></span>
     <span class="scope-name">${name}</span>
-    ${count === undefined ? null : html`<span class="scope-count">${count}</span>`}
+    ${count === undefined ? null : html`<span class="badge scope-count" data-variant="secondary">${count}</span>`}
     ${lamp ? html`<span class="sr">, ${STATE_LABEL[lamp]}</span>` : null}
   </button></li>`;
 }
 
-const plus = () => html`<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
 // `creating` is whether the New project form is open, and the list owns it. `onCreate(name)` resolves with the reason the server
 // refused, or an empty string. A panel that closes with the form open cancels it.
@@ -170,7 +170,7 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
   const lamp = id => (ix ? lampOf(ix, id) : null);
   return html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
-      ${wide ? null : html`<button class="icon-btn projects-toggle" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
+      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
       <h2 class="rail-title" id="projectsTitle">Projects</h2>
     </div>
     <ul class="scopes">
@@ -180,7 +180,7 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
     </ul>
     ${creating
       ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
-      : html`<button class="new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}New project</button>`}
+      : html`<button class="btn new-project" data-variant="ghost" type="button" disabled=${!ix} onClick=${begin}>${plus()}New project</button>`}
     <div role="status">${creating && reason ? html`<p class="problem">${reason}</p>` : null}</div>
   </nav>`;
 }

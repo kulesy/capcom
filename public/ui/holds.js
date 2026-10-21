@@ -25,7 +25,7 @@ function EndedCard({ g, onDismiss }) {
     <div>
       <h3>${lead(n, g.from)} ${n === 1 ? 'was' : 'were'} not delivered</h3>
       <p>${holdEnd(g.why)}</p>
-      <button class="link" type="button" onClick=${() => onDismiss(g.ids)}>Dismiss</button>
+      <button class="btn" data-variant="ghost" data-size="xs" type="button" onClick=${() => onDismiss(g.ids)}>Dismiss</button>
     </div></article>`;
 }
 

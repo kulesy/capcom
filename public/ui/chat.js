@@ -18,7 +18,7 @@ function ChatHead({ ctrl }) {
     ? 'Starts Claude Code in the folder you pick'
     : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : '', settingsLine(status)].filter(Boolean).join('  ') : '';
   return html`<header class="chat-head">
-    <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
+    <a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Sessions</a>
     <div class="chat-title">
       <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
       <p class="chat-meta" id="meta">${meta}</p>

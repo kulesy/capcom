@@ -71,8 +71,8 @@ export function PasskeyOffer({ onDone }) {
     <p class="offer-text">Skip the password next time. A passkey signs you in with a fingerprint, face or screen lock.</p>
     <p class="notice" role="alert">${problem}</p>
     <div class="offer-actions">
-      <button class="button" type="button" disabled=${busy} onClick=${add}>${busy ? 'Adding a passkey' : 'Add a passkey'}</button>
-      <button class="link" type="button" onClick=${onDone}>Not now</button>
+      <button class="btn" type="button" disabled=${busy} onClick=${add}>${busy ? 'Adding a passkey' : 'Add a passkey'}</button>
+      <button class="btn" data-variant="ghost" type="button" onClick=${onDone}>Not now</button>
     </div>
   </aside>`;
 }
@@ -95,10 +95,10 @@ function PasskeyRow({ p, asking, ask, remove }) {
     ${asking
       ? html`<div class="passkey-ask" role="group" aria-label="Remove this passkey?" onKeyDown=${e => { if (e.key === 'Escape') ask(null); }}>
           <span>Remove this passkey?</span>
-          <button class="button danger" type="button" onClick=${() => remove(p.id)}>Remove</button>
-          <button class="link" type="button" ref=${keep} onClick=${() => ask(null)}>Keep</button>
+          <button class="btn" data-variant="destructive" data-size="sm" type="button" onClick=${() => remove(p.id)}>Remove</button>
+          <button class="btn" data-variant="outline" data-size="sm" type="button" ref=${keep} onClick=${() => ask(null)}>Keep</button>
         </div>`
-      : html`<button class="link" type="button" ref=${start} aria-label=${`Remove the passkey for ${p.device || 'an unknown browser'}, added ${date(p.created)}`} onClick=${() => ask(p.id)}>Remove</button>`}
+      : html`<button class="btn" data-variant="outline" data-size="sm" type="button" ref=${start} aria-label=${`Remove the passkey for ${p.device || 'an unknown browser'}, added ${date(p.created)}`} onClick=${() => ask(p.id)}>Remove</button>`}
   </li>`;
 }
 
@@ -151,7 +151,7 @@ export function PasskeysPane() {
 
   return html`<section class="session" id="passkeys">
     <header class="chat-head">
-      <a class="back" href="#/" aria-label="Back to sessions">Sessions</a>
+      <a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Sessions</a>
       <div class="chat-title"><h2>Passkeys</h2></div>
     </header>
     <div class="passkeys-body">
@@ -163,7 +163,7 @@ export function PasskeysPane() {
             : html`<p class="passkey-none">No passkeys added yet.</p>`
           : problem ? null : html`<p class="quiet">Loading passkeys</p>`}
         <div class="passkey-add">
-          <button class="button" type="button" ref=${adder} disabled=${!shown || !!why || busy} aria-describedby="passkey-why" onClick=${add}>${busy ? 'Adding a passkey' : 'Add a passkey'}</button>
+          <button class="btn" type="button" ref=${adder} disabled=${!shown || !!why || busy} aria-describedby="passkey-why" onClick=${add}>${busy ? 'Adding a passkey' : 'Add a passkey'}</button>
           <p class="quiet passkey-why" id="passkey-why">${why}</p>
         </div>
         <p class="notice" role="alert">${problem}</p>

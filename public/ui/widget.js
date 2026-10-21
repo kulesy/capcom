@@ -86,11 +86,11 @@ function Ask({ request, onConfirm, onCancel }) {
     <p class="widget-ask-kind">${link ? 'A widget wants to open a link' : 'A widget wants to send this to Claude'}</p>
     ${link ? html`<p class="widget-ask-host">${request.host}</p>` : null}
     <p class=${link ? 'widget-ask-url' : 'widget-ask-text'} data-open=${wide ? '' : null}>${shown}</p>
-    ${long(shown) ? html`<button class="link" type="button" aria-expanded=${wide} onClick=${() => setWide(!wide)}>${wide ? 'Show less' : 'Show all'}</button>` : null}
+    ${long(shown) ? html`<button class="btn" data-variant="ghost" data-size="xs" type="button" aria-expanded=${wide} onClick=${() => setWide(!wide)}>${wide ? 'Show less' : 'Show all'}</button>` : null}
     ${request.error ? html`<p class="widget-ask-error" role="alert">${request.error}</p>` : null}
     <div class="widget-ask-actions">
-      <button class="button send" type="button" data-ask="confirm" aria-disabled=${!armed || !!request.working} onClick=${confirm}>${link ? 'Open link' : 'Send'}</button>
-      <button class="button" type="button" data-ask="cancel" onClick=${onCancel}>Cancel</button>
+      <button class="btn" type="button" data-ask="confirm" aria-disabled=${!armed || !!request.working} onClick=${confirm}>${link ? 'Open link' : 'Send'}</button>
+      <button class="btn" data-variant="outline" type="button" data-ask="cancel" onClick=${onCancel}>Cancel</button>
     </div></div>`;
 }
 

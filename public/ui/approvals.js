@@ -69,9 +69,9 @@ function ApprovalCard({ p, names, onDecide }) {
     ${p.description ? html`<p>${p.description}</p>` : null}
     <details><summary>All input</summary><pre>${JSON.stringify(p.input ?? {}, null, 2)}</pre></details>
     <div class="approval-actions">
-      <button class="button send" type="button" data-decision="allow" disabled=${busy} onClick=${() => decide('allow')}>Allow</button>
-      ${p.always ? html`<button class="button" type="button" data-decision="always" disabled=${busy} onClick=${() => decide('always')}>Always allow</button>` : null}
-      <button class="button" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Deny</button>
+      <button class="btn" type="button" data-decision="allow" disabled=${busy} onClick=${() => decide('allow')}>Allow</button>
+      ${p.always ? html`<button class="btn" data-variant="outline" type="button" data-decision="always" disabled=${busy} onClick=${() => decide('always')}>Always allow</button>` : null}
+      <button class="btn" data-variant="outline" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Deny</button>
     </div></article>`;
 }
 
@@ -100,15 +100,15 @@ function QuestionCard({ p, onDecide }) {
   return html`<article class="approval question" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>Claude is asking</h3>
     ${qs.map((q, qi) => html`<fieldset class="ask" key=${qi} data-q=${qi}>
-      <legend>${q.header ? html`<span class="ask-head">${q.header}</span>` : null}${q.question}${q.multiSelect ? html` <span class="quiet">(pick any)</span>` : null}</legend>
+      <legend>${q.header ? html`<span class="badge ask-head" data-variant="secondary">${q.header}</span>` : null}${q.question}${q.multiSelect ? html` <span class="quiet">(pick any)</span>` : null}</legend>
       <div class="options">${(q.options || []).map((o, oi) => html`<button class="option" key=${`o${oi}`} type="button" data-q=${qi} data-o=${oi} aria-pressed=${picks[qi].chosen.includes(oi)} disabled=${busy} onClick=${() => choose(qi, oi)}>
         <strong>${o.label}</strong>${o.description ? html`<span>${o.description}</span>` : null}</button>
         ${o.preview && picks[qi].chosen.includes(oi) ? html`<pre class="preview">${pre(o.preview)}</pre>` : null}`)}</div>
-      <input class="other" type="text" data-q=${qi} value=${picks[qi].other} placeholder="Or write your own answer" aria-label="Your own answer" onInput=${e => type(qi, e.target.value)} />
+      <input class="input other" type="text" data-q=${qi} value=${picks[qi].other} placeholder="Or write your own answer" aria-label="Your own answer" onInput=${e => type(qi, e.target.value)} />
     </fieldset>`)}
     <div class="approval-actions">
-      <button class="button send" type="button" data-decision="answer" disabled=${busy || Object.keys(answers).length !== qs.length} onClick=${() => decide('answer', answers)}>Send answers</button>
-      <button class="button" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Skip</button>
+      <button class="btn" type="button" data-decision="answer" disabled=${busy || Object.keys(answers).length !== qs.length} onClick=${() => decide('answer', answers)}>Send answers</button>
+      <button class="btn" data-variant="outline" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Skip</button>
     </div></article>`;
 }
 

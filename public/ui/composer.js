@@ -23,15 +23,15 @@ function Attachments({ images, preparing }) {
   return html`<ul class="attached" aria-label="Attached images">
     ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
       <button class="thumb" type="button" data-image=${imageKey(img)} aria-label=${`View ${img.name}`} aria-haspopup="dialog" onClick=${e => openViewer(draftImages(images), n, e.currentTarget)}><img src=${img.src} alt=${img.name} /></button>
-      <button class="thumb-remove" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
 }
 
-const Plus = () => html`<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M10 4.25v11.5M4.25 10h11.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const Plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4.25v11.5M4.25 10h11.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>`;
 const Arrow = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 16V4.5M5 9.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const Ring = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="30 11"/></svg>`;
-const Square = () => html`<svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="2.5" fill="currentColor"/></svg>`;
+const Square = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="12" height="12" rx="2.5" fill="currentColor"/></svg>`;
 
 // A model or effort the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
 // The choice shows as plain text, as in Desktop, with the native picker laid invisibly over it so a tap still opens it.
@@ -39,7 +39,7 @@ function Pick({ id, label, value, options, placeholder, labelOf = v => v, quiet,
   const extra = value && !options.some(([v]) => v === value) ? [[value, labelOf(value)]] : [];
   const all = [...options, ...extra];
   const shown = all.find(([v]) => v === value)?.[1] || placeholder;
-  return html`<label class=${`pick${quiet ? ' quiet' : ''}`} data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
+  return html`<label class=${`btn pick${quiet ? ' quiet' : ''}`} data-variant="ghost" data-size="sm" data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
       ${placeholder ? html`<option value="" hidden>${placeholder}</option>` : null}
       ${all.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
@@ -52,7 +52,7 @@ export function FolderBar({ ctrl }) {
   const { folder, folders } = useFields(ctrl.store, 'folder', 'folders');
   const choose = e => { ctrl.setFolder(e.target.value); ctrl.loadDefaults(); };
   return html`<div class="folderbar" id="folderBar">
-    <label class="folder-field">Folder <input id="folder" type="text" autocomplete="off" spellcheck=${false} value=${folder} onInput=${e => ctrl.setFolder(e.target.value)} onChange=${ctrl.loadDefaults} /></label>
+    <label class="folder-field">Folder <input class="input" id="folder" type="text" autocomplete="off" spellcheck=${false} value=${folder} onInput=${e => ctrl.setFolder(e.target.value)} onChange=${ctrl.loadDefaults} /></label>
     <details class="recent" open=${recentOpen} onToggle=${e => { recentOpen = e.currentTarget.open; }}><summary>Recent folders</summary><div class="folders" id="folders">
       ${folders.map((f, i) => html`<label class="folder" key=${f}><input type="radio" name="folder" value=${f} defaultChecked=${i === 0} onChange=${choose} /> ${tilde(f, HOME) || '~'}</label>`)}
     </div></details></div>`;
@@ -169,13 +169,13 @@ export function Composer({ ctrl }) {
 
   const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
-    <div class="composer-box">
+    <div class="composer-box input-group">
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
       <div class="composer-row">
-        <button class="icon-button attach" id="attach" type="button" aria-label="Attach images" title="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
+        <button class="btn attach" data-variant="outline" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" title="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
         <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
-        <textarea id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
-        <button class="icon-button send" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} title=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
+        <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
+        <button class="btn send" data-size="icon-sm" data-variant=${stop ? 'destructive' : undefined} id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} title=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>
     <div class="composer-bar">

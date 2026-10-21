@@ -87,7 +87,7 @@ function Hit({ it, selected, onPick, onHover, onUnarchive }) {
       <time class="row-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>
       ${meta ? html`<span class="row-meta">${meta}</span>` : null}
     </a>
-    ${r.archived ? html`<button class="unarchive" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button>` : null}
+    ${r.archived ? html`<button class="btn unarchive" data-variant="outline" data-size="xs" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button>` : null}
   </li>`;
 }
 
@@ -181,10 +181,11 @@ export function Spotlight({ ix, archive, onShow, onClose }) {
   return html`<div class="spotlight-backdrop" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
     <div class="spotlight" role="dialog" aria-modal="true" aria-label="Search">
       <div class="spotlight-top">
+        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         <input class="spotlight-input" ref=${input} type="search" placeholder="Search" autocomplete="off" spellcheck=${false}
           aria-label="Search" aria-controls="spotlightResults" value=${query}
           onInput=${e => { setQuery(e.target.value); setHeld(FIRST); }} onKeyDown=${onKeyDown} />
-        <button class="icon-btn spotlight-close" type="button" aria-label="Close" onClick=${onClose}>
+        <button class="btn spotlight-close" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Close" onClick=${onClose}>
           <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
         </button>
       </div>

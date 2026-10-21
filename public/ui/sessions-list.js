@@ -29,15 +29,15 @@ const Row = ({ tree, ...props }) => html`<li>${tree.renaming === props.r.id ? tr
 
 const rowOf = id => `a.row[data-id="${CSS.escape(id)}"]`;
 
-const dots = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
+const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
 // The header of a project or a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click or the menu key.
 function Head({ id, name, count, open, toggle, menu, tree, project }) {
   const pop = button => tree.pop(id, menu, button);
   return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more')); })}>
-    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="count">${count}</span></button>
-    ${menu ? html`<button class="icon-btn more" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${tree.shown?.key === id} onClick=${e => pop(e.currentTarget)}>${dots()}</button>` : null}
+    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count" data-variant="secondary">${count}</span></button>
+    ${menu ? html`<button class="btn more" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${tree.shown?.key === id} onClick=${e => pop(e.currentTarget)}>${dots()}</button>` : null}
   </div>`;
 }
 
@@ -509,13 +509,13 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       <${ProjectsToggle} projects=${projects} />
       <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
       <div class="list-actions">
-        <button class="icon-btn add" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        <button class="icon-btn find" type="button" aria-label="Find a session" title=${`Find a session (${mod}+K)`} onClick=${onFind}><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn add" data-variant="ghost" data-size="icon" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} onClick=${e => pop('add', addMenu, e.currentTarget)}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn find" data-variant="ghost" data-size="icon" type="button" aria-label="Find a session" title=${`Find a session (${mod}+K)`} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
     <div role="status">${note
-      ? html`<p class=${note.problem ? 'problem' : 'note'} id="listNote">${note.text}${note.undo ? html` <button class="link" type="button" onClick=${() => undo(note.undo)}>Undo</button>` : null}</p>`
+      ? html`<p class=${note.problem ? 'problem' : 'note'} id="listNote">${note.text}${note.undo ? html` <button class="btn" data-variant="ghost" data-size="sm" type="button" onClick=${() => undo(note.undo)}>Undo</button>` : null}</p>`
       : null}</div>
     ${banner}
     ${topForm}
@@ -525,8 +525,8 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">
-      <a href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
-      <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
+      <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
+      <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
     ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} start=${shown.start} onBack=${shown.onBack} onClose=${() => setShown(null)} />` : null}
   </nav>
