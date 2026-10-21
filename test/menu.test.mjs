@@ -88,11 +88,11 @@ test('a view that does not start at the corner moves the room with it', () => {
   assert.equal(left.x, 108);
 });
 
-test('down and up step through the items and loop at either end', () => {
+test('down and up step through the items and stop at either end', () => {
   assert.equal(stepIn(3, 0, 'ArrowDown'), 1);
-  assert.equal(stepIn(3, 2, 'ArrowDown'), 0);
+  assert.equal(stepIn(3, 2, 'ArrowDown'), 2);
   assert.equal(stepIn(3, 1, 'ArrowUp'), 0);
-  assert.equal(stepIn(3, 0, 'ArrowUp'), 2);
+  assert.equal(stepIn(3, 0, 'ArrowUp'), 0);
 });
 
 test('Home and Page Up go to the first item, End and Page Down to the last', () => {

@@ -7,6 +7,7 @@ import { STATE_LABEL } from './format.js';
 import { useLocal, useModifier, useWide } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { countOf, EVERY_VIEW, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn } from './scopes.js';
+import { keyHint } from './shortcuts.js';
 import { nextStop } from './tree.js';
 
 const PANEL = 'projectsPanel';
@@ -112,7 +113,7 @@ const sidebar = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-
 export function ProjectsToggle({ projects }) {
   const { open, toggle, opener, elsewhere } = projects;
   const mod = useModifier();
-  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded=${open}
+  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded=${open}
     aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
     ${sidebar()}
     ${elsewhere ? html`<span class="dot" aria-hidden="true"></span><span class="sr" id="projectsElsewhere">A chat in another view needs you</span>` : null}
@@ -170,7 +171,7 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
   const lamp = id => (ix ? lampOf(ix, id) : null);
   return html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
-      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${mod}+B)`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
+      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
       <h2 class="rail-title" id="projectsTitle">Projects</h2>
     </div>
     <ul class="scopes">

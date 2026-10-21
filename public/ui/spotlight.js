@@ -1,8 +1,8 @@
-// Ctrl+K searches from anywhere, laid out like Desktop's search. Chips pick what to look through, and the left and right
-// arrows move between them. Archived sessions are only found here, under their own chip, most recently archived first, and
-// only here is one unarchived, by its button or with Shift+Enter. Home and the projects are found here too, and opening one
-// shows its view in the list.
+// Ctrl+K searches from anywhere, in shadcn's command dialog. Chips pick what to look through, and the left and right arrows move
+// between them. Archived sessions are only found here, under their own chip, most recently archived first, and only here is one
+// unarchived, by its button or with Shift+Enter. Home and the projects are found here too, and opening one shows its view in the list.
 import { api } from './api.js';
+import { Dialog } from './dialog.js';
 import { HOME } from './env.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { useModifier } from './hooks.js';
@@ -11,6 +11,8 @@ import { UNTITLED } from './order.js';
 import { HOME_VIEW, viewsNamed } from './scopes.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
 import { everyRow, newSession } from './sessions-list.js';
+import { keyHint } from './shortcuts.js';
+import { say } from './toast.js';
 
 const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['projects', 'Projects'], ['routines', 'Routines'], ['archived', 'Archived']];
 const RECENT = 8;
@@ -45,7 +47,7 @@ function sectionsFor(chip, ix, archived, query, mod) {
     return [
       { title: 'Recents', items: live.slice(0, RECENT).map(item) },
       ...projects,
-      { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: `${mod} N`, hash: '#/new' }] },
+      { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: keyHint(mod, 'N'), hash: '#/new' }] },
     ];
   }
   return [
@@ -55,52 +57,52 @@ function sectionsFor(chip, ix, archived, query, mod) {
   ];
 }
 
-// The hover is on the item, so a row stays selected while the pointer is over its Unarchive button.
-function Hit({ it, selected, onPick, onHover, onUnarchive }) {
-  const pick = e => { e.preventDefault(); onPick(it); };
+const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>`;
+
+// What an item says about itself. The hover is on the item, so it stays selected while the pointer is over its Unarchive button.
+function Words({ it }) {
   if (it.action) {
-    return html`<li role="option" aria-selected=${selected} onMouseMove=${onHover}>
-      <a class="row action" href=${it.hash} aria-selected=${selected} onClick=${pick}>
-        <span class="action-icon" aria-hidden="true">+</span>
-        <span class="row-title">${it.action}</span>
-        <kbd class="row-time">${it.hint}</kbd>
-      </a></li>`;
+    return html`<span data-part="hit-icon" aria-hidden="true">+</span><span data-part="hit-title">${it.action}</span><span data-slot="command-shortcut">${it.hint}</span>`;
   }
   if (it.view) {
     const { view: v } = it;
     const meta = [v.id === HOME_VIEW ? 'Everything outside projects' : 'Project', v.lamp && STATE_LABEL[v.lamp]].filter(Boolean).join('  ');
-    return html`<li role="option" aria-selected=${selected} onMouseMove=${onHover}>
-      <a class="row" aria-selected=${selected} onClick=${pick}>
-        <span class="lamp" data-state=${v.lamp || 'idle'} aria-hidden="true"></span>
-        <span class="row-title">${v.name}</span>
-        ${v.count === undefined ? null : html`<span class="row-time">${v.count}</span>`}
-        <span class="row-meta">${meta}</span>
-      </a></li>`;
+    return html`<span class="lamp" data-state=${v.lamp || 'idle'} aria-hidden="true"></span><span data-part="hit-title">${v.name}</span>
+      <span data-part="hit-meta">${meta}</span>${v.count === undefined ? null : html`<span data-part="hit-time">${v.count}</span>`}`;
   }
   const { r } = it;
-  const title = r.title || UNTITLED;
   const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join('  ');
-  return html`<li class=${r.archived ? 'can-unarchive' : null} role="option" aria-selected=${selected} onMouseMove=${onHover}>
-    <a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} aria-selected=${selected} onClick=${pick}>
-      <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
-      <span class="row-title">${title}</span>
-      <time class="row-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>
-      ${meta ? html`<span class="row-meta">${meta}</span>` : null}
-    </a>
-    ${r.archived ? html`<button class="btn unarchive" data-variant="outline" data-size="xs" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button>` : null}
-  </li>`;
+  return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span><span data-part="hit-title">${r.title || UNTITLED}</span>
+    ${meta ? html`<span data-part="hit-meta">${meta}</span>` : null}<time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>`;
+}
+
+function Hit({ it, id, selected, onPick, onMove, onUnarchive }) {
+  const option = html`<div id=${id} data-slot="command-item" cmdk-item="" role="option" aria-selected=${selected} data-selected=${selected} data-disabled="false" data-value=${it.key}
+    onClick=${() => onPick(it)} onPointerMove=${onMove}><${Words} it=${it} /></div>`;
+  if (!it.r?.archived) return option;
+  const title = it.r.title || UNTITLED;
+  return html`<div class="can-unarchive" role="presentation" onPointerMove=${onMove}>${option}
+    <button class="btn unarchive" data-variant="outline" data-size="xs" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button></div>`;
 }
 
 // `onShow(id)` shows a view of the list, a project id or null for Home, and closes the search. Opening anything else closes it here.
-export function Spotlight({ ix, archive, onShow, onClose }) {
+// The dialog is always drawn and the search inside it is made afresh for each opening, so what was typed last time is gone.
+export function Spotlight({ open, ix, archive, onShow, onClose }) {
+  return html`<${Dialog} open=${open} part="command-dialog-content" labelledBy="command-title" describedBy="command-description" onClose=${() => onClose()}>
+    <${Palette} ix=${ix} archive=${archive} onShow=${onShow} onClose=${onClose} />
+  <//>`;
+}
+
+function Palette({ ix, archive, onShow, onClose }) {
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState('all');
   const [held, setHeld] = useState(FIRST);
   const [archived, setArchived] = useState([]);
   const [gone, setGone] = useState([]);
-  const [note, setNote] = useState(null);
   const input = useRef(null);
   const list = useRef(null);
+  const scroll = useRef(false);
+  const pointer = useRef(null);
   const mod = useModifier();
 
   useEffect(() => {
@@ -108,12 +110,6 @@ export function Spotlight({ ix, archive, onShow, onClose }) {
     api('api/archived').then(d => { if (live) setArchived(d.archived || []); }).catch(() => {});
     return () => { live = false; };
   }, []);
-
-  useEffect(() => {
-    if (!note) return;
-    const timer = setTimeout(() => setNote(null), 6000);
-    return () => clearTimeout(timer);
-  }, [note]);
 
   const sections = useMemo(() => {
     if (!ix) return [];
@@ -125,10 +121,18 @@ export function Spotlight({ ix, archive, onShow, onClose }) {
   const pick = selectedIn(keys, held);
   const canUnarchive = !!flat[pick]?.r?.archived;
 
-  useLayoutEffect(() => { input.current.focus(); }, []);
   // A result held by its key has its position kept up to date, so when it goes the selection falls back on where it last was.
   useLayoutEffect(() => { setHeld(now => (now.key === null || (now.at === pick && now.key === keys[pick]) ? now : holdAt(keys, pick))); });
-  useLayoutEffect(() => { list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [pick, sections]);
+  // The list follows the selection only when a key, a search or a chip moved it, because the pointer selects what it is already over.
+  useLayoutEffect(() => {
+    if (!scroll.current) return;
+    scroll.current = false;
+    const el = list.current?.querySelector('[data-selected="true"]');
+    if (!el) return;
+    const group = el.closest('[cmdk-group]');
+    if (group?.querySelector('[role="option"]') === el) group.querySelector('[cmdk-group-heading]')?.scrollIntoView({ block: 'nearest' });
+    el.scrollIntoView({ block: 'nearest' });
+  }, [pick, sections]);
 
   const open = it => {
     if (it.view) {
@@ -139,11 +143,13 @@ export function Spotlight({ ix, archive, onShow, onClose }) {
     if (it.key === 'new') newSession();
     else location.hash = `#/s/${encodeURIComponent(it.r.id)}`;
   };
-  const choose = key => { setChip(key); setHeld(FIRST); input.current.focus(); };
+  const choose = key => { scroll.current = true; setChip(key); setHeld(FIRST); input.current.focus(); };
   const step = by => {
+    scroll.current = true;
     setChip(now => CHIPS[Math.max(0, Math.min(CHIPS.length - 1, CHIPS.findIndex(([key]) => key === now) + by))][0]);
     setHeld(FIRST);
   };
+  const go = to => { scroll.current = true; setHeld(to); };
 
   // Takes an archived session out of the list at once and asks the server to unarchive it. If the server refuses, the session
   // comes back and the reason shows.
@@ -161,49 +167,58 @@ export function Spotlight({ ix, archive, onShow, onClose }) {
       // A refusal puts the selection back on the session, unless it has been moved on since.
       if (beside) setHeld(now => (now.key === beside.key ? { key: it.key, at: was } : now));
     }
-    setNote(problem ? { text: problem, problem: true } : { text: `Unarchived ${r.title || UNTITLED}.` });
+    say(problem || `Unarchived ${r.title || UNTITLED}.`, { problem: !!problem });
   };
 
-  // The arrows change chips only from the edge of the text, so they still move the caret through a query.
-  // Esc stops here, so it closes the spotlight without also stopping a chat that is running behind it.
+  // The arrows change chips only from the edge of the text, so they still move the caret through a query. Esc is the dialog's.
   const onKeyDown = e => {
+    if (e.isComposing) return;
     const box = e.currentTarget;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
-    else if (e.key === 'ArrowRight' && box.selectionStart === box.value.length) { e.preventDefault(); step(1); }
+    if (e.key === 'ArrowRight' && box.selectionStart === box.value.length) { e.preventDefault(); step(1); }
     else if (e.key === 'ArrowLeft' && box.selectionEnd === 0) { e.preventDefault(); step(-1); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); setHeld(holdStep(keys, pick, 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHeld(holdStep(keys, pick, -1)); }
-    else if (e.key === 'Enter' && e.shiftKey && !e.isComposing) { e.preventDefault(); if (canUnarchive) unarchive(flat[pick]); }
-    else if (e.key === 'Enter' && !e.isComposing && flat[pick]) { e.preventDefault(); open(flat[pick]); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); go(holdStep(keys, pick, 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); go(holdStep(keys, pick, -1)); }
+    else if (e.key === 'Home') { e.preventDefault(); go(holdAt(keys, 0)); }
+    else if (e.key === 'End') { e.preventDefault(); go(holdAt(keys, Math.max(keys.length - 1, 0))); }
+    else if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); if (canUnarchive) unarchive(flat[pick]); }
+    else if (e.key === 'Enter' && flat[pick]) { e.preventDefault(); open(flat[pick]); }
+  };
+
+  const moved = at => e => {
+    const was = pointer.current;
+    pointer.current = [e.clientX, e.clientY];
+    if (was && was[0] === e.clientX && was[1] === e.clientY) return;
+    if (at !== pick) setHeld(holdAt(keys, at));
   };
 
   const index = new Map(flat.map((it, i) => [it, i]));
-  return html`<div class="spotlight-backdrop" onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div class="spotlight" role="dialog" aria-modal="true" aria-label="Search">
-      <div class="spotlight-top">
-        <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <input class="spotlight-input" ref=${input} type="search" placeholder="Search" autocomplete="off" spellcheck=${false}
-          aria-label="Search" aria-controls="spotlightResults" value=${query}
-          onInput=${e => { setQuery(e.target.value); setHeld(FIRST); }} onKeyDown=${onKeyDown} />
-        <button class="btn spotlight-close" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Close" onClick=${onClose}>
-          <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
-        </button>
+  return html`<div data-part="command-dialog-header">
+      <h2 id="command-title" data-slot="dialog-title">Search</h2>
+      <p id="command-description" data-slot="dialog-description">Find a session, a project or an action.</p>
+    </div>
+    <div data-slot="command" data-part="command-dialog-command">
+      <div data-slot="command-input-wrapper">
+        <${Search} />
+        <input data-slot="command-input" cmdk-input="" ref=${input} type="text" role="combobox" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck=${false} enterkeyhint="search"
+          aria-label="Search" aria-autocomplete="list" aria-expanded="true" aria-controls="command-list" aria-activedescendant=${flat[pick] ? `result-${pick}` : undefined} value=${query}
+          onInput=${e => { setQuery(e.target.value); scroll.current = true; setHeld(FIRST); }} onKeyDown=${onKeyDown} />
       </div>
       <div class="chips" role="tablist" aria-label="What to search">
         ${CHIPS.map(([key, label]) => html`<button key=${key} class="chip" type="button" role="tab" aria-selected=${chip === key} onClick=${() => choose(key)}>${label}</button>`)}
       </div>
-      <div class="spotlight-results" id="spotlightResults" role="listbox" ref=${list}>
+      <div data-slot="command-list" cmdk-list="" id="command-list" role="listbox" aria-label="Results" ref=${list}>
         ${sections.length
-          ? sections.map(s => html`<section key=${s.title}><h3 class="spotlight-head">${s.title}</h3><ul>
-              ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} selected=${index.get(it) === pick} onPick=${open} onHover=${() => index.get(it) !== pick && setHeld(holdAt(keys, index.get(it)))} onUnarchive=${unarchive} />`)}
-            </ul></section>`)
-          : html`<p class="quiet pad">${ix ? 'Nothing matches.' : 'Loading sessions'}</p>`}
+          ? sections.map(s => html`<div key=${s.title} data-slot="command-group" cmdk-group="" role="presentation">
+              <div cmdk-group-heading="" aria-hidden="true" id=${`group-${s.title}`}>${s.title}</div>
+              <div cmdk-group-items="" role="group" aria-labelledby=${`group-${s.title}`}>
+                ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} id=${`result-${index.get(it)}`} selected=${index.get(it) === pick} onPick=${open} onMove=${moved(index.get(it))} onUnarchive=${unarchive} />`)}
+              </div>
+            </div>`)
+          : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? 'Nothing matches.' : 'Loading sessions'}</div>`}
       </div>
-      <div class="spotlight-status" role="status">${note ? html`<p class=${note.problem ? 'problem' : 'note'}>${note.text}</p>` : null}</div>
-      <footer class="spotlight-foot">
+      <footer data-part="command-footer">
         <span>Close <kbd>Esc</kbd></span><span>Change type <kbd>←</kbd><kbd>→</kbd></span><span>Open <kbd>↵</kbd></span>
         ${canUnarchive ? html`<span>Unarchive <kbd>⇧↵</kbd></span>` : null}
       </footer>
-    </div>
-  </div>`;
+    </div>`;
 }

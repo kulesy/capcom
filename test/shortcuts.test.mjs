@@ -4,7 +4,7 @@
 // is inside a text field.
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveHint, inApp, modifier, onAppChange, onMac, shortcut } from '../public/ui/shortcuts.js';
+import { archiveHint, inApp, keyHint, modifier, onAppChange, onMac, shortcut } from '../public/ui/shortcuts.js';
 
 let mode = 'browser';
 let platform = 'MacIntel';
@@ -141,8 +141,26 @@ test('the hints name Cmd in the app on a Mac, and Ctrl in a tab, in full screen 
   }
 });
 
-test('the archive hint is Cmd A on a Mac in a tab, in the app and in full screen, and is nothing on another system', () => {
-  for (mode of ['browser', 'standalone', 'fullscreen']) assert.equal(archiveHint(), 'Cmd A', mode);
+test('a Mac writes a hint with the symbol of its modifier, and any other system writes Ctrl and a plus', () => {
+  assert.equal(keyHint('Cmd', 'K'), '⌘K');
+  assert.equal(keyHint('Ctrl', 'N'), '⌃N');
+  for (platform of ['Win32', 'Linux x86_64']) {
+    assert.equal(keyHint('Ctrl', 'K'), 'Ctrl+K', platform);
+    assert.equal(keyHint('Ctrl', 'B'), 'Ctrl+B', platform);
+  }
+});
+
+test('the hints in a menu, the search and the empty state come from the modifier, so they agree', () => {
+  mode = 'standalone';
+  assert.equal(keyHint(modifier(), 'N'), '⌘N');
+  mode = 'browser';
+  assert.equal(keyHint(modifier(), 'N'), '⌃N');
+  platform = 'Win32';
+  assert.equal(keyHint(modifier(), 'N'), 'Ctrl+N');
+});
+
+test('the archive hint is the Cmd symbol and A on a Mac in a tab, in the app and in full screen, and is nothing on another system', () => {
+  for (mode of ['browser', 'standalone', 'fullscreen']) assert.equal(archiveHint(), '⌘A', mode);
   assert.equal(onMac(), true);
   for (platform of ['Win32', 'Linux x86_64']) {
     assert.equal(archiveHint(), null, platform);

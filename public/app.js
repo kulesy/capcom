@@ -7,8 +7,9 @@ import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
 import { findRow, newSession, placeRow, SessionList } from './ui/sessions-list.js';
-import { shortcut } from './ui/shortcuts.js';
+import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
+import { ToastHost } from './ui/toast.js';
 import { withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
@@ -161,11 +162,11 @@ function App() {
     projects.show(viewId);
   };
 
-  // Ctrl+B or Cmd+B. The search closes with the focus on the button that opens the sidebar. A chat gives way to the list as it does in
-  // showView, and the level opens in the list's place.
+  // Ctrl+B or Cmd+B. The search closes with the focus on the button that opens the sidebar, once the search has let go of the focus.
+  // A chat gives way to the list as it does in showView, and the level opens in the list's place.
   flipKey.current = () => {
-    if (finding && projects.wide) projects.opener.current?.focus();
     setFinding(false);
+    if (finding && projects.wide) queueMicrotask(() => projects.opener.current?.focus());
     const away = !projects.wide && view !== 'list';
     if (away) { location.hash = '#/'; setHash(location.hash); }
     projects.flip(away);
@@ -177,15 +178,16 @@ function App() {
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
-        <p>Pick a session, press <kbd>${mod}+K</kbd> to find one, or <kbd>${mod}+N</kbd> to start a new one.</p>
+        <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
       ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
     </main>
-    ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />` : null}
   </div>
+  <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
   <${ViewerHost} />
   <${AskHost} />
+  <${ToastHost} />
 <//>`;
 }
 

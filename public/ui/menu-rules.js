@@ -103,11 +103,11 @@ export function place({ anchor, size, view, side, align = 'center', offset = 0, 
 }
 
 // The item a key moves to among `count` enabled items, or -1 for a key that moves nowhere. `at` is the item that has the focus, or -1
-// when the menu itself has it, where Down lands on the first item and Up on the last. The arrows loop.
+// when the menu itself has it, where Down lands on the first item and Up on the last. The arrows stop at either end.
 export function stepIn(count, at, key) {
   if (!count) return -1;
-  if (key === 'ArrowDown') return at < 0 ? 0 : (at + 1) % count;
-  if (key === 'ArrowUp') return at < 0 ? count - 1 : (at - 1 + count) % count;
+  if (key === 'ArrowDown') return at < 0 ? 0 : Math.min(at + 1, count - 1);
+  if (key === 'ArrowUp') return at < 0 ? count - 1 : Math.max(at - 1, 0);
   if (key === 'Home' || key === 'PageUp') return 0;
   if (key === 'End' || key === 'PageDown') return count - 1;
   return -1;

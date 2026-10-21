@@ -1,8 +1,11 @@
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { holdPointer, onPressOutside } from './layer.js';
+import { isSecondary } from './layer-rules.js';
 import { graceArea, inside, nextMatch, place, stepIn } from './menu-rules.js';
+import { usePresence } from './presence.js';
 import { shortcut } from './shortcuts.js';
 
-// shadcn's dropdown and context menus, which are Radix's, with two differences: the arrows loop and Tab closes the menu.
+// shadcn's dropdown and context menus, which are Radix's, and modal as they are: the page under an open menu takes no press.
 // `items` are { label, run, icon, hint, danger, disabled }, { separator: true }, { group, items } for items under a heading, or
 // { label, icon, items } for an item that opens a sub-menu. `hint` names the key that does the same.
 
@@ -38,38 +41,6 @@ const RULES = {
 
 const rectOf = r => ({ x: r.x, y: r.y, width: r.width, height: r.height });
 
-// Keeps a layer in the page until its exit animation has played. With no animation to play it goes at once. A layer opened again
-// while it is leaving stays, and `onGone` is called when it has gone.
-function usePresence(open, box, onGone) {
-  const [ended, setEnded] = useState(0);
-  const turn = useRef(0);
-  const was = useRef(false);
-  if (open && !was.current) turn.current++;
-  was.current = open;
-  const present = open || ended !== turn.current;
-
-  useLayoutEffect(() => {
-    if (open || !present) return;
-    const el = box.current;
-    const gone = () => { setEnded(turn.current); onGone?.(); };
-    if (!el || getComputedStyle(el).animationName === 'none') { gone(); return; }
-    let over = false;
-    const finish = e => { if (over || (e && e.target !== el)) return; over = true; gone(); };
-    el.addEventListener('animationend', finish);
-    el.addEventListener('animationcancel', finish);
-    // A page in a background tab holds its animations, so the layer is removed whether or not they have played.
-    const timer = setTimeout(finish, 500);
-    return () => {
-      over = true;
-      clearTimeout(timer);
-      el.removeEventListener('animationend', finish);
-      el.removeEventListener('animationcancel', finish);
-    };
-  }, [open, present]);
-
-  return present;
-}
-
 function Layer({ open, onGone, ...rest }) {
   const box = useRef(null);
   const present = usePresence(open, box, onGone);
@@ -87,6 +58,7 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
   const size = useRef(null);
   const typed = useRef({ text: '', timer: 0 });
   const wait = useRef(0);
+  const pressed = useRef(null);
   const placed = at !== null;
   const subPath = n => (path ? `${path}.${n}` : String(n));
   const enabled = () => [...box.current.querySelectorAll('[role="menuitem"]:not([data-disabled])')];
@@ -159,7 +131,7 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     // The key goes on to do its job, which can move the list from under a menu fixed to the screen. Cmd+A is left to the list, which
     // reads the open menu for the row to archive and closes it when there is one.
     if (asked) { if (asked !== 'archive') root.shut(true); return; }
-    if (e.key === 'Tab') { e.preventDefault(); root.shut(true); return; }
+    if (e.key === 'Tab') { e.preventDefault(); return; }
     const opens = list[here]?.hasAttribute('aria-haspopup');
     const typing = typed.current.text !== '';
     if (e.key === 'Enter' || (e.key === ' ' && !typing)) {
@@ -217,6 +189,13 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     }
   }
 
+  // A press that began on the button that opened the menu, or on another item, and ends on an item picks it, as Radix's items do.
+  function release(e, def) {
+    const started = pressed.current;
+    pressed.current = null;
+    if (started !== e.currentTarget && e.pointerType === 'mouse' && e.button === 0 && !def.disabled) e.currentTarget.click();
+  }
+
   function pick(def, el, n) {
     if (def.disabled) return;
     if (!def.items) { root.pick(def); return; }
@@ -232,7 +211,8 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
       data-variant=${def.danger ? 'destructive' : null} data-disabled=${def.disabled ? '' : null} aria-disabled=${def.disabled ? 'true' : null}
       data-state=${opens ? (shown ? 'open' : 'closed') : null} aria-haspopup=${opens ? 'menu' : null} aria-expanded=${opens ? shown : null}
       aria-controls=${opens ? layerId(root.id, subPath(n)) : null} ref=${el => { rows.current[n] = el; }}
-      onClick=${e => pick(def, e.currentTarget, n)} onPointerMove=${e => hover(e, def, e.currentTarget, n)} onPointerLeave=${e => leave(e, e.currentTarget, n)}>
+      onClick=${e => pick(def, e.currentTarget, n)} onPointerDown=${e => { pressed.current = e.currentTarget; }} onPointerUp=${e => release(e, def)}
+      onPointerMove=${e => hover(e, def, e.currentTarget, n)} onPointerLeave=${e => leave(e, e.currentTarget, n)}>
       ${def.icon ? draw(def.icon) : null}<span class="menu-text">${def.label}</span>${def.hint ? html`<span class="menu-shortcut">${def.hint}</span>` : null}${opens ? draw(['m9 18 6-6-6-6'], 'menu-chevron') : null}
     </div>`;
   };
@@ -265,7 +245,12 @@ function Tree({ menu, open, onClose, onGone }) {
   const shared = useRef(null);
   if (!shared.current) {
     const root = { id: menu.id, anchor: menu.anchor, point: menu.point || null, dir: 'right', grace: null, timer: 0 };
-    root.shut = back => { if (back && root.anchor.isConnected) root.anchor.focus({ preventScroll: true }); close.current(); };
+    // A press outside puts the focus back after the press has moved it, which it does once the pointer events are over.
+    root.shut = (back, later) => {
+      const focus = () => { if (root.anchor.isConnected) root.anchor.focus({ preventScroll: true }); };
+      if (back) { if (later) setTimeout(focus); else focus(); }
+      close.current();
+    };
     // The menu closes first, so a choice that opens a form or moves the focus is not undone by the menu leaving.
     root.pick = item => { close.current(); item.run?.(); };
     shared.current = root;
@@ -273,29 +258,33 @@ function Tree({ menu, open, onClose, onGone }) {
   const root = shared.current;
   const entry = useRef(menu.entry ? { which: menu.entry } : null).current;
 
-  // A list that reloads can scroll without the button moving, so only a scroll that moves the anchor closes the menu. A tap on the
-  // button that opened it is left to the button, which closes the menu itself.
+  // The page under a menu takes no press until the menu has faded out, so the first press outside only closes it and a second lands on
+  // the page just the same.
+  useLayoutEffect(() => holdPointer(), []);
+
+  // A list that reloads can scroll without the button moving, so only a scroll that moves the anchor closes the menu.
   useEffect(() => {
     if (!open) return;
     const { anchor } = root;
-    const toggles = anchor.matches?.('button');
     const start = anchor.getBoundingClientRect();
     const moved = () => { const now = anchor.getBoundingClientRect(); return Math.abs(now.top - start.top) > 1 || Math.abs(now.left - start.left) > 1; };
     const within = el => !!el.closest?.(`.menu[data-menu-id="${root.id}"]`);
     const escape = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); root.shut(true); } };
-    const outside = e => { if (!within(e.target) && !(toggles && anchor.contains(e.target))) close.current(); };
     const scrolled = e => { if (!within(e.target) && moved()) close.current(); };
     const away = () => close.current();
+    const noNativeMenu = e => e.preventDefault();
     let lastX = 0;
     const track = e => { if (e.clientX !== lastX) { root.dir = e.clientX > lastX ? 'right' : 'left'; lastX = e.clientX; } };
+    const stop = onPressOutside(within, e => root.shut(!isSecondary(e), true));
     document.addEventListener('keydown', escape, true);
-    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('contextmenu', noNativeMenu, true);
     document.addEventListener('pointermove', track);
     window.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', away);
     return () => {
+      stop();
       document.removeEventListener('keydown', escape, true);
-      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('contextmenu', noNativeMenu, true);
       document.removeEventListener('pointermove', track);
       window.removeEventListener('scroll', scrolled, true);
       window.removeEventListener('resize', away);
@@ -304,6 +293,32 @@ function Tree({ menu, open, onClose, onGone }) {
   }, [open]);
 
   return html`<${Layer} root=${root} items=${menu.items} path="" open=${open} label=${menu.label} entry=${entry} onGone=${onGone} />`;
+}
+
+let pressedTrigger = null;
+
+// The handlers of a button that opens a menu, as Radix's trigger has them. A mouse opens the menu when the button is pressed, so
+// pressing, dragging to an item and letting go there picks it. A touch or a key opens it on the click, and the up and down arrows
+// open it with the last or first item lit. `open(button, entry)` opens the menu.
+export function opener(open) {
+  return {
+    onPointerDown(e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || e.ctrlKey) return;
+      e.preventDefault();
+      pressedTrigger = e.currentTarget;
+      document.addEventListener('pointerup', () => setTimeout(() => { pressedTrigger = null; }), { once: true, capture: true });
+      open(e.currentTarget);
+    },
+    onClick(e) {
+      if (pressedTrigger === e.currentTarget && e.detail > 0) return;
+      open(e.currentTarget);
+    },
+    onKeyDown(e) {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      open(e.currentTarget, e.key === 'ArrowDown' ? 'first' : 'last');
+    },
+  };
 }
 
 // `menu` is { id, anchor, point, label, items, entry } while a menu is open, and null when none is. `id` is new for each opening.

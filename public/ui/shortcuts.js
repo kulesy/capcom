@@ -27,8 +27,14 @@ export function shortcut(e) {
   return null;
 }
 
+const SYMBOLS = { Cmd: '⌘', Ctrl: '⌃' };
+
+// How every hint writes a key, so a menu and the page agree. A Mac writes the modifier as its symbol, as in ⌘K and ⌃N, and any
+// other system writes Ctrl+K. `mod` is the modifier the hint names, Cmd or Ctrl.
+export const keyHint = (mod, key) => (onMac() ? `${SYMBOLS[mod]}${key}` : `${mod}+${key}`);
+
 // The hint a menu shows beside its archive item, or null where the key does nothing.
-export const archiveHint = () => (onMac() ? 'Cmd A' : null);
+export const archiveHint = () => (onMac() ? keyHint('Cmd', 'A') : null);
 
 // Calls fn when Capcom moves between a tab and the app's window, as Open in Chrome and full screen do. Returns the undo.
 export function onAppChange(fn) {

@@ -95,8 +95,8 @@ function PasskeyRow({ p, asking, ask, remove }) {
     ${asking
       ? html`<div class="passkey-ask" role="group" aria-label="Remove this passkey?" onKeyDown=${e => { if (e.key === 'Escape') ask(null); }}>
           <span>Remove this passkey?</span>
-          <button class="btn" data-variant="destructive" data-size="sm" type="button" onClick=${() => remove(p.id)}>Remove</button>
           <button class="btn" data-variant="outline" data-size="sm" type="button" ref=${keep} onClick=${() => ask(null)}>Keep</button>
+          <button class="btn" data-variant="destructive" data-size="sm" type="button" onClick=${() => remove(p.id)}>Remove</button>
         </div>`
       : html`<button class="btn" data-variant="outline" data-size="sm" type="button" ref=${start} aria-label=${`Remove the passkey for ${p.device || 'an unknown browser'}, added ${date(p.created)}`} onClick=${() => ask(p.id)}>Remove</button>`}
   </li>`;
