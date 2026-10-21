@@ -11,17 +11,25 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body class="gate">
-<form class="gate-card" method="post" action="login">
-  <h1>Capcom</h1>
-  <p class="quiet">Sign in to talk to your sessions on this Mac.</p>
-  <label class="field">Password
-    <input class="input" id="password" name="password" type="password" autocomplete="current-password webauthn" required autofocus>
-  </label>
-  <p class="notice" id="notice" role="alert">{{message}}</p>
-  <button class="btn" type="submit">Sign in</button>
-  <button class="btn" data-variant="outline" id="passkey" type="button" hidden>Sign in with a passkey</button>
-  <p class="quiet hint" id="passkey-hint" hidden></p>
-</form>
+<div class="gate-card">
+  <header class="gate-header">
+    <h1>Capcom</h1>
+    <p class="quiet">Sign in to talk to your sessions on this Mac.</p>
+  </header>
+  <form class="gate-content" method="post" action="login">
+    <div class="gate-field">
+      <label class="field">Password
+        <input class="input" id="password" name="password" type="password" autocomplete="current-password webauthn" required autofocus>
+      </label>
+      <p class="notice" id="notice" role="alert">{{message}}</p>
+    </div>
+    <div class="gate-actions">
+      <button class="btn" type="submit">Sign in</button>
+      <button class="btn" data-variant="outline" id="passkey" type="button" hidden>Sign in with a passkey</button>
+      <p class="quiet hint" id="passkey-hint" hidden></p>
+    </div>
+  </form>
+</div>
 <script type="module" src="login.js"></script>
 </body>
 </html>

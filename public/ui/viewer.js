@@ -20,6 +20,8 @@ export const closeViewer = () => viewer.set({ open: null, earlier: [] });
 
 const Close = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>`;
 const NewTab = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8.5 5H5.5A1.5 1.5 0 0 0 4 6.5v8A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5v-3M11.5 4H16v4.5M16 4l-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+const ZoomIn = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M12.5 12.5l4 4M8.5 6v5M6 8.5h5M14 8.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+const ZoomOut = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M12.5 12.5l4 4M6 8.5h5M14 8.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 const Prev = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M12 4.5 6.5 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 const Next = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8 4.5 13.5 10 8 15.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 
@@ -218,6 +220,7 @@ function Viewer({ images, start, from, current, earlier }) {
   const rect = zoomed && rectOf(view, view.box);
   const stuck = !zoomed && !!view.box && atOwnSize(view.box);
   const onFit = () => move((v, box) => (v.s > 1 ? toFit(v) : atOwnSize(box) ? v : zoomAt(v, box.actual, box.sw / 2, box.sh / 2, box)));
+  const fitLabel = zoomed ? 'Fit to screen' : 'Actual size';
 
   // A pinch is worked from the view and fingers at its start, which is taken again whenever a finger lands or lifts or the view is measured again.
   const anchor = touches => {
@@ -298,11 +301,11 @@ function Viewer({ images, start, from, current, earlier }) {
   return html`<div class="viewer" ref=${root} role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1" data-backdrop
       onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${e => lift(e, false)} onPointerCancel=${e => lift(e, true)} onClick=${onClick} onContextMenu=${onContextMenu}>
     <div class="viewer-bar" data-backdrop>
-      <button class="btn viewer-fit" data-variant="outline" type="button" aria-disabled=${!view.box || stuck} title=${stuck ? 'Already at actual size' : undefined} onClick=${onFit}>${zoomed ? 'Fit to screen' : 'Actual size'}</button>
+      <button class="btn viewer-fit" data-variant="outline" data-size="icon" type="button" aria-label=${fitLabel} aria-disabled=${!view.box || stuck} title=${stuck ? 'Already at actual size' : fitLabel} onClick=${onFit}>${zoomed ? html`<${ZoomOut} />` : html`<${ZoomIn} />`}</button>
       ${isDataUrl(image.src)
-        ? html`<button class="btn" data-variant="ghost" data-size="icon" type="button" aria-label="Open in new tab" title="Open in new tab" onClick=${openHere}><${NewTab} /></button>`
-        : html`<a class="btn" data-variant="ghost" data-size="icon" href=${image.src} target="_blank" rel="noopener" aria-label="Open in new tab" title="Open in new tab"><${NewTab} /></a>`}
-      <button class="btn" data-variant="ghost" data-size="icon" type="button" aria-label="Close" title="Close (Esc)" onClick=${closeViewer}><${Close} /></button>
+        ? html`<button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Open in new tab" title="Open in new tab" onClick=${openHere}><${NewTab} /></button>`
+        : html`<a class="btn" data-variant="outline" data-size="icon" href=${image.src} target="_blank" rel="noopener" aria-label="Open in new tab" title="Open in new tab"><${NewTab} /></a>`}
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Close" title="Close (Esc)" onClick=${closeViewer}><${Close} /></button>
     </div>
     <div class="viewer-stage" ref=${stage} data-backdrop data-size=${zoomed ? 'zoom' : 'fit'} data-drag=${dragging ? '' : undefined}>
       <img class="viewer-img" ref=${picture} key=${image.key} src=${image.src} alt=${image.alt} draggable=${false} data-state=${status || 'loading'}
@@ -311,9 +314,9 @@ function Viewer({ images, start, from, current, earlier }) {
       ${note}
     </div>
     ${total > 1 || waiting ? html`<div class="viewer-pager" data-backdrop>
-      <button class="btn" data-variant="ghost" data-size="icon" type="button" aria-label="Previous image" title="Previous (←)" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Previous image" title="Previous (←)" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
       <p class="viewer-count" aria-live="polite" aria-atomic="true">${waiting ? '' : position(at, total)}</p>
-      <button class="btn" data-variant="ghost" data-size="icon" type="button" aria-label="Next image" title="Next (→)" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Next image" title="Next (→)" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
     </div>` : null}
   </div>`;
 }

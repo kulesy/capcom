@@ -12,10 +12,10 @@ const ok = (l, c, h, alpha) => `oklch(${l} ${c} ${h}${alpha === undefined ? '' :
 
 // A role is a hue and, in each mode, [lightness, chroma] for its wash, its text, its edge, its solid fill, that fill under the
 // pointer, and the text that sits on the fill. Chroma is what sRGB can show at that lightness, so every browser draws the same colour.
-const ROLE_HUE = { accent: 250, danger: 27, success: 150, warning: 78, pro: 290, brand: 40 };
+const ROLE_HUE = { accent: 0, danger: 27, success: 150, warning: 78, pro: 290, brand: 40 };
 const ROLE = {
   light: {
-    accent: { bg: [0.94, 0.029], text: [0.44, 0.124], border: [0.8, 0.08], fill: [0.55, 0.14], hover: [0.49, 0.138], on: [0.99, 0.004] },
+    accent: { bg: [0.97, 0], text: [0.205, 0], border: [0.922, 0], fill: [0.205, 0], hover: [0.269, 0], on: [0.985, 0] },
     danger: { bg: [0.94, 0.03], text: [0.44, 0.15], border: [0.8, 0.08], fill: [0.55, 0.17], hover: [0.49, 0.17], on: [0.99, 0.004] },
     success: { bg: [0.94, 0.03], text: [0.42, 0.11], border: [0.8, 0.08], fill: [0.52, 0.13], hover: [0.46, 0.126], on: [0.99, 0.004] },
     warning: { bg: [0.94, 0.03], text: [0.42, 0.087], border: [0.8, 0.08], fill: [0.82, 0.15], hover: [0.77, 0.15], on: [0.3, 0.06] },
@@ -23,7 +23,7 @@ const ROLE = {
     brand: { fill: [0.57, 0.13], hover: [0.51, 0.13], on: [0.99, 0.004] },
   },
   dark: {
-    accent: { bg: [0.31, 0.06], text: [0.82, 0.093], border: [0.5, 0.1], fill: [0.74, 0.13], hover: [0.79, 0.11], on: [0.2, 0.03] },
+    accent: { bg: [0.269, 0], text: [0.985, 0], border: [0.371, 0], fill: [0.922, 0], hover: [0.87, 0], on: [0.205, 0] },
     danger: { bg: [0.31, 0.06], text: [0.82, 0.101], border: [0.5, 0.1], fill: [0.72, 0.15], hover: [0.77, 0.135], on: [0.2, 0.03] },
     success: { bg: [0.31, 0.06], text: [0.82, 0.12], border: [0.5, 0.1], fill: [0.72, 0.15], hover: [0.77, 0.14], on: [0.2, 0.03] },
     warning: { bg: [0.31, 0.06], text: [0.82, 0.12], border: [0.5, 0.1], fill: [0.82, 0.15], hover: [0.86, 0.127], on: [0.25, 0.05] },
@@ -51,7 +51,7 @@ const STOP = { 50: [0.965, 0.025], 100: [0.92, 0.05], 200: [0.85, 0.085], 600: [
 const RAMP_HUE = { purple: 290, teal: 180, coral: 40, pink: 355, gray: 245, blue: 250, green: 140, amber: 75, red: 25 };
 const RAMP_PICK = { light: [50, 600, 800, 600], dark: [800, 200, 100, 200] };
 
-const stop = (name, n) => ok(STOP[n][0], name === 'gray' ? 0.01 : STOP[n][1], RAMP_HUE[name]);
+const stop = (name, n) => ok(STOP[n][0], name === 'gray' ? 0 : STOP[n][1], RAMP_HUE[name]);
 
 function roleTokens(mode) {
   const out = {};
@@ -90,11 +90,11 @@ export const TOKENS = {
     '--surface-panel': 'var(--surface-2)',
     '--surface-popover': 'var(--surface-3)',
     '--page-bg': 'var(--surface-0)',
-    '--bg-accent-muted': 'color-mix(in oklab, var(--fill-accent) 14%, transparent)',
-    '--fill-field-ring': 'color-mix(in oklab, var(--fill-accent) 40%, transparent)',
-    '--focus-shadow': '0 0 0 1px var(--fill-accent), 0 0 0 4px color-mix(in oklab, var(--fill-accent) 24%, transparent)',
-    '--font-sans': '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif',
-    '--font-mono': 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+    '--bg-accent-muted': 'color-mix(in oklab, var(--fill-accent) 5%, transparent)',
+    '--fill-field-ring': 'color-mix(in oklab, var(--border-stronger) 50%, transparent)',
+    '--focus-shadow': '0 0 0 3px var(--fill-field-ring)',
+    '--font-sans': '"Geist", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
+    '--font-mono': '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
     '--font-voice': 'ui-serif, "New York", Georgia, serif',
     '--font-size-caption': '12px',
     '--font-size-footnote': '13px',
@@ -114,10 +114,10 @@ export const TOKENS = {
     '--gap-lg': '16px',
     '--gap-xl': '24px',
     '--h-control': '36px',
-    '--shadow-sm': '0 1px 2px var(--shadow-color)',
-    '--shadow-md': '0 1px 2px var(--shadow-color), 0 4px 12px -2px var(--shadow-color)',
-    '--shadow-lg': '0 2px 4px var(--shadow-color), 0 12px 28px -6px var(--shadow-color)',
-    '--shadow-popover': '0 0 0 0.5px var(--border-strong), 0 8px 24px -6px var(--shadow-color)',
+    '--shadow-sm': '0 1px 3px 0 var(--shadow-color), 0 1px 2px -1px var(--shadow-color)',
+    '--shadow-md': '0 4px 6px -1px var(--shadow-color), 0 2px 4px -2px var(--shadow-color)',
+    '--shadow-lg': '0 10px 15px -3px var(--shadow-color), 0 4px 6px -4px var(--shadow-color)',
+    '--shadow-popover': '0 0 0 1px var(--border), var(--shadow-md)',
     '--dur-fast': '100ms',
     '--dur-snap': '160ms',
     '--dur-base': '240ms',
@@ -135,66 +135,66 @@ export const TOKENS = {
   // They must equal the page's in both modes. test/widget.test.mjs lists the pairs and fails if one differs.
   light: {
     'color-scheme': 'light',
-    '--surface-0': ok(0.95, 0.008, 240),
-    '--surface-1': ok(0.975, 0.006, 240),
-    '--surface-2': ok(0.995, 0.003, 240),
-    '--surface-3': 'oklch(1 0 0)',
-    '--text-primary': ok(0.25, 0.02, 250),
-    '--text-secondary': ok(0.42, 0.02, 250),
-    '--text-muted': ok(0.52, 0.018, 250),
-    '--text-disabled': ok(0.72, 0.012, 250),
+    '--surface-0': ok(0.97, 0, 0),
+    '--surface-1': ok(0.985, 0, 0),
+    '--surface-2': ok(0.995, 0, 0),
+    '--surface-3': ok(1, 0, 0),
+    '--text-primary': ok(0.145, 0, 0),
+    '--text-secondary': ok(0.371, 0, 0),
+    '--text-muted': ok(0.556, 0, 0),
+    '--text-disabled': ok(0.708, 0, 0),
     ...roleTokens('light'),
-    '--bg-neutral': ok(0.94, 0.006, 245),
+    '--bg-neutral': ok(0.97, 0, 0),
     '--bg-highlight': ok(0.93, 0.1, 95),
     ...tintTokens('light'),
-    '--border': ok(0.25, 0.02, 250, 0.13),
-    '--border-strong': ok(0.25, 0.02, 250, 0.22),
-    '--border-stronger': ok(0.25, 0.02, 250, 0.4),
-    '--fill-primary': ok(0.25, 0.02, 250),
-    '--fill-primary-hover': ok(0.35, 0.022, 250),
-    '--on-primary': ok(0.985, 0.004, 240),
-    '--fill-secondary': ok(0.93, 0.008, 245),
-    '--fill-secondary-hover': ok(0.9, 0.01, 245),
-    '--fill-secondary-ring': ok(0.25, 0.02, 250, 0.16),
-    '--fill-ghost-hover': ok(0.25, 0.02, 250, 0.06),
-    '--fill-ghost-selected': ok(0.25, 0.02, 250, 0.1),
-    '--fill-field': ok(0.995, 0.003, 240),
-    '--fill-control': ok(0.88, 0.01, 245),
-    '--fill-control-hover': ok(0.83, 0.012, 245),
-    '--fill-disabled': ok(0.94, 0.005, 245),
-    '--shadow-color': ok(0.25, 0.02, 250, 0.12),
+    '--border': ok(0.922, 0, 0),
+    '--border-strong': ok(0.87, 0, 0),
+    '--border-stronger': ok(0.708, 0, 0),
+    '--fill-primary': ok(0.205, 0, 0),
+    '--fill-primary-hover': ok(0.269, 0, 0),
+    '--on-primary': ok(0.985, 0, 0),
+    '--fill-secondary': ok(0.97, 0, 0),
+    '--fill-secondary-hover': ok(0.94, 0, 0),
+    '--fill-secondary-ring': ok(0.145, 0, 0, 0.16),
+    '--fill-ghost-hover': ok(0.145, 0, 0, 0.06),
+    '--fill-ghost-selected': ok(0.145, 0, 0, 0.1),
+    '--fill-field': ok(1, 0, 0),
+    '--fill-control': ok(0.922, 0, 0),
+    '--fill-control-hover': ok(0.87, 0, 0),
+    '--fill-disabled': ok(0.97, 0, 0),
+    '--shadow-color': ok(0, 0, 0, 0.1),
     ...rampTokens('light'),
   },
   dark: {
     'color-scheme': 'dark',
-    '--surface-0': ok(0.19, 0.014, 245),
-    '--surface-1': ok(0.25, 0.017, 245),
-    '--surface-2': ok(0.27, 0.018, 245),
-    '--surface-3': ok(0.3, 0.02, 245),
-    '--text-primary': ok(0.94, 0.008, 240),
-    '--text-secondary': ok(0.82, 0.012, 240),
-    '--text-muted': ok(0.7, 0.014, 240),
-    '--text-disabled': ok(0.5, 0.012, 245),
+    '--surface-0': ok(0.145, 0, 0),
+    '--surface-1': ok(0.175, 0, 0),
+    '--surface-2': ok(0.205, 0, 0),
+    '--surface-3': ok(0.269, 0, 0),
+    '--text-primary': ok(0.985, 0, 0),
+    '--text-secondary': ok(0.87, 0, 0),
+    '--text-muted': ok(0.708, 0, 0),
+    '--text-disabled': ok(0.556, 0, 0),
     ...roleTokens('dark'),
-    '--bg-neutral': ok(0.3, 0.012, 245),
+    '--bg-neutral': ok(0.269, 0, 0),
     '--bg-highlight': ok(0.42, 0.08, 90),
     ...tintTokens('dark'),
-    '--border': ok(0.94, 0.008, 240, 0.12),
-    '--border-strong': ok(0.94, 0.008, 240, 0.2),
-    '--border-stronger': ok(0.94, 0.008, 240, 0.4),
-    '--fill-primary': ok(0.94, 0.008, 240),
-    '--fill-primary-hover': ok(0.88, 0.01, 240),
-    '--on-primary': ok(0.2, 0.014, 245),
-    '--fill-secondary': ok(0.31, 0.016, 245),
-    '--fill-secondary-hover': ok(0.35, 0.018, 245),
-    '--fill-secondary-ring': ok(0.94, 0.008, 240, 0.16),
-    '--fill-ghost-hover': ok(0.94, 0.008, 240, 0.08),
-    '--fill-ghost-selected': ok(0.94, 0.008, 240, 0.14),
-    '--fill-field': ok(0.255, 0.017, 245),
-    '--fill-control': ok(0.38, 0.018, 245),
-    '--fill-control-hover': ok(0.43, 0.02, 245),
-    '--fill-disabled': ok(0.27, 0.01, 245),
-    '--shadow-color': ok(0.06, 0.02, 250, 0.5),
+    '--border': ok(1, 0, 0, 0.1),
+    '--border-strong': ok(1, 0, 0, 0.15),
+    '--border-stronger': ok(0.556, 0, 0),
+    '--fill-primary': ok(0.922, 0, 0),
+    '--fill-primary-hover': ok(0.87, 0, 0),
+    '--on-primary': ok(0.205, 0, 0),
+    '--fill-secondary': ok(0.269, 0, 0),
+    '--fill-secondary-hover': ok(0.31, 0, 0),
+    '--fill-secondary-ring': ok(0.985, 0, 0, 0.16),
+    '--fill-ghost-hover': ok(0.985, 0, 0, 0.08),
+    '--fill-ghost-selected': ok(0.985, 0, 0, 0.14),
+    '--fill-field': ok(1, 0, 0, 0.045),
+    '--fill-control': ok(0.371, 0, 0),
+    '--fill-control-hover': ok(0.439, 0, 0),
+    '--fill-disabled': ok(0.269, 0, 0),
+    '--shadow-color': ok(0, 0, 0, 0.1),
     ...rampTokens('dark'),
   },
 };
@@ -240,23 +240,23 @@ const TICK = ['input[type=checkbox]', 'input[type=radio]'];
 const where = (list, state = '') => `:where(${list.map(s => s + state).join(',')})`;
 
 const CONTROLS = `
-${where(PUSH)}{box-sizing:border-box;padding:var(--pad-sm) var(--pad-md);border:.5px solid var(--border-strong);border-radius:var(--radius);background:transparent;color:inherit;font:inherit;font-size:var(--font-size-body);line-height:1.35;cursor:pointer;transition:background-color var(--dur-fast),transform var(--dur-fast)}
-${where(PUSH, ':hover')}{background:var(--surface-1)}
+${where(PUSH)}{box-sizing:border-box;padding:var(--pad-sm) var(--pad-md);border:1px solid var(--border-strong);border-radius:var(--radius);background:transparent;color:inherit;font:inherit;font-size:var(--font-size-body);line-height:1.35;cursor:pointer;transition:background-color var(--dur-fast),transform var(--dur-fast)}
+${where(PUSH, ':hover')}{background:var(--fill-secondary)}
 ${where(PUSH, ':active')}{transform:scale(.98)}
-${where(PUSH, ':focus-visible')}{outline:none;box-shadow:var(--focus-shadow)}
-${where([...TYPED, 'select'])}{box-sizing:border-box;height:var(--h-control);padding:0 var(--pad-md);border:.5px solid var(--border-strong);border-radius:var(--radius);background:var(--fill-field);color:inherit;font:inherit;font-size:var(--font-size-body);transition:border-color var(--dur-fast),box-shadow var(--dur-fast)}
-${where(['textarea'])}{box-sizing:border-box;padding:var(--pad-sm) var(--pad-md);border:.5px solid var(--border-strong);border-radius:var(--radius);background:var(--fill-field);color:inherit;font:inherit;font-size:var(--font-size-body);line-height:1.5;resize:vertical;transition:border-color var(--dur-fast),box-shadow var(--dur-fast)}
+${where(PUSH, ':focus-visible')}{outline:none;border-color:var(--border-stronger);box-shadow:var(--focus-shadow)}
+${where([...TYPED, 'select'])}{box-sizing:border-box;height:var(--h-control);padding:0 var(--pad-md);border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--fill-field);color:inherit;font:inherit;font-size:var(--font-size-body);transition:border-color var(--dur-fast),box-shadow var(--dur-fast)}
+${where(['textarea'])}{box-sizing:border-box;padding:var(--pad-sm) var(--pad-md);border:1px solid var(--border-strong);border-radius:var(--radius);background:var(--fill-field);color:inherit;font:inherit;font-size:var(--font-size-body);line-height:1.5;resize:vertical;transition:border-color var(--dur-fast),box-shadow var(--dur-fast)}
 ${where(FIELD, ':hover')}{border-color:var(--border-stronger)}
-${where(FIELD, ':focus')}{outline:none;border-color:var(--fill-accent);box-shadow:var(--focus-shadow)}
+${where(FIELD, ':focus')}{outline:none;border-color:var(--border-stronger);box-shadow:var(--focus-shadow)}
 ${where(['input', 'textarea'], '::placeholder')}{color:var(--text-muted);opacity:1}
 ${where(TICK)}{accent-color:var(--fill-accent)}
 ${where([...PUSH, ...FIELD], ':disabled')}{background:var(--fill-disabled);color:var(--text-disabled);cursor:not-allowed;transform:none}
 ${where([...TICK, 'input[type=range]'], ':disabled')}{opacity:.5;cursor:not-allowed}
 ${where(['input[type=range]'])}{-webkit-appearance:none;appearance:none;box-sizing:border-box;height:18px;margin:var(--gap-xs) 0;background:transparent;cursor:pointer}
 ${where(['input[type=range]'])}::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--fill-control)}
-${where(['input[type=range]'])}::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-7px;border:.5px solid var(--border-stronger);border-radius:50%;background:var(--surface-3);box-shadow:var(--shadow-sm)}
+${where(['input[type=range]'])}::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-7px;border:1px solid var(--border-stronger);border-radius:50%;background:var(--surface-3);box-shadow:var(--shadow-sm)}
 ${where(['input[type=range]'])}::-moz-range-track{height:4px;border-radius:2px;background:var(--fill-control)}
-${where(['input[type=range]'])}::-moz-range-thumb{width:18px;height:18px;box-sizing:border-box;border:.5px solid var(--border-stronger);border-radius:50%;background:var(--surface-3);box-shadow:var(--shadow-sm)}
+${where(['input[type=range]'])}::-moz-range-thumb{width:18px;height:18px;box-sizing:border-box;border:1px solid var(--border-stronger);border-radius:50%;background:var(--surface-3);box-shadow:var(--shadow-sm)}
 ${where(['input[type=range]'], ':hover')}::-webkit-slider-runnable-track{background:var(--fill-control-hover)}
 ${where(['input[type=range]'], ':hover')}::-moz-range-track{background:var(--fill-control-hover)}
 ${where(['input[type=range]'], ':focus-visible')}{outline:none}

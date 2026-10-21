@@ -24,10 +24,10 @@ const capitalised = s => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 function cardParts(p, names) {
   const i = p.input || {};
   if (p.tool === 'Bash') return { title: 'Bash wants to run a command', fields: [['Command', i.command]] };
-  if (p.tool === 'Edit') return { title: `Edit wants to change ${p.summary}`, diff: [i.old_string, i.new_string] };
-  if (p.tool === 'Write') return { title: `Write wants to create or replace ${p.summary}`, fields: [['New content', clip(i.content)]] };
-  if (p.tool === 'NotebookEdit') return { title: `NotebookEdit wants to change ${p.summary}`, fields: [['New source', clip(i.new_source)]] };
-  if (p.tool === 'Read') return { title: `Read wants to open ${p.summary}`, fields: [] };
+  if (p.tool === 'Edit') return { title: 'Edit wants to change', path: p.summary, diff: [i.old_string, i.new_string] };
+  if (p.tool === 'Write') return { title: 'Write wants to create or replace', path: p.summary, fields: [['New content', clip(i.content)]] };
+  if (p.tool === 'NotebookEdit') return { title: 'NotebookEdit wants to change', path: p.summary, fields: [['New source', clip(i.new_source)]] };
+  if (p.tool === 'Read') return { title: 'Read wants to open', path: p.summary, fields: [] };
   if (p.tool === 'WebFetch') return { title: 'WebFetch wants to fetch a page', fields: [['URL', i.url], ['Asks', i.prompt]] };
   if (p.tool === 'WebSearch') return { title: 'WebSearch wants to search the web', fields: [['Query', i.query]] };
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
@@ -64,10 +64,11 @@ function ApprovalCard({ p, names, onDecide }) {
   const fields = (c.fields || []).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return html`<article class="approval" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>${c.title}</h3>
+    ${c.path ? html`<p class="approval-path">${c.path}</p>` : null}
     ${fields.length ? html`<dl class="fields">${fields.map(([k, v]) => html`<dt>${k}</dt><dd><pre>${pre(v)}</pre></dd>`)}</dl>` : null}
     ${c.diff ? html`<${Diff} before=${c.diff[0]} after=${c.diff[1]} />` : null}
     ${p.description ? html`<p>${p.description}</p>` : null}
-    <details><summary>All input</summary><pre>${JSON.stringify(p.input ?? {}, null, 2)}</pre></details>
+    <details><summary class="system-more">All input</summary><pre>${JSON.stringify(p.input ?? {}, null, 2)}</pre></details>
     <div class="approval-actions">
       <button class="btn" type="button" data-decision="allow" disabled=${busy} onClick=${() => decide('allow')}>Allow</button>
       ${p.always ? html`<button class="btn" data-variant="outline" type="button" data-decision="always" disabled=${busy} onClick=${() => decide('always')}>Always allow</button>` : null}
@@ -99,13 +100,13 @@ function QuestionCard({ p, onDecide }) {
   const type = (qi, other) => change(qi, (pick, q) => ({ chosen: other && !q.multiSelect ? [] : pick.chosen, other }));
   return html`<article class="approval question" data-id=${p.requestId}>
     <h3><span class="lamp" data-state="waiting" aria-hidden="true"></span>Claude is asking</h3>
-    ${qs.map((q, qi) => html`<fieldset class="ask" key=${qi} data-q=${qi}>
+    <div class="ask-body">${qs.map((q, qi) => html`<fieldset class="ask" key=${qi} data-q=${qi}>
       <legend>${q.header ? html`<span class="badge ask-head" data-variant="secondary">${q.header}</span>` : null}${q.question}${q.multiSelect ? html` <span class="quiet">(pick any)</span>` : null}</legend>
       <div class="options">${(q.options || []).map((o, oi) => html`<button class="option" key=${`o${oi}`} type="button" data-q=${qi} data-o=${oi} aria-pressed=${picks[qi].chosen.includes(oi)} disabled=${busy} onClick=${() => choose(qi, oi)}>
         <strong>${o.label}</strong>${o.description ? html`<span>${o.description}</span>` : null}</button>
         ${o.preview && picks[qi].chosen.includes(oi) ? html`<pre class="preview">${pre(o.preview)}</pre>` : null}`)}</div>
       <input class="input other" type="text" data-q=${qi} value=${picks[qi].other} placeholder="Or write your own answer" aria-label="Your own answer" onInput=${e => type(qi, e.target.value)} />
-    </fieldset>`)}
+    </fieldset>`)}</div>
     <div class="approval-actions">
       <button class="btn" type="button" data-decision="answer" disabled=${busy || Object.keys(answers).length !== qs.length} onClick=${() => decide('answer', answers)}>Send answers</button>
       <button class="btn" data-variant="outline" type="button" data-decision="deny" disabled=${busy} onClick=${() => decide('deny')}>Skip</button>

@@ -29,7 +29,7 @@ function ChatHead({ ctrl }) {
 
 function Notice({ ctrl }) {
   const text = useStore(ctrl.store, s => s.notice);
-  return html`<p class="notice" id="notice" hidden=${!text}>${text}</p>`;
+  return html`<p class="notice" id="notice" role="alert" hidden=${!text}>${text}</p>`;
 }
 
 // `row` is the list's entry for the session, which names it until the transcript answers. It is read once, so a

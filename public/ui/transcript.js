@@ -2,7 +2,7 @@ import { md } from '../md.mjs';
 import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
-import { atBottom, useClock, useFields, useStick, useStore } from './hooks.js';
+import { useClock, useFields, useStick, useStore } from './hooks.js';
 import { isChip, Row, Thought } from './rows.js';
 import { display, doingNow } from './thread.js';
 import { closeViewer, openViewer } from './viewer.js';
@@ -85,11 +85,20 @@ export function Transcript({ ctrl }) {
   const turn = useStore(ctrl.store, turnOf);
   const [away, setAway] = useState(false);
   useStick(box);
+  // A late picture or a taller composer opens a gap below the view with no scroll event, so a resize of the viewport or the rows checks too, once a frame.
   useEffect(() => {
     const el = box.current;
-    const check = () => setAway(!atBottom(el));
+    const check = () => setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+    let frame = 0;
+    const resized = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(check); });
     el.addEventListener('scroll', check, { passive: true });
-    return () => el.removeEventListener('scroll', check);
+    resized.observe(el);
+    resized.observe(el.querySelector('#items'));
+    return () => {
+      el.removeEventListener('scroll', check);
+      resized.disconnect();
+      cancelAnimationFrame(frame);
+    };
   }, []);
   // Opening a session and sending a message both end at the bottom; loading earlier keeps what you were looking at.
   useLayoutEffect(() => { if (loaded || jump) box.current.scrollTop = box.current.scrollHeight; }, [loaded, jump]);
@@ -118,7 +127,7 @@ export function Transcript({ ctrl }) {
   // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.
   const live = !!turn && !sending.length;
   return html`<div class="scroller">
-    <div class="transcript" id="transcript" ref=${box}>
+    <div class="transcript" id="transcript" ref=${box} role="region" aria-label="Messages" tabindex="0">
       ${ctrl.draft ? html`<p class="new-hint" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">

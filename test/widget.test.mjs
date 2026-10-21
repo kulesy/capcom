@@ -363,9 +363,11 @@ const variable = (source, name) => new RegExp(`${name}:\\s*([^;]+);`).exec(sourc
 
 // Each pair is a value the frame repeats from the page's own stylesheet: the frame's name in widget-theme.js, then the page's in app.css.
 // The page's dark block redefines only what changes in dark, and the frame's `common` holds what does not change with the mode.
-// The accent and the two fonts are not listed yet: the frame keeps its old ones until widget-theme.js takes the page's new ones.
 const SHARED = [
   ['--surface-2', '--widget-card'],
+  ['--fill-accent', '--primary'],
+  ['--font-sans', '--font-sans'],
+  ['--font-mono', '--font-mono'],
 ];
 
 test('every value the frame repeats from the page is the page\'s own, in light and in dark', () => {
