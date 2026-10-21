@@ -85,17 +85,25 @@ export function Transcript({ ctrl }) {
   const turn = useStore(ctrl.store, turnOf);
   const [away, setAway] = useState(false);
   useStick(box);
-  // A late picture or a taller composer opens a gap below the view with no scroll event, so a resize of the viewport or the rows checks too, once a frame.
+  // A late picture or a docked card opens a gap below the view with no scroll event, so a resize of the viewport or the rows checks too,
+  // once a frame. A view that was at the end stays there, and only a scroll can say it is no longer at the end, so the resize cannot.
   useEffect(() => {
     const el = box.current;
-    const check = () => setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+    const gap = () => el.scrollHeight - el.scrollTop - el.clientHeight;
+    const check = () => setAway(gap() > 8);
+    let end = true;
     let frame = 0;
-    const resized = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(check); });
-    el.addEventListener('scroll', check, { passive: true });
+    const scrolled = () => { end = gap() <= 8; check(); };
+    const resized = new ResizeObserver(() => {
+      if (end) el.scrollTop = el.scrollHeight;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(check);
+    });
+    el.addEventListener('scroll', scrolled, { passive: true });
     resized.observe(el);
     resized.observe(el.querySelector('#items'));
     return () => {
-      el.removeEventListener('scroll', check);
+      el.removeEventListener('scroll', scrolled);
       resized.disconnect();
       cancelAnimationFrame(frame);
     };
@@ -136,6 +144,6 @@ export function Transcript({ ctrl }) {
       </ol>
       <${Live} ctrl=${ctrl} box=${box} />
     </div>
-    <button class="btn scroll-end" data-variant="outline" data-size="icon-sm" data-active=${away} type="button" inert=${!away} aria-label="Scroll to end" title="Scroll to end" onClick=${toEnd}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v11.5M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="btn scroll-end" data-variant="outline" data-size="icon-sm" data-active=${away} type="button" inert=${!away} aria-label="Scroll to end" data-tip="Scroll to end" onClick=${toEnd}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v11.5M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>`;
 }

@@ -301,11 +301,11 @@ function Viewer({ images, start, from, current, earlier }) {
   return html`<div class="viewer" ref=${root} role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1" data-backdrop
       onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${e => lift(e, false)} onPointerCancel=${e => lift(e, true)} onClick=${onClick} onContextMenu=${onContextMenu}>
     <div class="viewer-bar" data-backdrop>
-      <button class="btn viewer-fit" data-variant="outline" data-size="icon" type="button" aria-label=${fitLabel} aria-disabled=${!view.box || stuck} title=${stuck ? 'Already at actual size' : fitLabel} onClick=${onFit}>${zoomed ? html`<${ZoomOut} />` : html`<${ZoomIn} />`}</button>
+      <button class="btn viewer-fit" data-variant="outline" data-size="icon" type="button" aria-label=${fitLabel} aria-disabled=${!view.box || stuck} data-tip=${stuck ? 'Already at actual size' : fitLabel} onClick=${onFit}>${zoomed ? html`<${ZoomOut} />` : html`<${ZoomIn} />`}</button>
       ${isDataUrl(image.src)
-        ? html`<button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Open in new tab" title="Open in new tab" onClick=${openHere}><${NewTab} /></button>`
-        : html`<a class="btn" data-variant="outline" data-size="icon" href=${image.src} target="_blank" rel="noopener" aria-label="Open in new tab" title="Open in new tab"><${NewTab} /></a>`}
-      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Close" title="Close (Esc)" onClick=${closeViewer}><${Close} /></button>
+        ? html`<button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Open in new tab" data-tip="Open in new tab" onClick=${openHere}><${NewTab} /></button>`
+        : html`<a class="btn" data-variant="outline" data-size="icon" href=${image.src} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>`}
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Close" data-tip="Close" data-tip-key="Esc" onClick=${closeViewer}><${Close} /></button>
     </div>
     <div class="viewer-stage" ref=${stage} data-backdrop data-size=${zoomed ? 'zoom' : 'fit'} data-drag=${dragging ? '' : undefined}>
       <img class="viewer-img" ref=${picture} key=${image.key} src=${image.src} alt=${image.alt} draggable=${false} data-state=${status || 'loading'}
@@ -314,9 +314,9 @@ function Viewer({ images, start, from, current, earlier }) {
       ${note}
     </div>
     ${total > 1 || waiting ? html`<div class="viewer-pager" data-backdrop>
-      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Previous image" title="Previous (←)" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Previous image" data-tip="Previous" data-tip-key="←" aria-disabled=${at === 0} onClick=${() => step(-1)}><${Prev} /></button>
       <p class="viewer-count" aria-live="polite" aria-atomic="true">${waiting ? '' : position(at, total)}</p>
-      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Next image" title="Next (→)" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
+      <button class="btn" data-variant="outline" data-size="icon" type="button" aria-label="Next image" data-tip="Next" data-tip-key="→" aria-disabled=${at === total - 1} onClick=${() => step(1)}><${Next} /></button>
     </div>` : null}
   </div>`;
 }

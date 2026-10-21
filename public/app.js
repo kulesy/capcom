@@ -10,6 +10,7 @@ import { findRow, newSession, placeRow, SessionList } from './ui/sessions-list.j
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { ToastHost } from './ui/toast.js';
+import { installTooltips } from './ui/tooltip.js';
 import { withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
@@ -151,25 +152,27 @@ function App() {
   const id = route.name === 'session' ? route.id : null;
   const row = findRow(ix, id);
   const current = view === 'chat' ? id : null;
-  const projects = useProjects(ix, current, hash, view === 'list');
+  // A view picked where a chat has the screen puts the list there. The route is set in state at once, so the list is on screen when
+  // the focus moves to it.
+  const toList = () => {
+    if (view === 'list') return;
+    location.hash = '#/';
+    setHash(location.hash);
+  };
+  const projects = useProjects(ix, current, hash, toList);
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
-  // A view picked in the search. Where the list and a chat cannot sit side by side, a chat gives way to the list, and the route is
-  // set in state at once so the list is on screen when the focus moves to it.
+  // A view picked in the search.
   const showView = viewId => {
     setFinding(false);
-    if (!projects.wide && view !== 'list') { location.hash = '#/'; setHash(location.hash); }
     projects.show(viewId);
   };
 
   // Ctrl+B or Cmd+B. The search closes with the focus on the button that opens the sidebar, once the search has let go of the focus.
-  // A chat gives way to the list as it does in showView, and the level opens in the list's place.
   flipKey.current = () => {
     setFinding(false);
     if (finding && projects.wide) queueMicrotask(() => projects.opener.current?.focus());
-    const away = !projects.wide && view !== 'list';
-    if (away) { location.hash = '#/'; setHash(location.hash); }
-    projects.flip(away);
+    projects.flip();
   };
 
   return html`<${Fragment}>
@@ -191,6 +194,7 @@ function App() {
 <//>`;
 }
 
+installTooltips();
 document.getElementById('boot').remove();
 document.getElementById('unsupported').remove();
 render(html`<${App} />`, document.getElementById('root'));

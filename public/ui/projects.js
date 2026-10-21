@@ -1,7 +1,7 @@
 // The projects sidebar, which picks the view the session list shows. From 56rem up it is a column beside the list that stays open
-// until it is closed. Below that there is no room beside the list, so it is a level of its own, as the list and the chat are, and
-// it takes the list's place while it shows. It is one element at both sizes, so a name half typed in the level survives the window
-// growing to 56rem when the column is open there.
+// until it is closed. Below that there is no room beside the list, so it is shadcn's mobile sidebar: a sheet that slides in over the
+// page, on the dialog layer, and closes when a view is picked.
+import { Dialog } from './dialog.js';
 import { NameForm } from './forms.js';
 import { STATE_LABEL } from './format.js';
 import { useLocal, useModifier, useWide } from './hooks.js';
@@ -12,39 +12,25 @@ import { nextStop } from './tree.js';
 
 const PANEL = 'projectsPanel';
 
-// The view in use, kept in this browser as a project id or null for Home, and whether the column is open. The level is plain state
-// and never stored, so a phone always starts on the list. It shows only while `listed` says the list's place is on screen, and it ends
-// when the route or the view changes, when the list gives way to a chat or a page, and when the window grows wide, except that the key
-// can open it from a chat. Opening the chat at `current` switches to the view that has its row, once for each chat. `box` is the panel
-// and `opener` the button that opens it.
-export function useProjects(ix, current, hash, listed) {
+// The view in use, kept in this browser as a project id or null for Home, and whether the column is open. The sheet is plain state
+// and never stored, so a phone always starts with it shut. It opens over whatever is on screen, a chat included, and it ends when the
+// route or the view changes and when the window grows wide. Opening the chat at `current` switches to the view that has its row, once
+// for each chat. `box` is the panel and `opener` the button that opens it. `toList()` puts the list on screen, for a view picked
+// where a chat has the screen.
+export function useProjects(ix, current, hash, toList) {
   const [chosen, choose] = useLocal('scope', null);
   const [docked, setDocked] = useLocal('projectsDocked', false);
-  const [level, setLevel] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const [landing, setLanding] = useState(null);
   const wide = useWide();
   const opener = useRef(null);
   const box = useRef(null);
-  const toOpener = useRef(false);
-  const carry = useRef(false);
   const revealed = useRef(null);
   const view = ix ? viewIn(ix, chosen) : chosen;
-  const open = wide ? docked : level && listed;
+  const open = wide ? docked : sheet;
 
-  // This runs before the screen is drawn, so a route that hides the list never shows the level beside it. The first list can open a
-  // chat with no change of route, so the list giving way closes the level too. The key that opens the level from a chat puts the list
-  // on screen in the same step, so that one change keeps the level.
-  useLayoutEffect(() => {
-    if (carry.current) carry.current = false;
-    else setLevel(false);
-  }, [hash, view, wide, listed]);
-
-  // Safari does not focus a button that is clicked, so the focus is put on the opener here once the list shows it again.
-  useLayoutEffect(() => {
-    if (level || !toOpener.current) return;
-    toOpener.current = false;
-    opener.current?.focus();
-  }, [level]);
+  // This runs before the screen is drawn, so a route that hides the list never shows the sheet over it.
+  useLayoutEffect(() => { setSheet(false); }, [hash, view, wide]);
 
   // A new chat's row arrives a little after its route, so this waits for the row. A pinned row is in every view, so it never switches.
   // Once a chat has been looked for, a later list does not switch the view again, or a list refresh would undo a view picked by hand.
@@ -57,51 +43,47 @@ export function useProjects(ix, current, hash, listed) {
     if (held !== EVERY_VIEW && held !== view) choose(held);
   }, [ix, current]);
 
-  const toggle = () => {
-    if (wide) setDocked(on => !on);
-    else { toOpener.current = false; setLevel(true); }
-  };
-
-  const closeLevel = (focusOpener = true) => {
-    toOpener.current = focusOpener;
-    setLevel(false);
+  // A view picked by hand counts as looking for the open chat, so a later list cannot switch away from it. In the sheet the pick
+  // also shuts the sheet and puts the list on screen.
+  const pick = id => {
+    revealed.current = current;
+    choose(id);
+    if (wide) return;
+    toList();
+    setSheet(false);
   };
 
   // The search picks a view. The chat on screen counts as looked for, so its row cannot switch the view back, and `landing` has the
   // list put the focus on the view's header once it shows the view. Only a pick moves the focus; revealing a chat never does.
   const show = id => {
     revealed.current = current;
-    toOpener.current = false;
     choose(id);
-    setLevel(false);
+    if (!wide) { toList(); setSheet(false); }
     setLanding({ view: ix ? viewIn(ix, id) : id });
+  };
+
+  const toggle = () => {
+    if (wide) setDocked(on => !on);
+    else setSheet(on => !on);
   };
 
   return {
     view,
-    // A view picked by hand counts as looking for the open chat, so a later list cannot switch away from it.
-    choose: id => {
-      revealed.current = current;
-      choose(id);
-    },
+    pick,
     wide,
     open,
     box,
     opener,
     landing,
-    closeLevel,
     show,
+    close: () => setSheet(false),
     settle: () => setLanding(null),
     toggle,
     // Ctrl+B or Cmd+B. The column leaves the focus where it is, unless the focus is in the column as it closes, when it goes to the
-    // button that opens it. The level opens and closes as its button does. `away` says a chat is giving way to the list in this step.
-    flip: away => {
+    // button that opens it. The sheet opens and closes as its button does.
+    flip: () => {
       if (wide && docked && box.current?.contains(document.activeElement)) opener.current?.focus();
-      if (!wide && open) closeLevel();
-      else {
-        carry.current = away;
-        toggle();
-      }
+      toggle();
     },
     elsewhere: !!ix && !open && othersWaiting(ix, view),
   };
@@ -111,10 +93,10 @@ const sidebar = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-
 
 // The button at the left of the list's header. A dot on it says a chat in a view that is not on screen needs you.
 export function ProjectsToggle({ projects }) {
-  const { open, toggle, opener, elsewhere } = projects;
+  const { open, toggle, opener, elsewhere, wide } = projects;
   const mod = useModifier();
-  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded=${open}
-    aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
+  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${opener} aria-label="Projects" data-tip="Projects" data-tip-key=${keyHint(mod, 'B')}
+    aria-haspopup=${wide ? null : 'dialog'} aria-expanded=${open} aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
     ${sidebar()}
     ${elsewhere ? html`<span class="dot" aria-hidden="true"></span><span class="sr" id="projectsElsewhere">A chat in another view needs you</span>` : null}
   </button>`;
@@ -134,20 +116,16 @@ const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hid
 // `creating` is whether the New project form is open, and the list owns it. `onCreate(name)` resolves with the reason the server
 // refused, or an empty string. A panel that closes with the form open cancels it.
 export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreate }) {
-  const { view, choose, wide, open, box, closeLevel } = projects;
+  const { view, wide, open, box, opener, pick, close } = projects;
   const [reason, setReason] = useState('');
   const toggle = useRef(null);
   const mod = useModifier();
 
   useEffect(() => { if (!open && creating) onCancel(); }, [open, creating]);
 
-  // A level opens with the focus on its toggle, which is where the opener was.
-  useLayoutEffect(() => { if (open) toggle.current?.focus(); }, [open]);
-
-  const pick = (e, id) => {
+  const choosing = (e, id) => {
     if (wide) e.currentTarget.focus();
-    choose(id);
-    if (!wide) closeLevel();
+    pick(id);
   };
   const begin = () => { setReason(''); onNew(); };
   const create = async name => {
@@ -156,10 +134,8 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
     return !problem;
   };
 
-  // The arrows move between the buttons, and start at the view in use when none has the focus. Esc takes a level back to the list. It
-  // stops here, so it does not also stop a chat that is running.
+  // The arrows move between the buttons, and start at the view in use when none has the focus.
   const key = e => {
-    if (!wide && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeLevel(); return; }
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.target.closest('input, textarea, form')) return;
     const stops = [...e.currentTarget.querySelectorAll('.scope, .new-project')];
     const start = Math.max(stops.indexOf(e.currentTarget.querySelector('[aria-current="true"]')), 0);
@@ -167,21 +143,27 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
     if (to >= 0) { e.preventDefault(); stops[to].focus(); }
   };
 
-  if (!open) return null;
   const lamp = id => (ix ? lampOf(ix, id) : null);
-  return html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
+  const panel = html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
-      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
+      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${toggle} aria-label="Projects" data-tip="Projects" data-tip-key=${keyHint(mod, 'B')} aria-expanded="true" onClick=${close}>${sidebar()}</button>`}
       <h2 class="rail-title" id="projectsTitle">Projects</h2>
     </div>
     <ul class="scopes">
-      <${Scope} key="home" home=${true} name="Home" lamp=${lamp(HOME_VIEW)} current=${view === HOME_VIEW} onPick=${e => pick(e, HOME_VIEW)} />
+      <${Scope} key="home" home=${true} name="Home" lamp=${lamp(HOME_VIEW)} current=${view === HOME_VIEW} onPick=${e => choosing(e, HOME_VIEW)} />
       <li class="scope-rule" aria-hidden="true"></li>
-      ${(ix?.projects || []).map(p => html`<${Scope} key=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => pick(e, p.id)} />`)}
+      ${(ix?.projects || []).map(p => html`<${Scope} key=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} />`)}
       <li>${creating
         ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
         : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>
     </ul>
     <div role="status">${creating && reason ? html`<p class="problem">${reason}</p>` : null}</div>
   </nav>`;
+  if (wide) return open ? panel : null;
+
+  // Esc leaves a half typed project name first, as it does in the column, and then the sheet. The focus goes back to the button that
+  // opened the sheet when that is on screen, and otherwise to where it was when the sheet opened, as over a chat.
+  const dismiss = why => (why === 'escape' && creating ? onCancel() : close());
+  const opened = () => (opener.current?.getClientRects().length ? opener.current : null);
+  return html`<${Dialog} open=${open} sheet="left" labelledBy="projectsTitle" initial=${toggle} restoreTo=${opened} onClose=${dismiss}>${panel}<//>`;
 }

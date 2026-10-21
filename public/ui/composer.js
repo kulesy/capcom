@@ -183,9 +183,9 @@ export function Composer({ ctrl }) {
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
       <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
       <div class="composer-row">
-        <button class="btn attach" data-variant="outline" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" title="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
+        <button class="btn attach" data-variant="outline" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" data-tip="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
         <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
-        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} title=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
+        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>
     <div class="composer-bar">

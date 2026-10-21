@@ -4,6 +4,7 @@ import { describeFailure, passkeySupport, usePasskey } from './ui/webauthn.js';
 const button = document.getElementById('passkey');
 const hint = document.getElementById('passkey-hint');
 const notice = document.getElementById('notice');
+const password = document.getElementById('password');
 const AUTOFILL_MS = 4 * 60_000;
 
 let autofill = null;
@@ -85,6 +86,12 @@ button.addEventListener('click', async () => {
     listen();
   }
 });
+
+// A wrong password comes back as a page with its notice drawn, so the field it belongs to says so too.
+if (notice.textContent.trim()) {
+  password.setAttribute('aria-invalid', 'true');
+  password.setAttribute('aria-describedby', 'notice');
+}
 
 const support = passkeySupport();
 if (support.ok) listen();

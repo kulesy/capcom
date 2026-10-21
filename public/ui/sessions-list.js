@@ -26,8 +26,17 @@ function RowLink({ r, title = r.title, current, lifted, marked }) {
     ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
 
+// The dots button at the end of a session's row, beside the link. It opens the row's menu under itself, for a pointer with no right
+// click to use, and shows while the pointer is over the row or the focus is in it.
+function RowMore({ r, tree }) {
+  const label = `Actions for ${r.title || UNTITLED}`;
+  const open = tree.shown?.key === 'row' && tree.shown.session === r.id;
+  const trigger = opener((button, entry) => tree.rowMenu(r.id, button, entry));
+  return html`<button class="more" type="button" aria-label=${label} data-tip=${label} aria-haspopup="menu" aria-expanded=${open} aria-controls=${open ? layerId(tree.shown.id) : null} data-state=${open ? 'open' : 'closed'} ...${trigger}>${dots()}</button>`;
+}
+
 // A row being renamed shows its form where the link was.
-const Row = ({ tree, ...props }) => html`<li>${tree.renaming === props.r.id ? tree.sessionForm(props.r) : html`<${RowLink} ...${props} />`}</li>`;
+const Row = ({ tree, ...props }) => html`<li>${tree.renaming === props.r.id ? tree.sessionForm(props.r) : html`<${RowLink} ...${props} /><${RowMore} r=${props.r} tree=${tree} />`}</li>`;
 
 const rowOf = id => `a.row[data-id="${CSS.escape(id)}"]`;
 
@@ -35,12 +44,13 @@ const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hid
 
 const chevron = () => draw(['m9 18 6-6-6-6'], 'chevron');
 
-const Empty = ({ paths, title, children }) => html`<div data-slot="empty">
+const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty">
   <div data-slot="empty-header">
     <div data-slot="empty-icon" data-variant="icon">${draw(paths)}</div>
     <div data-slot="empty-title">${title}</div>
     <div data-slot="empty-description">${children}</div>
   </div>
+  ${action ? html`<div data-slot="empty-content">${action}</div>` : null}
 </div>`;
 
 // The header of a project or a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
@@ -51,7 +61,7 @@ function Head({ id, name, count, open, toggle, menu, tree, project }) {
   const shown = tree.shown?.key === id;
   return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
     <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
-    ${menu ? html`<button class="more" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
+    ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
   </div>`;
 }
 
@@ -69,8 +79,8 @@ function Routine({ g, current, lifted, marked, open, onToggle, tree }) {
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
   const renaming = tree.renaming === g.latest.id;
   return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
-    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} />`}
-    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}>${chevron()}</button>` : null}
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} /><${RowMore} r=${g.latest} tree=${tree} />`}
+    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} data-tip=${runs} onClick=${() => onToggle(g.name)}>${chevron()}</button>` : null}
     ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`)}</ul>` : null}
   </li>`;
 }
@@ -125,7 +135,7 @@ function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRo
     return html`<section class="project" key=${p.id}>
       ${editing === 'rename' ? tree.renameForm(p)
         : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + g.sessions.length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
-      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<${Empty} paths=${icons.folderPlus} title="No groups yet">Make one with New group, or move one here from a group's menu in Home.<//>`}</div>` : null}
+      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<${Empty} paths=${icons.folderPlus} title="No groups yet" action=${html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => tree.newGroup(p)}>New group</button>`}>Make one with New group, or move one here from a group's menu in Home.<//>`}</div>` : null}
     </section>`;
   };
   const parts = [
@@ -146,7 +156,7 @@ const STOPS = '.group-head, a.row[data-id]';
 
 // A header's menu button and a routine's fold button belong to the header or row beside them, so the arrows carry on from there.
 function stopBeside(el) {
-  if (el?.matches?.('.more')) return el.closest('.bar')?.querySelector('.group-head');
+  if (el?.matches?.('.more')) return el.closest('.bar')?.querySelector('.group-head') ?? el.parentElement.querySelector(':scope > a.row');
   if (el?.matches?.('.runs-toggle')) return el.closest('.routine')?.querySelector('a.row');
   return el;
 }
@@ -358,7 +368,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   // The menu of a row, opened by a right click or a long press at the pointer, or by the menu key under the row. Move to opens the
   // places in a menu beside it. A chat the list shows running is stopped as it is archived, and the item says so. Archive on a chat
   // that turns out to be running asks first, as the key does.
-  latestMenu.current = (id, row, point) => {
+  latestMenu.current = (id, row, point, entry = null) => {
     const r = findRow(ix, id);
     if (!r) return;
     const title = r.title || UNTITLED;
@@ -379,6 +389,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       session: id,
       anchor: row,
       point,
+      entry,
       label: `Actions for ${title}`,
       items: [
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
@@ -398,7 +409,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     const ringed = inList && el.matches(':focus-visible');
     const row = ringed && el.matches('a.row[data-id]');
     const target = archiveTarget({
-      modal: !!document.querySelector('[aria-modal="true"], [data-slot$="dialog-content"]'),
+      modal: !!document.querySelector('[aria-modal="true"], [data-slot$="dialog-content"], [data-mobile="true"]'),
       menu: shown && { session: shown.session },
       form: inList && !!el.closest('form'),
       ringed: row ? el.dataset.id : null,
@@ -450,8 +461,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   async function addProject(name) {
     const { problem, made } = await edit('api/layout/project/add', { name });
     if (!made) return problem || 'Could not add the project.';
-    projects.choose(made.id);
-    projects.closeLevel(false);
+    projects.pick(made.id);
     closeForm(headOf(made.id), '.add');
     return '';
   }
@@ -473,7 +483,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       detail,
       back: () => nav.current.querySelector(headOf(p.id)) ?? nav.current.querySelector('.add'),
       run: async () => {
-        if (await change('api/layout/project/remove', { id: p.id })) { projects.choose(null); setBack(['.add']); }
+        if (await change('api/layout/project/remove', { id: p.id })) { projects.pick(null); setBack(['.add']); }
       },
     });
   }
@@ -483,6 +493,8 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     shown,
     pop,
     renaming: form?.kind === 'session' ? form.session : null,
+    rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
+    newGroup: p => { expand(p.id); setForm({ kind: 'group', project: p.id }); },
     sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} action="Save" max=${TITLE_MAX} onCancel=${() => closeForm(rowOf(r.id))} onSubmit=${text => renameRow(r, text)} />`,
     groupMenu: g => {
       const to = moveTargets(ix.projects, g);
@@ -491,7 +503,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     projectMenu: p => ({
       label: `Actions for ${p.name}`,
       items: [
-        { label: 'New group here', icon: icons.folderPlus, run: () => { expand(p.id); setForm({ kind: 'group', project: p.id }); } },
+        { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p) },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
         { separator: true },
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
@@ -525,8 +537,8 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       <${ProjectsToggle} projects=${projects} />
       <div class="brand"><h1>Capcom</h1><span class="station">${STATION}</span></div>
       <div class="list-actions">
-        <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" title=${`Find a session (${keyHint(mod, 'K')})`} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} data-tip=${addMenu.label} data-tip-key=${keyHint(mod, 'N')} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" data-tip="Find a session" data-tip-key=${keyHint(mod, 'K')} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>

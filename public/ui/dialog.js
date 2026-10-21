@@ -6,23 +6,24 @@ import { shortcut } from './shortcuts.js';
 
 const Cross = () => html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>`;
 
-// shadcn's Dialog, and its AlertDialog with `alert`, drawn in place beside the app. `onClose(why)` hears 'escape', 'press' (never for
-// an alert) and 'close'; the owner turns `open` off, and the layer stays until its exit animation has played. `initial` is a ref to
-// what takes the focus first, and `restoreTo()` gives the element that gets it back.
+// shadcn's Dialog, and its AlertDialog with `alert`, drawn in place beside the app. `sheet="left"` is shadcn's mobile sidebar instead:
+// the same layer as a panel from that edge, with no close button. `onClose(why)` hears 'escape', 'press' (never for an alert) and
+// 'close'; the owner turns `open` off, and the layer stays until its exit animation has played. `initial` is a ref to what takes the
+// focus first, and `restoreTo()` gives the element that gets it back.
 export function Dialog({ open, ...rest }) {
   const box = useRef(null);
   const present = usePresence(open, box);
   return present ? html`<${Layer} open=${open} box=${box} ...${rest} />` : null;
 }
 
-function Layer({ open, box, onClose, alert = false, part, label, labelledBy, describedBy, initial, restoreTo, children }) {
+function Layer({ open, box, onClose, alert = false, sheet = null, part, label, labelledBy, describedBy, initial, restoreTo, children }) {
   const live = useRef(null);
   live.current = { open, onClose };
   const me = useRef({}).current;
   const from = useRef(undefined);
   // Read while rendering, because a child may have taken the focus by the time any effect runs.
   if (from.current === undefined) from.current = document.activeElement;
-  const kind = alert ? 'alert-dialog' : 'dialog';
+  const kind = sheet ? 'sheet' : alert ? 'alert-dialog' : 'dialog';
   const state = open ? 'open' : 'closed';
 
   useLayoutEffect(() => {
@@ -40,17 +41,19 @@ function Layer({ open, box, onClose, alert = false, part, label, labelledBy, des
     const show = hideOthers(content);
     const unlockPointer = holdPointer();
     let last = null;
+    // Only the top layer traps the focus, so the search can open over the sheet.
+    const trapping = () => live.current.open && topmost(me);
     const onFocusIn = e => {
-      if (!live.current.open) return;
+      if (!trapping()) return;
       if (content.contains(e.target)) last = e.target;
       else (last?.isConnected ? last : content).focus({ preventScroll: true });
     };
     const onFocusOut = e => {
-      if (!live.current.open || e.relatedTarget === null || content.contains(e.relatedTarget)) return;
+      if (!trapping() || e.relatedTarget === null || content.contains(e.relatedTarget)) return;
       (last?.isConnected ? last : content).focus({ preventScroll: true });
     };
     const watch = new MutationObserver(records => {
-      if (live.current.open && document.activeElement === document.body && records.some(r => r.removedNodes.length)) content.focus({ preventScroll: true });
+      if (trapping() && document.activeElement === document.body && records.some(r => r.removedNodes.length)) content.focus({ preventScroll: true });
     });
     watch.observe(content, { childList: true, subtree: true });
     // The document hears every key first, so Esc closes only the top layer and cannot also stop a chat that is running behind it.
@@ -94,10 +97,11 @@ function Layer({ open, box, onClose, alert = false, part, label, labelledBy, des
 
   return html`<${Fragment}>
     <div data-slot=${`${kind}-overlay`} data-state=${state}></div>
-    <div ref=${box} data-slot=${`${kind}-content`} data-part=${part} data-size=${alert ? 'default' : undefined} data-state=${state} role=${alert ? 'alertdialog' : 'dialog'}
+    <div ref=${box} data-slot=${sheet ? 'sidebar' : `${kind}-content`} data-mobile=${sheet ? 'true' : undefined} data-side=${sheet || undefined} data-part=${part}
+      data-size=${alert ? 'default' : undefined} data-state=${state} role=${alert ? 'alertdialog' : 'dialog'}
       aria-label=${label} aria-labelledby=${labelledBy} aria-describedby=${describedBy} tabindex="-1">
-      ${children}
-      ${alert ? null : html`<button type="button" data-slot="dialog-close" onClick=${() => live.current.onClose('close')}><${Cross} /><span data-part="dialog-content-close-label">Close</span></button>`}
+      ${sheet ? html`<div data-part="sidebar-mobile-inner">${children}</div>` : children}
+      ${alert || sheet ? null : html`<button type="button" data-slot="dialog-close" onClick=${() => live.current.onClose('close')}><${Cross} /><span data-part="dialog-content-close-label">Close</span></button>`}
     </div>
   <//>`;
 }
