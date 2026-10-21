@@ -438,6 +438,26 @@ a { color: var(--focus); }
 
 .confirm-actions { display: flex; gap: 0.4rem; }
 
+.ask-dialog {
+  width: min(24rem, calc(100vw - 2rem));
+  max-width: none;
+  margin: max(12vh, calc(env(safe-area-inset-top) + 1rem)) auto auto;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.9rem;
+  background: var(--console);
+  color: var(--ink);
+  box-shadow: 0 1rem 3rem var(--edge);
+}
+
+.ask-dialog[open] { display: grid; gap: 0.75rem; }
+
+.ask-dialog::backdrop { background: oklch(0.2 0.02 250 / 0.3); }
+
+.ask-dialog p { margin: 0; font-size: 0.875rem; overflow-wrap: anywhere; }
+
+.ask-actions { display: flex; justify-content: flex-end; gap: 0.4rem; }
+
 @media (pointer: coarse) {
   .has-menu { --more: 2.75rem; }
 
@@ -455,7 +475,7 @@ a { color: var(--focus); }
 
   .name-field input { min-height: 2.75rem; font-size: 1rem; }
 
-  .name-form .button, .confirm .button { min-height: 2.75rem; }
+  .name-form .button, .confirm .button, .ask-dialog .button { min-height: 2.75rem; }
 
   .list-head { padding-left: 0; }
 
@@ -1965,7 +1985,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .widget-ask { animation: widget-ask-in 180ms ease-out; }
+  .widget-ask, .ask-dialog[open] { animation: widget-ask-in 180ms ease-out; }
 
   .widget-wait::before {
     content: "";

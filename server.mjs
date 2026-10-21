@@ -387,15 +387,18 @@ async function editLayout(req, res, change) {
 }
 
 // Archiving a chat Capcom runs stops it: a turn in progress is interrupted and its approvals denied, then the process closes.
-function setArchived(id, archived) {
+// With stop: false a running chat is refused with a 409 before anything is written, so the caller can ask first.
+function setArchived(id, archived, stop) {
   if (typeof archived !== 'boolean') throw Object.assign(new Error('Archived or not?'), { status: 400 });
+  if (stop !== undefined && typeof stop !== 'boolean') throw Object.assign(new Error('Stop it or not?'), { status: 400 });
   if (!archived) {
     layout.unarchive(id);
     return { archived };
   }
-  layout.archive(id);
   const chat = getChat(id);
   const stopped = !!chat && chat.state !== 'idle';
+  if (stopped && stop === false) throw Object.assign(new Error('That chat is running, and archiving it would stop it.'), { status: 409 });
+  layout.archive(id);
   if (stopped) chat.interrupt();
   chat?.stop();
   return { archived, ...(stopped && { stopped: true }) };
@@ -542,7 +545,7 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
-  if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived));
+  if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
     const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd } = JSON.parse(await readBody(req) || '{}');

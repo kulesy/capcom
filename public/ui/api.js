@@ -5,6 +5,6 @@ export async function api(path, body) {
   });
   if (r.status === 401) { location.reload(); throw new Error('Signed out'); }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { data });
+  if (!r.ok) throw Object.assign(new Error(data.error || `HTTP ${r.status}`), { data, status: r.status });
   return data;
 }

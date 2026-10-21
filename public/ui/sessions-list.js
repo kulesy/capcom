@@ -1,6 +1,7 @@
 // The list of sessions on the left, for the view the projects sidebar picks. Home has the routines, the groups outside projects and the
 // sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
 // onto a section to move it there. Everything else is done from menus, so a phone can do it all.
+import { ask } from './ask.js';
 import { dragRows } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { DeleteProject, NameForm } from './forms.js';
@@ -11,7 +12,8 @@ import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
-import { LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
+import { archiveHint, shortcut } from './shortcuts.js';
+import { archiveTarget, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted, marked }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
@@ -161,11 +163,15 @@ export const newSession = () => { if (location.hash === '#/new') document.getEle
 // A note about something that did not work, which shows in amber. No reason means no note.
 const problemNote = text => (text ? { text, problem: true } : null);
 
+const isRunning = r => r.state === 'working' || r.state === 'waiting';
+const STOP_DETAIL = "Archiving stops Claude's turn and denies any approval it is waiting for. Undo brings the session back, but not the turn.";
+
 // `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
 // `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
 // `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
-// group the server made, changed or removed. `archive(id, archived)` archives or unarchives a session and resolves with
-// { problem, stopped }: the reason when the server refuses, and whether it stopped a chat that was running.
+// group the server made, changed or removed. `archive(id, archived, { stop })` archives or unarchives a session and resolves with
+// { problem, stopped, running }: the reason when the server refuses, whether it stopped a chat that was running, and whether it
+// refused because one was running and `stop` was false.
 export function SessionList({ ix, projects, error, current, place, edit, archive, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const { view } = projects;
@@ -183,6 +189,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   const latestPlace = useRef(place);
   latestPlace.current = place;
   const latestMenu = useRef(null);
+  const latestKey = useRef(null);
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
   const expand = id => setCollapsed(all => ({ ...all, [id]: false }));
   const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
@@ -200,6 +207,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   // With no chat open and nothing focused, up or down steps into the list. With a chat open they are left to scroll it.
   useEffect(() => {
     const onKey = e => {
+      if (shortcut(e) === 'archive') return latestKey.current(e);
       const el = document.activeElement;
       if (box.current?.contains(el)) return walk(e, box.current);
       const idle = (!el || el === document.body) && !document.getElementById('session');
@@ -232,23 +240,34 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     setBack(null);
   }, [back]);
 
-  // A view picked in the search gets the focus on its header, or on the opener when it has none, once the list shows it.
+  // A view picked in the search gets the focus on its header, or on the opener when it has none, once the list shows it. A focus
+  // still waiting for a row gives way to it.
   useLayoutEffect(() => {
     if (!projects.landing) return;
     const { view: landed } = projects.landing;
     const head = landed ? nav.current.querySelector(headOf(landed)) : box.current.querySelector('.group-head');
     (head || projects.opener.current)?.focus();
+    setAfter(null);
     projects.settle();
   }, [projects.landing]);
 
-  // Once an archived row has left the list, the focus goes to the row beside it, so the keyboard stays in the list.
+  // Once a row has left the list, the focus goes to the row beside it or to a header, so the keyboard stays in the list. Below 56rem an
+  // open chat hides the list, so it waits until the list shows, and a focus that something else hides the list from is dropped. A key
+  // asks for the ring, because after a click the browser gives none. A ring meant for the first header goes to the Projects button when
+  // no header is left. Below 56rem a view picked in the search closes the chat in the same render, and the view's header keeps the focus.
   useLayoutEffect(() => {
-    if (!after) return;
-    const row = box.current.querySelector(rowOf(after));
-    row?.focus({ preventScroll: true });
-    row?.scrollIntoView({ block: 'nearest' });
+    if (!after || projects.landing) return;
+    const el = box.current.querySelector(after.to) ?? (after.to === '.group-head' ? projects.opener.current : null);
+    if (el && !el.getClientRects().length) {
+      if (!current) setAfter(null);
+      return;
+    }
+    // Closing a question hands the focus back to this row, and focus() ignores a row that has it, so the ring needs a blur first.
+    if (after.ring && el === document.activeElement) el.blur();
+    el?.focus({ preventScroll: true, focusVisible: after.ring || undefined });
+    el?.scrollIntoView({ block: 'nearest' });
     setAfter(null);
-  }, [after]);
+  }, [after, current]);
 
   // A rename form lasts only as long as its row is drawn. A reload can take the row away (archived elsewhere, folded among a
   // routine's earlier runs, past the newest 60), and the form is then dropped rather than coming back unasked later.
@@ -272,24 +291,38 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     return problem ? null : made;
   }
 
-  // Starts a change that takes the row out of its place and resolves with { problem }. The focus moves on to the row beside it at once,
-  // and back to the row if the change is refused.
-  async function leaving(id, start) {
+  // Starts a change that takes the row out of its place and resolves with what `start` resolves with. The focus moves on to the row
+  // beside it at once, with its ring if `ring`, and back to the row if the change is refused. With no row left beside it, a ring goes
+  // to the first header, or to the Projects button when no header is left, so the keyboard stays in the list and a press too many
+  // archives nothing.
+  async function leaving(id, start, ring = false) {
     const ids = [...box.current.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id);
     // A routine's next run takes the place of its latest, so the focus goes to that run and not past the routine.
     const next = ix.routines.find(g => g.latest.id === id)?.earlier[0]?.id;
     const done = start();
-    setAfter(next ?? neighbour(ids, id));
+    const to = next ?? neighbour(ids, id);
+    setAfter(to ? { to: rowOf(to), ring } : ring ? { to: '.group-head', ring } : null);
     const result = await done;
-    if (result.problem) setAfter(id);
+    if (result.problem) setAfter({ to: rowOf(id), ring });
     return result;
   }
 
-  // Archives a session and says so with a way to undo it, or says why it could not.
-  async function archiveRow(id, title) {
-    const { problem, stopped } = await leaving(id, () => archive(id, true));
-    setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title } });
+  // Archives a session and says so with a way to undo it, or says why it could not. A session on screen is left for the list, and
+  // Undo reopens it. `ask` asks first about a chat that turns out to be running.
+  async function archiveRow(id, title, { ask: askFirst = false, ring = false } = {}) {
+    const { problem, stopped, running } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
+    if (running) {
+      // A focus still waiting for a hidden list would move later. Cancel finds the row, a new element, by its id.
+      setAfter(null);
+      return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring });
+    }
+    const onScreen = location.hash === `#/s/${encodeURIComponent(id)}`;
+    // A refusal shows in the list's note, so a list hidden behind the chat is brought back to show it.
+    if (onScreen && (!problem || !box.current.getClientRects().length)) location.hash = '#/';
+    setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title, reopen: onScreen } });
   }
+
+  const confirmStop = (id, title, { back, ring } = {}) => ask({ action: 'Stop and archive', title, detail: STOP_DETAIL, back, run: () => archiveRow(id, title, { ring }) });
 
   // Moves a session the way a drop does, and says where it went or why it did not. `where` names the place in the note.
   async function moveRow(id, title, section, where) {
@@ -309,21 +342,26 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     return !!done;
   }
 
-  // Takes an archive back, and puts the focus on the row that returns. If the server refuses, the note keeps its Undo button to try again.
-  async function undo({ id, title }) {
+  // Takes an archive back, puts the focus on the row that returns, and reopens the session if its archive closed it and the page is
+  // still on the list. If the server refuses, the note keeps its Undo button to try again.
+  async function undo({ id, title, reopen }) {
     const { problem } = await archive(id, false);
-    if (!problem) setAfter(id);
-    setNote(problem ? { ...problemNote(problem), undo: { id, title } } : { text: `Unarchived ${title}.` });
+    if (!problem) {
+      setAfter({ to: rowOf(id) });
+      if (reopen && (!location.hash || location.hash === '#/')) location.hash = `#/s/${encodeURIComponent(id)}`;
+    }
+    setNote(problem ? { ...problemNote(problem), undo: { id, title, reopen } } : { text: `Unarchived ${title}.` });
   }
 
   // The menu of a row, opened by a right click, the menu key or a long press. Move to swaps it for a menu of places at the same spot,
-  // headed by Move to again, which brings the first menu back with the focus on Move to, as the left arrow does. A chat Capcom is
-  // running is stopped as it is archived.
+  // headed by Move to again, which brings the first menu back with the focus on Move to, as the left arrow does. A chat the list shows
+  // running is stopped as it is archived, and the item says so. Archive on a chat that turns out to be running asks first, as the key
+  // does.
   latestMenu.current = (id, row, point, start = 0) => {
     const r = findRow(ix, id);
     if (!r) return;
     const title = r.title || UNTITLED;
-    const running = r.state === 'working' || r.state === 'waiting';
+    const running = isRunning(r);
     const targets = sessionTargets(ix, r);
     const show = menu => setShown({ key: `row-${++opened.current}`, session: id, anchor: row, point, ...menu });
     const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
@@ -345,9 +383,39 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       items: [
         { label: 'Rename', run: () => setForm({ kind: 'session', session: id }) },
         ...(targets.length ? [{ label: 'Move to', more: true, run: () => show(moveMenu) }] : []),
-        { label: running ? 'Stop and archive' : 'Archive', danger: running, run: () => archiveRow(id, title) },
+        { label: running ? 'Stop and archive' : 'Archive', danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },
       ],
     });
+  };
+
+  // Cmd+A archives the row with the focus ring, or else the open session. A click leaves a stale focus with no ring, so it is ignored.
+  // An open menu takes the key for its own row or none, and a ring on anything else in the list or the sidebar takes it for none. A
+  // search, a form in the list or the projects sidebar, or nothing to archive leaves the key to the browser.
+  latestKey.current = e => {
+    const el = document.activeElement;
+    const inList = !!(nav.current?.contains(el) || projects.box.current?.contains(el));
+    const ringed = inList && el.matches(':focus-visible');
+    const row = ringed && el.matches('a.row[data-id]');
+    const target = archiveTarget({
+      modal: !!document.querySelector('[aria-modal="true"]'),
+      menu: shown && { session: shown.session },
+      form: inList && !!el.closest('form, .confirm'),
+      ringed: row ? el.dataset.id : null,
+      ringedOther: ringed && !row,
+      current,
+      listed: id => !!findRow(ix, id),
+    });
+    if (!target) return;
+    e.preventDefault();
+    if (e.repeat || target.id === null) return;
+    if (shown) {
+      if (shown.anchor.isConnected) shown.anchor.focus({ preventScroll: true });
+      setShown(null);
+    }
+    const r = findRow(ix, target.id);
+    const title = r.title || UNTITLED;
+    if (isRunning(r)) confirmStop(r.id, title, { ring: true });
+    else archiveRow(r.id, title, { ask: true, ring: true });
   };
 
   const closeForm = (...focus) => { setForm(null); setBack(focus); };

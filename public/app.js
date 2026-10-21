@@ -1,4 +1,5 @@
 import { api } from './ui/api.js';
+import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
@@ -77,9 +78,10 @@ function App() {
   }, []);
 
   // Archiving takes the row out at once and puts it back if the server refuses, while no other list has been drawn since. Unarchiving
-  // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped }: the reason
-  // when the server refuses, and whether it stopped a chat that was running. The server's list is drawn before it resolves.
-  const archive = useCallback(async (id, archived) => {
+  // waits for the server's list, because the server says where the session lands. It resolves with { problem, stopped, running }: the
+  // reason when the server refuses, whether it stopped a chat that was running, and whether it refused because the chat was running and
+  // `stop` was false, which leaves it archived by no one. The server's list is drawn before it resolves.
+  const archive = useCallback(async (id, archived, { stop = true } = {}) => {
     const before = now.current.ix;
     const mark = archived ? ++latest.current : 0;
     if (archived) {
@@ -88,11 +90,11 @@ function App() {
     }
     writing.current++;
     try {
-      const reply = await api('api/layout/archive', { id, archived });
-      return { problem: '', stopped: !!reply.stopped };
+      const reply = await api('api/layout/archive', stop ? { id, archived } : { id, archived, stop: false });
+      return { problem: '', stopped: !!reply.stopped, running: false };
     } catch (e) {
       if (archived && shown.current === mark) setIx(before);
-      return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false };
+      return { problem: `${archived ? 'Not archived' : 'Not unarchived'}: ${e.message}`, stopped: false, running: e.status === 409 };
     } finally {
       writing.current--;
       await loadIndex();
@@ -126,11 +128,12 @@ function App() {
     };
   }, []);
 
-  // Ctrl+N starts a session and Ctrl+K finds one. Cmd+K works too, and so does Cmd+N in the installed app.
+  // Ctrl+N starts a session and Ctrl+K finds one. Cmd+K works too, and so does Cmd+N in the installed app. The list takes Cmd+A,
+  // because it knows which row has the focus.
   useEffect(() => {
     const onKey = e => {
       const asked = shortcut(e);
-      if (!asked) return;
+      if (asked !== 'new' && asked !== 'find') return;
       e.preventDefault();
       if (asked === 'new') { setFinding(false); newSession(); }
       else setFinding(open => !open);
@@ -170,6 +173,7 @@ function App() {
     ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />` : null}
   </div>
   <${ViewerHost} />
+  <${AskHost} />
 <//>`;
 }
 

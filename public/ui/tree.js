@@ -63,3 +63,16 @@ export function neighbour(ids, id) {
   const at = ids.indexOf(id);
   return at < 0 ? null : ids[at + 1] ?? ids[at - 1] ?? null;
 }
+
+// The session Cmd+A archives: null leaves the key to the browser, { id: null } takes it and archives nothing, { id } archives that one.
+// A modal or a form in the list or the projects sidebar keeps the key, and an open menu names its own row (none for a header's). Then a
+// ring on a row names that row, a ring on anything else in the list or the sidebar names none, and only then the open session counts.
+export function archiveTarget({ modal, menu, form, ringed, ringedOther, current, listed }) {
+  const known = id => id != null && listed(id);
+  if (modal) return null;
+  if (menu) return { id: known(menu.session) ? menu.session : null };
+  if (form) return null;
+  if (ringedOther) return { id: null };
+  const id = ringed ?? current;
+  return known(id) ? { id } : null;
+}

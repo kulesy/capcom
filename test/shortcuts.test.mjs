@@ -1,9 +1,9 @@
-// Run with `npm test`. Capcom's own keys: Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K anywhere, and
-// the modifier the hints name. The page is a stand-in with just the display-mode media feature, set to what Chrome reports, and
-// the platform navigator reports.
+// Run with `npm test`. Capcom's own keys: Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K anywhere, Cmd+A on
+// a Mac outside a text field, and the modifier the hints name. The page is a stand-in with just the display-mode media feature,
+// set to what Chrome reports, the platform navigator reports, and an event target that says whether it is inside a text field.
 import test, { beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { inApp, modifier, onAppChange, shortcut } from '../public/ui/shortcuts.js';
+import { archiveHint, inApp, modifier, onAppChange, onMac, shortcut } from '../public/ui/shortcuts.js';
 
 let mode = 'browser';
 let platform = 'MacIntel';
@@ -39,6 +39,9 @@ beforeEach(() => { mode = 'browser'; platform = 'MacIntel'; lists.length = 0; })
 const press = (key, held = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, isComposing: false, ...held });
 const CTRL = { ctrlKey: true };
 const CMD = { metaKey: true };
+// A target answers closest() as the page does, with an element when the selector names the kind of element it is in.
+const inside = kind => ({ closest: selector => (selector.split(',').map(part => part.trim()).includes(kind) ? {} : null) });
+const FIELDS = ['input', 'textarea', 'select', '[contenteditable]'];
 
 test('Ctrl+N starts a session in a tab, in the app and in full screen', () => {
   for (mode of ['browser', 'standalone', 'fullscreen']) {
@@ -62,9 +65,9 @@ test('Ctrl+K and Cmd+K open the search in a tab and in the app', () => {
   }
 });
 
-test('Alt, Shift or a composition under way turns Ctrl or Cmd with N or K into nothing', () => {
+test('Alt, Shift or a composition under way turns Ctrl or Cmd with N, K or A into nothing', () => {
   for (mode of ['browser', 'standalone']) {
-    for (const key of ['n', 'k']) {
+    for (const key of ['n', 'k', 'a']) {
       for (const [name, held] of [['Ctrl', CTRL], ['Cmd', CMD]]) {
         for (const extra of ['altKey', 'shiftKey', 'isComposing']) {
           assert.equal(shortcut(press(key, { ...held, [extra]: true })), null, `${mode}, ${name}+${key} with ${extra}`);
@@ -82,6 +85,34 @@ test('N with both Ctrl and Cmd, N alone or another letter asks for nothing', () 
   }
 });
 
+test('Cmd+A asks to archive on a Mac in a tab, in the app and in full screen', () => {
+  for (mode of ['browser', 'standalone', 'fullscreen']) {
+    assert.equal(shortcut(press('a', CMD)), 'archive', mode);
+    assert.equal(shortcut(press('A', CMD)), 'archive', `${mode}, caps lock`);
+    assert.equal(shortcut(press('a', { ...CMD, target: inside('a.row') })), 'archive', `${mode}, in a list row`);
+    assert.equal(shortcut(press('a', { ...CMD, target: {} })), 'archive', `${mode}, a target that cannot say where it is`);
+  }
+});
+
+test('Cmd+A in a text field asks for nothing, so the field keeps Select All', () => {
+  for (mode of ['browser', 'standalone']) {
+    for (const kind of FIELDS) {
+      assert.equal(shortcut(press('a', { ...CMD, target: inside(kind) })), null, `${mode}, ${kind}`);
+      assert.equal(shortcut(press('A', { ...CMD, target: inside(kind) })), null, `${mode}, ${kind}, caps lock`);
+    }
+  }
+});
+
+test('Ctrl+A, Ctrl and Cmd together, A alone and Cmd+A off a Mac ask for nothing', () => {
+  for (mode of ['browser', 'standalone']) {
+    assert.equal(shortcut(press('a', CTRL)), null, `${mode}, Ctrl+A`);
+    assert.equal(shortcut(press('a', { ctrlKey: true, metaKey: true })), null, `${mode}, Ctrl+Cmd+A`);
+    assert.equal(shortcut(press('a')), null, `${mode}, no modifier`);
+    for (platform of ['Win32', 'Linux x86_64']) assert.equal(shortcut(press('a', CMD)), null, `${mode}, Cmd+A on ${platform}`);
+    platform = 'MacIntel';
+  }
+});
+
 test('a key press with no key, as Chrome autofill sends, asks for nothing', () => {
   mode = 'standalone';
   assert.equal(shortcut(press(undefined, CMD)), null);
@@ -96,6 +127,15 @@ test('the hints name Cmd in the app on a Mac, and Ctrl in a tab, in full screen 
   for (mode of ['browser', 'fullscreen']) {
     assert.equal(inApp(), false, mode);
     assert.equal(modifier(), 'Ctrl', mode);
+  }
+});
+
+test('the archive hint is Cmd A on a Mac in a tab, in the app and in full screen, and is nothing on another system', () => {
+  for (mode of ['browser', 'standalone', 'fullscreen']) assert.equal(archiveHint(), 'Cmd A', mode);
+  assert.equal(onMac(), true);
+  for (platform of ['Win32', 'Linux x86_64']) {
+    assert.equal(archiveHint(), null, platform);
+    assert.equal(onMac(), false, platform);
   }
 });
 

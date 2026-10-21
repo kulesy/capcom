@@ -438,3 +438,101 @@ test('archiving with a layout file that cannot be read stops nothing', async () 
   await until(() => cliCalls(s).some(c => c.response === 'allow'));
   assert.deepEqual(touched(s), []);
 });
+
+// The fake CLI logs what it reads in order, so once it has logged a later message, nothing sent before it is still on its way.
+const flushed = async (s, token, id) => {
+  const text = `flush ${cliCalls(s).length}`;
+  await send(s, token, id, text);
+  await until(() => said(s, text));
+};
+
+test('archiving a working chat with stop: false answers 409 and changes nothing, and the same request without it stops and archives the chat', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'busy', 'keep going');
+  await until(() => said(s, 'keep going'));
+  assert.equal(stateOf(await index(s, token), 'busy'), 'working');
+  const before = fs.readFileSync(s.layout, 'utf8');
+
+  const refused = await post(s, token, { id: 'busy', archived: true, stop: false });
+  assert.equal(refused.status, 409);
+  assert.match(refused.body().error, /running/);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  await flushed(s, token, 'busy');
+  assert.deepEqual(touched(s), [], 'no interrupt and no close');
+  assert.equal(processes(s, 'busy'), 1);
+  const ix = await index(s, token);
+  assert.deepEqual(places(ix).ungrouped, ['Busy one']);
+  assert.equal(stateOf(ix, 'busy'), 'working');
+  assert.deepEqual(await archive(s, token), []);
+
+  const res = await post(s, token, { id: 'busy', archived: true });
+  assert.deepEqual(res.body(), { id: 'busy', group: null, pinned: false, archived: true, stopped: true });
+  await until(() => cliCalls(s).some(c => c.closed));
+  assert.deepEqual(touched(s), [{ control: 'interrupt' }, { closed: true }]);
+  assert.deepEqual(titles(await archive(s, token)), ['Busy one']);
+});
+
+test('archiving a waiting chat with stop: false answers 409 and leaves its approval to answer, and stop: true denies it as before', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'busy', 'ask for approval');
+  await until(async () => stateOf(await index(s, token), 'busy') === 'waiting');
+
+  assert.equal((await post(s, token, { id: 'busy', archived: true, stop: false })).status, 409);
+  await flushed(s, token, 'busy');
+  assert.deepEqual(touched(s), [], 'the approval is not denied');
+  assert.equal(stateOf(await index(s, token), 'busy'), 'waiting');
+  assert.deepEqual(await archive(s, token), []);
+
+  const res = await post(s, token, { id: 'busy', archived: true, stop: true });
+  assert.deepEqual(res.body(), { id: 'busy', group: null, pinned: false, archived: true, stopped: true });
+  await until(() => cliCalls(s).some(c => c.closed));
+  assert.deepEqual(touched(s), [{ response: 'deny', requestId: 'perm-1' }, { control: 'interrupt' }, { closed: true }]);
+});
+
+test('archiving an idle chat with stop: false archives it and closes its process, and does not say it stopped anything', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'calm', title: 'Calm one', ago: 1 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'calm', 'finish the turn');
+  await until(async () => stateOf(await index(s, token), 'calm') === 'idle');
+  assert.deepEqual(touched(s), [], 'the process is still open');
+
+  const res = await post(s, token, { id: 'calm', archived: true, stop: false });
+  assert.deepEqual(res.body(), { id: 'calm', group: null, pinned: false, archived: true });
+  await until(() => cliCalls(s).some(c => c.closed));
+  assert.deepEqual(touched(s), [{ closed: true }]);
+  assert.deepEqual(titles(await archive(s, token)), ['Calm one']);
+});
+
+test('archiving a session that Capcom has never run with stop: false archives it and starts no process', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'quiet', title: 'Quiet one', ago: 1 }] });
+  const { token } = await signIn(s);
+
+  const res = await post(s, token, { id: 'quiet', archived: true, stop: false });
+  assert.deepEqual(res.body(), { id: 'quiet', group: null, pinned: false, archived: true });
+  assert.equal(processes(s, 'quiet'), 0);
+  assert.deepEqual(touched(s), []);
+  assert.deepEqual(titles(await archive(s, token)), ['Quiet one']);
+});
+
+test('a stop that is not true or false is a 400 that writes nothing and leaves a running chat alone', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }, { id: 'quiet', title: 'Quiet one', ago: 2 }] });
+  const { token } = await signIn(s);
+  await send(s, token, 'busy', 'keep going');
+  await until(() => said(s, 'keep going'));
+  const before = fs.readFileSync(s.layout, 'utf8');
+
+  for (const stop of ['no', 'false', '', 0, 1, null, [], [false], {}]) {
+    for (const [id, archived] of [['busy', true], ['quiet', true], ['quiet', false]]) {
+      const body = { id, archived, stop };
+      const res = await post(s, token, body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.match(res.body().error, /Stop it or not/, JSON.stringify(body));
+    }
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  await flushed(s, token, 'busy');
+  assert.deepEqual(touched(s), []);
+  assert.equal(stateOf(await index(s, token), 'busy'), 'working');
+});

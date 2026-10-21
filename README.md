@@ -138,10 +138,23 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   with Rename, Move to and Archive. On a phone, long-press the row and let go without moving it. Archive
   works for any session, whichever app started it. A note at the top of the list then offers Undo for 10
   seconds. When the chat is working or waiting for an approval, the item reads Stop and archive: the turn
-  ends, the approval is denied and the chat's process closes. In the search, each archived result has an
-  Unarchive button, and Shift+Enter unarchives the selected one. Unarchiving, or sending the session a
-  message, brings it back to the group, pin or routine it had. Desktop's records are read only, so Capcom
-  keeps these choices in `layout.json`, and its choice wins over Desktop's archive flag in both directions.
+  ends, the approval is denied and the chat's process closes. The list can take up to 15 seconds to show
+  that a turn has started, so if Archive finds the chat running, it asks first. On a Mac, Cmd+A archives
+  too, and the menu shows the key beside the item, except on a touch screen. The key archives the session
+  whose menu is open, or else the row the keyboard moved to, which shows the focus ring, or else the open
+  chat. A row you clicked shows no ring, so it doesn't count. After the key archives a session the ring
+  moves to the row beside it, so pressing the key again archives that one. When no row is left beside it,
+  the ring moves to the first header, or to the Projects button when there is no header. The key does
+  nothing while the ring is on anything in the list or the projects sidebar that is not a session. Text
+  fields and the forms in the list and the projects sidebar keep Cmd+A as Select All. So does the page
+  when no menu is open, no ring is in the list or the projects sidebar, and there is no session to
+  archive. Capcom leaves Ctrl+A to the browser. For a chat that is working or waiting, Cmd+A asks first with
+  Cancel focused, so Enter or Esc leaves the chat running. Archiving the open chat, from the key or the
+  menu, goes back to the list, where the note shows. Undo then opens the chat again if you are still on the
+  list. In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the
+  selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine
+  it had. Desktop's records are read only, so Capcom keeps these choices in `layout.json`, and its choice
+  wins over Desktop's archive flag in both directions.
 - **Renaming.** Double-click a session's row, or choose Rename in its menu, and a field takes the row's
   place with the title selected. Enter saves, Esc cancels, and a title runs to 120 characters at most. On a
   phone a double tap opens the session, so rename from the menu. Capcom keeps the title in `layout.json`
@@ -152,12 +165,12 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Desktop takes its Capcom title with it.
 - **Keyboard in the list.** The up and down arrows move through the project and section headers and the
   sessions, Home and End jump to either end, and left and right fold a project, a section or a routine's
-  runs. Enter opens the focused session, and the menu key or Shift+F10 opens its menu. With no chat open,
-  up or down steps into the list. Tab reaches the dots on a header, and Enter or Space on them opens the
-  menu. In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab leaves it.
-  In a row's menu the right arrow on Move to opens its list of places, and the left arrow there goes back.
-  In the projects sidebar the up and down arrows, Home and End move between the views and the New project
-  button.
+  runs. Enter opens the focused session, the menu key or Shift+F10 opens its menu, and on a Mac Cmd+A
+  archives it. With no chat open, up or down steps into the list. Tab reaches the dots on a header, and
+  Enter or Space on them opens the menu. In a menu the up and down arrows, Home and End move between items,
+  Esc closes it, and Tab leaves it. In a row's menu the right arrow on Move to opens its list of places,
+  and the left arrow there goes back. In the projects sidebar the up and down arrows, Home and End move
+  between the views and the New project button.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.

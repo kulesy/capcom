@@ -1,8 +1,8 @@
 // Run with `npm test`. The rules of the sidebar tree that need no page: where the arrow keys go, where a group or a session can be
-// moved, what the list shows once a session is archived, and which row takes the focus.
+// moved, what the list shows once a session is archived, which row takes the focus, and which session Cmd+A archives.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -166,4 +166,58 @@ test('the focus has nowhere to go when the row was the only one or is not in the
   assert.equal(neighbour(['a'], 'a'), null);
   assert.equal(neighbour(['a', 'b'], 'x'), null);
   assert.equal(neighbour([], 'a'), null);
+});
+
+const LISTED = ['a', 'b', 'c'];
+const target = facts => archiveTarget({ listed: id => LISTED.includes(id), ...facts });
+
+test('with nothing open the key archives the row showing the focus ring, and that row beats the open session', () => {
+  assert.deepEqual(target({ ringed: 'a' }), { id: 'a' });
+  assert.deepEqual(target({ ringed: 'a', current: 'b' }), { id: 'a' });
+});
+
+test('with no ring the key archives the open session', () => {
+  assert.deepEqual(target({ current: 'b' }), { id: 'b' });
+  assert.deepEqual(target({ ringed: null, current: 'b' }), { id: 'b' });
+});
+
+test('a row or an open session that is not listed is no target, so the browser keeps the key', () => {
+  assert.equal(target({ current: 'gone' }), null);
+  assert.equal(target({ ringed: 'gone', current: 'b' }), null);
+});
+
+test('with no ring and no open session there is nothing to archive and the browser keeps the key', () => {
+  assert.equal(target({}), null);
+  assert.equal(target({ ringed: null, current: null }), null);
+});
+
+test('a row menu names its own row, ahead of the ring and the open session', () => {
+  assert.deepEqual(target({ menu: { session: 'c' }, ringed: 'a', current: 'b' }), { id: 'c' });
+});
+
+test('a header or plus menu takes the key and archives nothing, and so does a row menu whose row has gone', () => {
+  assert.deepEqual(target({ menu: {}, ringed: 'a', current: 'b' }), { id: null });
+  assert.deepEqual(target({ menu: { session: null }, current: 'b' }), { id: null });
+  assert.deepEqual(target({ menu: { session: 'gone' }, current: 'b' }), { id: null });
+});
+
+test('a form or confirm in the list keeps the key, whatever else could be archived', () => {
+  assert.equal(target({ form: true, ringed: 'a', current: 'b' }), null);
+  assert.equal(target({ form: true, current: 'b' }), null);
+});
+
+test('anything modal keeps the key, even with a menu open behind it', () => {
+  assert.equal(target({ modal: true, ringed: 'a', current: 'b' }), null);
+  assert.equal(target({ modal: true, menu: { session: 'c' }, form: true, ringed: 'a', current: 'b' }), null);
+});
+
+test('a ring on a header or a button in the list takes the key and archives nothing, so a press too many spares the open session', () => {
+  assert.deepEqual(target({ ringedOther: true, current: 'b' }), { id: null });
+  assert.deepEqual(target({ ringedOther: true }), { id: null });
+});
+
+test('a menu, a form and anything modal each come before a ring on a header or a button', () => {
+  assert.deepEqual(target({ menu: { session: 'c' }, ringedOther: true, current: 'b' }), { id: 'c' });
+  assert.equal(target({ form: true, ringedOther: true, current: 'b' }), null);
+  assert.equal(target({ modal: true, ringedOther: true, current: 'b' }), null);
 });
