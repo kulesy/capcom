@@ -115,6 +115,16 @@ test('the icon font is served before sign-in, byte for byte, as font/woff2 with 
   assert.ok(Buffer.from(await font.arrayBuffer()).equals(fs.readFileSync(file)));
 });
 
+test('the Geist fonts are served before sign-in, byte for byte, as font/woff2, because the sign-in page draws with them', async () => {
+  const s = await start();
+  for (const name of ['geist-latin', 'geist-latin-ext', 'geist-mono-latin', 'geist-mono-latin-ext']) {
+    const font = await fetch(`http://127.0.0.1:${s.port}/vendor/${name}.woff2`);
+    assert.equal(font.status, 200, name);
+    assert.equal(font.headers.get('content-type'), 'font/woff2', name);
+    assert.ok(Buffer.from(await font.arrayBuffer()).equals(fs.readFileSync(path.join(ROOT, 'public', 'vendor', `${name}.woff2`))), name);
+  }
+});
+
 test('every file served from public/ carries a tag, and a request that sends it back gets a 304 with no body and the same tag and cache rule', async () => {
   const s = await start();
   const files = ['/app.js', '/app.css', '/ui/widget.js', '/vendor/preact.mjs', '/vendor/tabler-icons.min.css', '/vendor/tabler-icons.woff2', '/icon.png', '/manifest.webmanifest'];
@@ -146,7 +156,7 @@ test('a tag is matched the way a browser may write it: with or without W/, in a 
 test('the vendor license texts and notes are not served, signed in or out, because their names have no extension on the served list', async () => {
   const s = await start();
   const { token } = await signIn(s);
-  for (const name of ['LICENSE-tabler-icons', 'LICENSE-preact', 'LICENSE-htm', 'README.md']) {
+  for (const name of ['LICENSE-tabler-icons', 'LICENSE-preact', 'LICENSE-htm', 'LICENSE-geist', 'README.md']) {
     const out = await request(s, 'GET', `/vendor/${name}`);
     assert.match(out.text, /id="password"/, `${name} signed out is the sign-in page`);
     assert.equal(out.headers.etag, undefined, name);
