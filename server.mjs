@@ -39,6 +39,8 @@ const viewers = new Map();
 
 // ---- the session index ---------------------------------------------------------------------------
 
+const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
+
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
   const own = layout.read();
@@ -82,6 +84,9 @@ function buildIndex({ archived = false } = {}) {
     if (Object.hasOwn(own.archived, r.id)) r.archived = true;
     else if (unarchived.has(r.id)) r.archived = false;
     if (r.archived) r.archivedAt = Date.parse(own.archived[r.id]) || r.changedAt || r.lastActivityAt;
+    // Capcom's own title wins over every other, and is applied before the sorts so a group goes by it.
+    const title = ownTitle(own, r.id);
+    if (title) { r.title = title; r.renamed = true; }
   }
 
   const visible = [...rows.values()].filter(r => archived || !r.archived);
@@ -227,7 +232,7 @@ async function handOff(id) {
   if (!t) return;
   if (inDesktop(id)) return markStarted(id, { desktopAt: Date.now() });
   if (!fs.readFileSync(t.file, 'utf8').includes('"type":"custom-title"')) {
-    fs.appendFileSync(t.file, `${JSON.stringify({ type: 'custom-title', customTitle: shortTitle(s.title || 'Capcom session'), sessionId: id })}\n`);
+    fs.appendFileSync(t.file, `${JSON.stringify({ type: 'custom-title', customTitle: shortTitle(ownTitle(layout.read(), id) || s.title || 'Capcom session'), sessionId: id })}\n`);
   }
   // Marked before the link opens, so a failed hand-off is logged once rather than retried into Desktop's window.
   markStarted(id, { desktopAt: Date.now() });
@@ -515,6 +520,7 @@ async function api(req, res, u) {
   }
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned));
+  if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {

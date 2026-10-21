@@ -7,9 +7,9 @@ export const escapeCancels = cancel => e => {
   cancel();
 };
 
-// A name typed into the list. `onSubmit` resolves true when the server took it, and the caller then closes the form.
-// It resolves false when the server refused, and the form stays open to try again.
-export function NameForm({ label, value = '', action, onSubmit, onCancel }) {
+// A name typed into the list, up to `max` characters. `onSubmit` resolves true when the server took it, and the caller then closes
+// the form. It resolves false when the server refused, and the form stays open to try again.
+export function NameForm({ label, value = '', action, max = 80, onSubmit, onCancel }) {
   const [text, setText] = useState(value);
   const [busy, setBusy] = useState(false);
   const input = useRef(null);
@@ -28,7 +28,7 @@ export function NameForm({ label, value = '', action, onSubmit, onCancel }) {
 
   return html`<form class="name-form" ref=${form} onSubmit=${submit} onKeyDown=${escapeCancels(onCancel)}>
     <label class="name-field"><span>${label}</span>
-      <input ref=${input} type="text" value=${text} maxlength="80" autocomplete="off" enterkeyhint="done" onInput=${e => setText(e.currentTarget.value)} /></label>
+      <input ref=${input} type="text" value=${text} maxlength=${max} autocomplete="off" enterkeyhint="done" onInput=${e => setText(e.currentTarget.value)} /></label>
     <button class="button" type="submit" disabled=${busy || !text.trim()}>${action}</button>
     <button class="button" type="button" onClick=${onCancel}>Cancel</button>
   </form>`;

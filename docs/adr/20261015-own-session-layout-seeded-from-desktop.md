@@ -1,9 +1,9 @@
 # Capcom keeps its own session layout, seeded once from Desktop's
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-21
 - Deciders: Eli
 - Date: 2026-10-15
-- Tags: sessions, groups, pins, archive, claude-desktop, drag-and-drop
+- Tags: sessions, groups, pins, archive, rename, claude-desktop, drag-and-drop
 
 ## Context and Problem Statement
 
@@ -28,9 +28,9 @@ Where should the groups and pins live, and how does the layout Desktop holds tod
 
 Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because it is the only option the owner can change from Capcom, and after the first start it does not depend on Desktop's files.
 
-- `layout.json` in Capcom's state folder holds the projects (an id and a name), the groups (an id, a name and the project each is in, if any), the group each session is in, keyed by the CLI session id, the pinned sessions, the sessions archived in Capcom with the time of each, and the sessions brought back from Desktop's archive. Capcom writes it to a temporary file and renames it over the old one. It reads the file on every list refresh, so a hand edit shows without a restart, and an unreadable file is reported at the top of the list and never written over.
+- `layout.json` in Capcom's state folder holds the projects (an id and a name), the groups (an id, a name and the project each is in, if any), the group each session is in, keyed by the CLI session id, the pinned sessions, the sessions archived in Capcom with the time of each, the sessions brought back from Desktop's archive, and the title of each session renamed in Capcom. Capcom writes it to a temporary file and renames it over the old one. It reads the file on every list refresh, so a hand edit shows without a restart, and an unreadable file is reported at the top of the list and never written over.
 - The first time Capcom starts without a `layout.json`, it copies Desktop's groups, memberships and pins in, mapping Desktop's local session ids to CLI session ids, and records when. A session that Desktop shows as pinned and in a group is copied as pinned only. If Desktop's files cannot be read at that start, the layout starts empty and Capcom tries again on each later start. Anything the owner placed in Capcom before the copy keeps its place.
-- From then on Capcom's layout is the only source of groups and pins, and Desktop's later changes are ignored. Titles, folders, archive state and routines still come from Desktop's records, read only, except where Capcom has made its own archive choice (see the second and fourth amendments below).
+- From then on Capcom's layout is the only source of groups and pins, and Desktop's later changes are ignored. Titles, folders, archive state and routines still come from Desktop's records, read only, except where Capcom has made its own archive choice (see the second and fourth amendments below) or renamed a session (see the fifth amendment below).
 - A session is in one place: a group, Pinned or neither. Pinning takes it out of its group, as in Desktop. Moving it into a group, or out of its group, takes it out of Pinned.
 - `POST api/layout/move` (`{ id, group }`, a `group` of null meaning ungrouped) and `POST api/layout/pin` (`{ id, pinned }`) change the layout. Both refuse a session or a group that Capcom does not know.
 - In the list, a row is dragged onto a group, Pinned, Ungrouped, Started here or Terminal and other. Routines is not a target. The drag uses pointer events, so one implementation serves a mouse, which drags after a few pixels, and a finger, which drags after a 350 ms long press.
@@ -43,16 +43,21 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 
 **Amended 2026-10-18.** Capcom archives and unarchives sessions itself, from a menu on each row and from the search. `layout.json` gains `archived`, which maps a CLI session id to the time Capcom archived it. `POST api/layout/archive` (`{ id, archived }`) puts a session in `archived` and takes it out of `unarchived`, or the reverse. It keeps the first time when the session is already in `archived`. The list takes Capcom's choice over Desktop's flag: a session in `archived` is archived, otherwise one in `unarchived` is not, otherwise Desktop's flag stands. Capcom never writes Desktop's record, so any session can be archived, whichever app started it. The search lists the archive by the time Capcom archived each session, or by the time Desktop last wrote the record of one only Desktop archived. Ungrouped, Started here and Terminal and other keep every session Capcom brought back, even when it is older than their newest 60, and a routine keeps one past its 12 earlier runs, so a session unarchived without a message can still be found. Archiving a chat that Capcom runs stops it: a turn in progress is interrupted, an approval it waits on is denied and its process closes. A message still unarchives a session and starts its chat again. A Capcom from before the second amendment drops `archived` the next time it moves or pins a session. One from that amendment onward keeps `archived` but does not read it, so it lists the sessions archived in Capcom until this version runs again. Checked by running those versions' layout modules on a scratch file.
 
+**Amended 2026-10-21.** Capcom renames sessions itself, from a double click on a row and from the row's menu, which also gains Move to. `layout.json` gains `titles`, which maps a CLI session id to the title Capcom shows for it. `POST api/layout/rename` (`{ id, title }`) sets one, as a single line of text of 120 characters at most, and refuses a blank or longer title, a title that is not text, and a session Capcom does not know. The list takes Capcom's title over every other, for every session: the title in Desktop's record, the transcript's custom title or first prompt, and the title Capcom started a session with. It applies the title before it sorts, so a group places the session by its new name, and the search, the archive list and the open chat's header carry it too. The title shows in Capcom only. Capcom writes neither Desktop's files, which are off limits and which Desktop writes over, nor the transcript, which belongs to the CLI, so Desktop and the terminal keep the titles they have. A Capcom-started session handed to Desktop (see the [hand-off decision](20261014-hand-new-sessions-to-desktop.md)) takes its Capcom title into the `custom-title` line the hand-off already writes, cut to 60 characters as the hand-off cuts any title. A rename after the hand-off does not reach Desktop. Move to in the row's menu uses the same `POST api/layout/move` and `POST api/layout/pin` as a drop. It lists Pinned, each group (a project's groups under the project's name) and the loose list the session came from, leaving out the place the session is already in. For a routine's run that was moved into a group or pinned, it also offers Routines, which takes the run out of its group or Pinned, as a drop on a loose list does. A Capcom from before the second amendment drops `titles` the next time it moves or pins a session. One from that amendment onward keeps `titles` but does not show them. Checked by running those versions' layout modules on a scratch file.
+
 ### Consequences
 
 - ✅ The owner can move and pin sessions from Capcom, on a phone too, and Desktop cannot overwrite the result.
 - ✅ A Desktop update that moves its settings no longer takes the groups away.
 - ✅ The owner can archive any session from Capcom, on a phone too, and bring one back without sending it a message.
+- ✅ The owner can rename any session from Capcom, on a phone too, and a rename touches neither Desktop's files nor a transcript.
 - ❌ Desktop's later changes to its groups and pins do not reach Capcom, so the two layouts drift apart from the first start.
 - ❌ Capcom has no screen yet to rename, delete or reorder groups. Until it has, the owner edits `layout.json`. It creates groups and projects from menus (see the third amendment above).
 - ❌ Ungrouped, Started here and Terminal and other still show their newest 60 sessions each, so a session moved out of a group that is older than those may not show, unless it was brought back from the archive.
 - ❌ Capcom's archive and Desktop's drift apart. A session archived in Capcom still shows in Desktop, and one Capcom brought back stays archived there.
 - ❌ Undo after Stop and archive brings the session back to the list, but the stopped turn does not resume.
+- ❌ A Capcom title shows in Capcom only, so Desktop and the terminal keep the old title, and a title changed in Desktop afterwards does not show in Capcom.
+- ❌ Capcom has no way yet to take a title off, so a session keeps its Capcom title until `titles` in `layout.json` is edited.
 
 ## Pros and Cons of the Options
 

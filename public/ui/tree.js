@@ -9,11 +9,35 @@ export function nextStop(count, at, key, start = 0) {
   return to < count ? to : -1;
 }
 
+// Dropped on any of these, a session leaves its group and shows in the one that matches the app it came from.
+export const LOOSE_HOME = { capcom: 'started', desktop: 'ungrouped', cli: 'other' };
+export const LOOSE_NAMES = { started: 'Started here', ungrouped: 'Ungrouped', other: 'Terminal and other' };
+export const looseHome = row => (row.routine ? null : LOOSE_HOME[row.source]);
+
+// The longest session title the rename form allows. The server holds the same limit as MAX_TITLE in lib/layout.mjs.
+export const TITLE_MAX = 120;
+
 // Where a group can go from where it is: the top level when it is in a project, and each project it is not in.
 export const moveTargets = (projects, group) => [
   ...(group.project ? [{ label: 'Move to top level', project: null }] : []),
   ...projects.filter(p => p.id !== group.project).map(p => ({ label: `Move to ${p.name}`, project: p.id })),
 ];
+
+// Where a session can go from where it is, in sidebar order, with its own place left out. A project's groups come as one
+// { group, items } entry under the project's name. A routine run in a group or pinned can go back to Routines.
+export function sessionTargets(ix, row) {
+  const own = row.pinned ? null : row.group;
+  const placed = row.pinned || !!row.group;
+  const groups = list => list.filter(g => g.id !== own).map(g => ({ label: g.name, section: g.id }));
+  const home = placed ? looseHome(row) : null;
+  return [
+    ...(row.routine && placed ? [{ label: 'Routines', section: 'routines' }] : []),
+    ...(row.pinned ? [] : [{ label: 'Pinned', section: 'pinned' }]),
+    ...ix.projects.map(p => ({ group: p.name, items: groups(ix.groups.filter(g => g.project === p.id)) })).filter(entry => entry.items.length),
+    ...groups(ix.groups.filter(g => !g.project)),
+    ...(home ? [{ label: LOOSE_NAMES[home], section: home }] : []),
+  ];
+}
 
 // The list with a session taken out of every place it shows. A routine whose latest run it was shows its next run instead,
 // and a routine with no run left is gone.

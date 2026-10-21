@@ -25,8 +25,8 @@ const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
 
 test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [], archived: {} });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [], archived: {} });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [], archived: {}, titles: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {} });
 });
 
 test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
@@ -37,7 +37,7 @@ test('archiving records when, takes the session out of the unarchived list, and 
   assert.deepEqual(Object.keys(archived), ['s1']);
   assert.equal(new Date(archived.s1).toISOString(), archived.s1);
   assert.ok(Date.parse(archived.s1) >= before && Date.parse(archived.s1) <= Date.now(), archived.s1);
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], archived, unarchived: ['s2'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, archived, unarchived: ['s2'] });
   assert.deepEqual(f.layout.read().archived, archived);
 });
 
@@ -57,7 +57,7 @@ test('unarchiving takes a session out of the archived list, adds it to the unarc
   f.layout.unarchive('s1');
   f.layout.unarchive('s1');
   f.layout.unarchive('s3');
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
 });
 
 test('unarchiving writes nothing when the session is unarchived already, and a session in both lists leaves the archived one', () => {
@@ -85,13 +85,14 @@ test('a layout file that cannot be read is reported, and no change is written ov
     l => l.pin('s1', true),
     l => l.archive('s1'),
     l => l.unarchive('s1'),
+    l => l.rename('s1', 'New title'),
     l => l.addProject('Work'),
     l => l.renameProject('cp-a', 'Home'),
     l => l.removeProject('cp-a'),
     l => l.addGroup('Notes'),
     l => l.moveGroup('cg-a', null),
   ];
-  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), JSON.stringify({ ...OLD, archived: [] }), JSON.stringify({ ...OLD, archived: 'yesterday' }), JSON.stringify({ ...OLD, archived: null }), '[]']) {
+  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), JSON.stringify({ ...OLD, archived: [] }), JSON.stringify({ ...OLD, archived: 'yesterday' }), JSON.stringify({ ...OLD, archived: null }), JSON.stringify({ ...OLD, titles: [] }), JSON.stringify({ ...OLD, titles: 'Plan' }), JSON.stringify({ ...OLD, titles: null }), '[]']) {
     const f = folder(text);
     assert.match(f.layout.read().problem, /^layout\.json cannot be read: /, text);
     for (const edit of edits) assert.throws(() => edit(f.layout), { status: 500, message: /layout\.json cannot be read/ }, `${edit} on ${text}`);
@@ -124,6 +125,7 @@ const WITH_PROJECTS = {
   groups: [{ id: 'cg-a', name: 'Reviewing', project: 'cp-a', colour: 'blue' }, { id: 'cg-b', name: 'Backlog', project: 'cp-b' }, { id: 'cg-c', name: 'Loose' }],
   unarchived: ['s5'],
   archived: { s6: FIRST },
+  titles: { s7: 'Named here' },
 };
 const ID = /^c[pg]-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -165,6 +167,28 @@ test('renaming a project changes its name and nothing else', () => {
   const renamed = f.layout.renameProject('cp-b', ' Garden plans ');
   assert.deepEqual(renamed, { id: 'cp-b', name: 'Garden plans' });
   assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, projects: [WITH_PROJECTS.projects[0], renamed] });
+});
+
+test('renaming a session keeps its title by id as one line of text, replaces an earlier one, and keeps everything else in the file', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true } });
+  assert.equal(f.layout.rename('s1', '  <b>Plan</b>\n\tthe   week \u202E '), '<b>Plan</b> the week');
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true }, titles: { s7: 'Named here', s1: '<b>Plan</b> the week' } });
+  assert.equal(f.layout.rename('s1', 'Plan the month'), 'Plan the month');
+  assert.equal(f.layout.rename('s7', 'Renamed'), 'Renamed');
+  assert.deepEqual(f.layout.read().titles, { s7: 'Renamed', s1: 'Plan the month' });
+  assert.deepEqual({ ...f.onDisk(), titles: WITH_PROJECTS.titles }, { ...WITH_PROJECTS, later: { kept: true } }, 'only the titles changed');
+});
+
+test('a title must be text with something in it and no more than 120 characters, and a refused title writes nothing', () => {
+  const f = folder(WITH_PROJECTS);
+  const before = fs.readFileSync(f.file, 'utf8');
+  for (const bad of [undefined, null, 5, {}, ['a'], '', '   ', '\n\t', '\u0000\u0007', '\u200B', '\u2800', '\u202E', 'x'.repeat(121), '🙂'.repeat(121)]) {
+    assert.throws(() => f.layout.rename('s1', bad), { status: 400 }, JSON.stringify(bad));
+  }
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+  assert.equal(f.layout.rename('s1', 'x'.repeat(120)).length, 120);
+  assert.equal([...f.layout.rename('s2', '🙂'.repeat(120))].length, 120);
+  assert.equal(f.layout.rename('s3', `${'x'.repeat(120)}   `).length, 120, 'spaces that are trimmed off do not count');
 });
 
 test('a group is added to the end of the groups, inside a project or at the top level', () => {

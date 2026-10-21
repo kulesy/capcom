@@ -32,15 +32,22 @@ function Notice({ ctrl }) {
 }
 
 // `row` is the list's entry for the session, which names it until the transcript answers. It is read once, so a
-// fresh copy of the list never redraws the chat.
-export const ChatPane = memo(function ChatPane({ id, row, refreshIndex }) {
+// fresh copy of the list never redraws the chat. Only `title`, which is passed apart, is followed, so a rename in the list reaches
+// the header and the page title. The list's title wins over the chat's own, including one from a first page of messages that left
+// the server before the rename.
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex }) {
   const held = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
   const ctrl = held.current;
+  const named = useStore(ctrl.store, s => s.session?.title);
   useLayoutEffect(() => {
     ctrl.open();
     return ctrl.close;
   }, [ctrl]);
+  useLayoutEffect(() => {
+    const { session } = ctrl.store.get();
+    if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
+  }, [ctrl, title, named]);
   return html`<section class="session" id="session">
     <${ChatHead} ctrl=${ctrl} />
     <${Transcript} ctrl=${ctrl} />
@@ -52,4 +59,4 @@ export const ChatPane = memo(function ChatPane({ id, row, refreshIndex }) {
       <${Composer} ctrl=${ctrl} />
     </div>
   </section>`;
-}, (a, b) => a.id === b.id && a.refreshIndex === b.refreshIndex);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex);

@@ -1,8 +1,8 @@
-// Run with `npm test`. The rules of the sidebar tree that need no page: where the arrow keys go, where a group can be moved,
-// what the list shows once a session is archived, and which row takes the focus.
+// Run with `npm test`. The rules of the sidebar tree that need no page: where the arrow keys go, where a group or a session can be
+// moved, what the list shows once a session is archived, and which row takes the focus.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveTargets, neighbour, nextStop, withoutRow } from '../public/ui/tree.js';
+import { LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -36,6 +36,76 @@ test('a group at the top level can go to any project, and one in a project can a
 test('a group has nowhere to go with no project, and in the only project it can only leave', () => {
   assert.deepEqual(moveTargets([], { id: 'cg-a', project: null }), []);
   assert.deepEqual(moveTargets([PROJECTS[0]], { id: 'cg-a', project: 'cp-a' }), [{ label: 'Move to top level', project: null }]);
+});
+
+const PLACES = {
+  projects: [{ id: 'cp-a', name: 'Capcom' }, { id: 'cp-b', name: 'Notes' }, { id: 'cp-c', name: 'Solo' }],
+  groups: [
+    { id: 'cg-1', name: 'Work', project: 'cp-a' },
+    { id: 'cg-2', name: 'Home', project: null },
+    { id: 'cg-3', name: 'Ideas', project: 'cp-b' },
+    { id: 'cg-4', name: 'Review', project: 'cp-a' },
+    { id: 'cg-5', name: 'Only', project: 'cp-c' },
+    { id: 'cg-6', name: 'Later', project: null },
+  ],
+};
+const WORK = { group: 'Capcom', items: [{ label: 'Work', section: 'cg-1' }, { label: 'Review', section: 'cg-4' }] };
+const IDEAS = { group: 'Notes', items: [{ label: 'Ideas', section: 'cg-3' }] };
+const ONLY = { group: 'Solo', items: [{ label: 'Only', section: 'cg-5' }] };
+const TOP = [{ label: 'Home', section: 'cg-2' }, { label: 'Later', section: 'cg-6' }];
+const PINNED = { label: 'Pinned', section: 'pinned' };
+const ROUTINES = { label: 'Routines', section: 'routines' };
+const targets = (extra = {}) => sessionTargets(PLACES, { id: 'x', source: 'desktop', group: null, pinned: false, routine: null, ...extra });
+
+test('a session leaves for the loose list of the app it came from, and a routine run has no loose list', () => {
+  assert.deepEqual(LOOSE_HOME, { capcom: 'started', desktop: 'ungrouped', cli: 'other' });
+  assert.deepEqual(LOOSE_NAMES, { started: 'Started here', ungrouped: 'Ungrouped', other: 'Terminal and other' });
+  assert.deepEqual(['capcom', 'desktop', 'cli'].map(source => looseHome({ source, routine: null })), ['started', 'ungrouped', 'other']);
+  assert.equal(looseHome({ source: 'desktop', routine: 'nightly' }), null);
+});
+
+test('a loose session can go to Pinned, then each project\'s groups under the project, then the top-level groups, and not back where it is', () => {
+  assert.deepEqual(targets(), [PINNED, WORK, IDEAS, ONLY, ...TOP]);
+  assert.deepEqual(targets({ source: 'capcom' }), [PINNED, WORK, IDEAS, ONLY, ...TOP]);
+  assert.deepEqual(targets({ source: 'cli' }), [PINNED, WORK, IDEAS, ONLY, ...TOP]);
+});
+
+test('a session in a group can go to every place but that group, and back to the loose list of the app it came from', () => {
+  assert.deepEqual(targets({ group: 'cg-4' }), [PINNED, { group: 'Capcom', items: [WORK.items[0]] }, IDEAS, ONLY, ...TOP, { label: 'Ungrouped', section: 'ungrouped' }]);
+  assert.deepEqual(targets({ group: 'cg-2', source: 'capcom' }), [PINNED, WORK, IDEAS, ONLY, TOP[1], { label: 'Started here', section: 'started' }]);
+  assert.deepEqual(targets({ group: 'cg-6', source: 'cli' }).at(-1), { label: 'Terminal and other', section: 'other' });
+});
+
+test('a pinned session has no Pinned to go to, and can go to every group and back to its loose list', () => {
+  assert.deepEqual(targets({ pinned: true }), [WORK, IDEAS, ONLY, ...TOP, { label: 'Ungrouped', section: 'ungrouped' }]);
+  assert.deepEqual(targets({ pinned: true, group: 'cg-1' }), [WORK, IDEAS, ONLY, ...TOP, { label: 'Ungrouped', section: 'ungrouped' }], 'a pinned session shows in Pinned, not in the group it was left assigned to');
+});
+
+test('a project is left out when the only group it has is the session\'s own', () => {
+  assert.deepEqual(targets({ group: 'cg-5', source: 'capcom' }), [PINNED, WORK, IDEAS, ...TOP, { label: 'Started here', section: 'started' }]);
+});
+
+test('a routine run in a group or pinned can also go back to Routines, which comes first, and has no loose list to go to', () => {
+  assert.deepEqual(targets({ routine: 'nightly', group: 'cg-1' }), [ROUTINES, PINNED, { group: 'Capcom', items: [WORK.items[1]] }, IDEAS, ONLY, ...TOP]);
+  assert.deepEqual(targets({ routine: 'nightly', pinned: true }), [ROUTINES, WORK, IDEAS, ONLY, ...TOP]);
+});
+
+test('a routine run that is neither in a group nor pinned is already under its routine', () => {
+  assert.deepEqual(targets({ routine: 'nightly' }), [PINNED, WORK, IDEAS, ONLY, ...TOP]);
+});
+
+test('with no projects or groups a session can only be pinned or unpinned, and one with nowhere to go has no targets', () => {
+  const bare = { projects: [], groups: [] };
+  assert.deepEqual(sessionTargets(bare, { id: 'x', source: 'desktop', group: null, pinned: false, routine: null }), [PINNED]);
+  assert.deepEqual(sessionTargets(bare, { id: 'x', source: 'desktop', group: null, pinned: true, routine: null }), [{ label: 'Ungrouped', section: 'ungrouped' }]);
+  assert.deepEqual(sessionTargets(bare, { id: 'x', source: 'unknown', group: null, pinned: true, routine: null }), []);
+});
+
+test('the targets are plain data and the list they were made from is not changed', () => {
+  const before = JSON.stringify(PLACES);
+  const made = targets({ group: 'cg-1' });
+  assert.deepEqual(JSON.parse(JSON.stringify(made)), made);
+  assert.equal(JSON.stringify(PLACES), before);
 });
 
 const row = (id, extra = {}) => ({ id, title: id, ...extra });

@@ -88,8 +88,12 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the layout starts empty and it tries again on each later start. Drag a row onto a group to move it there,
   onto Pinned to pin it, or onto Ungrouped, Started here or Terminal and other to take it out of its group.
   Routines is not a place to drop. A mouse drags after a few pixels of movement, a finger after a long
-  press, and Esc cancels. There is no screen yet to rename, delete or reorder groups. Edit `layout.json`
-  for those: Capcom reads it on every refresh, and shows the error at the top of the list if it cannot.
+  press, and Esc cancels. Move to in a row's menu makes the same moves without a drag. It opens a second
+  menu of Pinned, the groups (a project's groups sit under the project's name) and the loose list the
+  session came from, with the place the session is already in left out. A routine's run that was moved into
+  a group or pinned can go back to Routines from there. There is no screen yet to rename, delete or reorder
+  groups. Edit `layout.json` for those: Capcom reads it on every refresh, and shows the error at the top of
+  the list if it cannot.
 - **Projects** are an optional level above groups, so the list can run projects, then groups, then
   sessions. A group belongs to at most one project, and one that belongs to none stays at the top level.
   Routines and Pinned stay above the projects. Project and group headers fold, and the browser remembers
@@ -108,18 +112,27 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   list and turn up here, under their own chip, most recently archived first, and after the live
   matches in any search.
 - **Archiving.** Right-click a session in the list, or press the menu key or Shift+F10 on it, for a menu
-  with Archive. On a phone, long-press the row and let go without moving it. This works for any session,
-  whichever app started it. A note at the top of the list then offers Undo for 10 seconds. When the chat is
-  working or waiting for an approval, the item reads Stop and archive: the turn ends, the approval is
-  denied and the chat's process closes. In the search, each archived result has an Unarchive button, and
-  Shift+Enter unarchives the selected one. Unarchiving, or sending the session a message, brings it back to
-  the group, pin or routine it had. Desktop's records are read only, so Capcom keeps these choices in
-  `layout.json`, and its choice wins over Desktop's archive flag in both directions.
+  with Rename, Move to and Archive. On a phone, long-press the row and let go without moving it. Archive
+  works for any session, whichever app started it. A note at the top of the list then offers Undo for 10
+  seconds. When the chat is working or waiting for an approval, the item reads Stop and archive: the turn
+  ends, the approval is denied and the chat's process closes. In the search, each archived result has an
+  Unarchive button, and Shift+Enter unarchives the selected one. Unarchiving, or sending the session a
+  message, brings it back to the group, pin or routine it had. Desktop's records are read only, so Capcom
+  keeps these choices in `layout.json`, and its choice wins over Desktop's archive flag in both directions.
+- **Renaming.** Double-click a session's row, or choose Rename in its menu, and a field takes the row's
+  place with the title selected. Enter saves, Esc cancels, and a title runs to 120 characters at most. On a
+  phone a double tap opens the session, so rename from the menu. Capcom keeps the title in `layout.json`
+  and shows it in place of every other title, for any session, whichever app started it. It shows in
+  Capcom only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop
+  and the terminal keep the titles they have. A group lists its sessions by the new title, and the search
+  finds them by it. With `desktopHandoff` set to `true`, a session renamed here before it is handed to
+  Desktop takes its Capcom title with it.
 - **Keyboard in the list.** The up and down arrows move through the project and section headers and the
   sessions, Home and End jump to either end, and left and right fold a project, a section or a routine's
   runs. Enter opens the focused session, and the menu key or Shift+F10 opens its menu. With no chat open,
   up or down steps into the list. Tab reaches the dots on a header, and Enter or Space on them opens the
   menu. In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab leaves it.
+  In a row's menu the right arrow on Move to opens its list of places, and the left arrow there goes back.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.

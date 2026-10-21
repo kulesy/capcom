@@ -50,11 +50,14 @@ function App() {
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
   // The old list goes back only while none has been drawn since, or it would undo that one. The reload puts the row back then.
+  // A row's menu can outlive the row when a reload takes it away, so a session that is no longer listed is refused here. It resolves
+  // once the server's list is drawn, so the focus can go back to the row where that list puts it.
   const place = useCallback(async (id, section) => {
     const before = now.current.ix;
+    const pin = section === 'pinned';
+    if (!findRow(before, id)) return `${pin ? 'Not pinned' : 'Not moved'}: that session is no longer in the list.`;
     const guess = placeRow(before, id, section);
     if (guess === before) return '';
-    const pin = section === 'pinned';
     const group = before.groups.some(g => g.id === section) ? section : null;
     const mark = ++latest.current;
     setIx(guess);
@@ -68,7 +71,7 @@ function App() {
       return `${pin ? 'Not pinned' : 'Not moved'}: ${e.message}`;
     } finally {
       writing.current--;
-      loadIndex();
+      await loadIndex();
     }
   }, []);
 
@@ -139,6 +142,7 @@ function App() {
   // A new session needs no list, so it opens at once.
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
+  const row = findRow(ix, id);
   useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
 
   return html`<${Fragment}>
@@ -150,7 +154,7 @@ function App() {
         <p>Pick a session, press ${mod}+K to find one, or ${mod}+N to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${findRow(ix, id)} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
     </main>
     ${finding ? html`<${Spotlight} ix=${ix} archive=${archive} onClose=${() => setFinding(false)} />` : null}
   </div>

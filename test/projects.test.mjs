@@ -192,7 +192,7 @@ test('only a signed-in POST from this site changes anything, and a GET to these 
 });
 
 test('an edit still arriving when the password is changed is refused rather than written afterwards', async () => {
-  for (const [url, edit] of [['project/add', { name: 'Held' }], ['move', { id: 's1', group: 'cg-b' }]]) {
+  for (const [url, edit] of [['project/add', { name: 'Held' }], ['move', { id: 's1', group: 'cg-b' }], ['rename', { id: 's1', title: 'Held' }]]) {
     const { s, token } = await ready();
     const before = fs.readFileSync(s.layout, 'utf8');
     const reply = await postInParts(s, token, url, edit, () => writePassword(s.state, 'the password after the reset'));

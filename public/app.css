@@ -342,6 +342,54 @@ a { color: var(--focus); }
 
 .menu kbd { margin-left: 1.5rem; }
 
+.menu button[aria-haspopup="menu"] { position: relative; padding-right: 1.75rem; }
+
+.menu button[aria-haspopup="menu"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0.9rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: -0.2rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  color: var(--ink-quiet);
+  transform: rotate(-45deg);
+}
+
+.menu-heading {
+  display: block;
+  padding: 0.55rem 0.65rem 0.15rem;
+  overflow: hidden;
+  color: var(--ink-quiet);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.menu [role="group"] button { padding-left: 1.25rem; }
+
+.menu .menu-back {
+  margin-bottom: 0.25rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+  box-shadow: 0 1px 0 var(--rule);
+  font-weight: 600;
+}
+
+.menu .menu-back::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin: 0 0.6rem 0.1rem 0.15rem;
+  border-left: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
 .name-form {
   display: flex;
   align-items: flex-end;
@@ -382,6 +430,8 @@ a { color: var(--focus); }
 
   .menu kbd { display: none; }
 
+  .menu-heading { min-height: 2.75rem; padding-top: 1.5rem; padding-bottom: 0.3rem; }
+
   .note .link { min-height: 2.75rem; margin-block: -0.6rem; padding-inline: 0.5rem; }
 
   .name-field input { min-height: 2.75rem; font-size: 1rem; }
@@ -392,6 +442,10 @@ a { color: var(--focus); }
 }
 
 .rows { list-style: none; margin: 0; padding: 0 0.5rem; }
+
+.rows .name-form { flex-wrap: wrap; padding: 0.25rem 0.5rem 0.45rem; }
+
+.rows .name-field { flex-basis: 100%; }
 
 .row {
   display: grid;

@@ -8,7 +8,7 @@ import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { Menu } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
-import { moveTargets, neighbour, nextStop, withoutRow } from './tree.js';
+import { LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted, marked }) {
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
@@ -19,7 +19,10 @@ function RowLink({ r, title = r.title, current, lifted, marked }) {
     ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
 
-const Row = props => html`<li><${RowLink} ...${props} /></li>`;
+// A row being renamed shows its form where the link was.
+const Row = ({ tree, ...props }) => html`<li>${tree.renaming === props.r.id ? tree.sessionForm(props.r) : html`<${RowLink} ...${props} />`}</li>`;
+
+const rowOf = id => `a.row[data-id="${CSS.escape(id)}"]`;
 
 const dots = () => html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
@@ -42,13 +45,14 @@ function Section({ id, name, count, collapsed, toggle, drop, over, menu, tree, c
 
 // The latest run of a routine, with the earlier ones folded away until asked for.
 // A routine's row opens its latest run. The arrow at its end folds the earlier runs out underneath.
-function Routine({ g, current, lifted, marked, open, onToggle }) {
+function Routine({ g, current, lifted, marked, open, onToggle, tree }) {
   const earlier = g.earlier.length;
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
+  const renaming = tree.renaming === g.latest.id;
   return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
-    <${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} />
-    ${earlier ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}></button>` : null}
-    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} />`)}</ul>` : null}
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} />`}
+    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}></button>` : null}
+    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`)}</ul>` : null}
   </li>`;
 }
 
@@ -56,10 +60,7 @@ export const everyRow = ix => [...ix.pinned, ...ix.groups.flatMap(g => g.session
 
 export const findRow = (ix, id) => (ix ? everyRow(ix).find(r => r.id === id) || null : null);
 
-// Dropped on any of these, a session leaves its group and shows in the one that matches the app it came from.
-const LOOSE_HOME = { capcom: 'started', desktop: 'ungrouped', cli: 'other' };
 const LOOSE = Object.values(LOOSE_HOME);
-const looseHome = row => (row.routine ? null : LOOSE_HOME[row.source]);
 
 // Where a dropped row shows until the server's list arrives and replaces this guess. It returns `ix` itself when the drop changes nothing.
 export function placeRow(ix, id, section) {
@@ -90,7 +91,7 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
   const lifted = drag?.id;
   const marked = tree.shown?.session;
-  const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} />`);
+  const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`);
   const section = (id, name, list, body, { drop = true, always = false, menu = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
     return html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
@@ -109,13 +110,13 @@ function Sections({ ix, current, collapsed, toggle, openRoutines, toggleRoutine,
     </section>`;
   };
   const parts = [
-    section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} /><//>`), { drop: false }),
+    section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
     ...ix.projects.map(project),
     ...ix.groups.filter(g => !g.project).map(group),
-    section('started', 'Started here', ix.started, rows(ix.started)),
-    section('ungrouped', 'Ungrouped', ix.ungrouped, rows(ix.ungrouped)),
-    section('other', 'Terminal and other', ix.other, rows(ix.other)),
+    section('started', LOOSE_NAMES.started, ix.started, rows(ix.started)),
+    section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
+    section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
   ].filter(Boolean);
   return parts.length ? parts : html`<p class="quiet pad">No sessions found.</p>`;
 }
@@ -220,11 +221,25 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
   // Once an archived row has left the list, the focus goes to the row beside it, so the keyboard stays in the list.
   useLayoutEffect(() => {
     if (!after) return;
-    const row = box.current.querySelector(`a.row[data-id="${CSS.escape(after)}"]`);
+    const row = box.current.querySelector(rowOf(after));
     row?.focus({ preventScroll: true });
     row?.scrollIntoView({ block: 'nearest' });
     setAfter(null);
   }, [after]);
+
+  // A rename form lasts only as long as its row is drawn. A reload can take the row away (archived elsewhere, folded among a
+  // routine's earlier runs, past the newest 60), and the form is then dropped rather than coming back unasked later.
+  useLayoutEffect(() => {
+    if (form?.kind === 'session' && !box.current?.querySelector('.name-form')) setForm(null);
+  });
+
+  // The note that says why a change was refused pushes the list down, and can push the open form or the focused row out of view, so
+  // it is brought back.
+  useLayoutEffect(() => {
+    if (!note?.problem) return;
+    const focused = box.current?.contains(document.activeElement) ? document.activeElement : null;
+    (nav.current.querySelector('.name-form') ?? focused)?.scrollIntoView({ block: 'nearest' });
+  }, [note]);
 
   // Sends one change to the layout. It resolves with what the server made, changed or removed, or with null when it refused,
   // and then shows the reason at the top of the list.
@@ -234,17 +249,41 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     return problem ? null : made;
   }
 
-  // Archives a session and says so with a way to undo it, or says why it could not. The row is gone at once, so the focus moves on,
-  // and back to the row if it returns.
-  async function archiveRow(id, title) {
+  // Starts a change that takes the row out of its place and resolves with { problem }. The focus moves on to the row beside it at once,
+  // and back to the row if the change is refused.
+  async function leaving(id, start) {
     const ids = [...box.current.querySelectorAll('a.row[data-id]')].map(a => a.dataset.id);
     // A routine's next run takes the place of its latest, so the focus goes to that run and not past the routine.
     const next = ix.routines.find(g => g.latest.id === id)?.earlier[0]?.id;
-    const done = archive(id, true);
+    const done = start();
     setAfter(next ?? neighbour(ids, id));
-    const { problem, stopped } = await done;
-    if (problem) setAfter(id);
+    const result = await done;
+    if (result.problem) setAfter(id);
+    return result;
+  }
+
+  // Archives a session and says so with a way to undo it, or says why it could not.
+  async function archiveRow(id, title) {
+    const { problem, stopped } = await leaving(id, () => archive(id, true));
     setNote(problem ? problemNote(problem) : { text: `${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, undo: { id, title } });
+  }
+
+  // Moves a session the way a drop does, and says where it went or why it did not. `where` names the place in the note.
+  async function moveRow(id, title, section, where) {
+    const { problem } = await leaving(id, async () => ({ problem: await latestPlace.current(id, section) }));
+    setNote(problem ? problemNote(problem) : { text: section === 'pinned' ? `Pinned ${title}.` : `Moved ${title} to ${where}.` });
+  }
+
+  // Gives a session a title of its own. One no different from the one it has closes the form without asking the server. The form
+  // keeps what was sent, so a reload that draws the row somewhere else draws the form there with it, ready to try again.
+  async function renameRow(r, text) {
+    const clean = value => (value || '').replace(/\s+/g, ' ').trim();
+    const title = clean(text);
+    if (title === clean(r.title)) { closeForm(rowOf(r.id)); return true; }
+    setForm(f => (f?.kind === 'session' && f.session === r.id ? { ...f, sent: text } : f));
+    const done = await change('api/layout/rename', { id: r.id, title });
+    if (done) closeForm(rowOf(r.id));
+    return !!done;
   }
 
   // Takes an archive back, and puts the focus on the row that returns. If the server refuses, the note keeps its Undo button to try again.
@@ -254,19 +293,37 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     setNote(problem ? { ...problemNote(problem), undo: { id, title } } : { text: `Unarchived ${title}.` });
   }
 
-  // The menu of a row, opened by a right click, the menu key or a long press. A chat Capcom is running is stopped as it is archived.
-  latestMenu.current = (id, row, point) => {
+  // The menu of a row, opened by a right click, the menu key or a long press. Move to swaps it for a menu of places at the same spot,
+  // headed by Move to again, which brings the first menu back with the focus on Move to, as the left arrow does. A chat Capcom is
+  // running is stopped as it is archived.
+  latestMenu.current = (id, row, point, start = 0) => {
     const r = findRow(ix, id);
     if (!r) return;
     const title = r.title || UNTITLED;
     const running = r.state === 'working' || r.state === 'waiting';
-    setShown({
-      key: `row-${++opened.current}`,
-      session: id,
-      anchor: row,
-      point,
+    const targets = sessionTargets(ix, r);
+    const show = menu => setShown({ key: `row-${++opened.current}`, session: id, anchor: row, point, ...menu });
+    const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
+    const back = () => latestMenu.current(id, row, point, 1);
+    const moveMenu = {
+      label: `Move ${title} to`,
+      start: 1,
+      onBack: back,
+      items: [
+        { label: 'Move to', back: true, run: back },
+        ...targets.map(t => (t.group
+          ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
+          : choice(t.label, t.section, t.label))),
+      ],
+    };
+    show({
       label: `Actions for ${title}`,
-      items: [{ label: running ? 'Stop and archive' : 'Archive', danger: running, run: () => archiveRow(id, title) }],
+      start,
+      items: [
+        { label: 'Rename', run: () => setForm({ kind: 'session', session: id }) },
+        ...(targets.length ? [{ label: 'Move to', more: true, run: () => show(moveMenu) }] : []),
+        { label: running ? 'Stop and archive' : 'Archive', danger: running, run: () => archiveRow(id, title) },
+      ],
     });
   };
 
@@ -302,6 +359,8 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
     form,
     shown,
     pop,
+    renaming: form?.kind === 'session' ? form.session : null,
+    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} action="Save" max=${TITLE_MAX} onCancel=${() => closeForm(rowOf(r.id))} onSubmit=${text => renameRow(r, text)} />`,
     groupMenu: g => {
       const to = moveTargets(ix.projects, g);
       return to.length ? { label: `Move ${g.name}`, items: to.map(t => ({ label: t.label, run: () => moveGroup(g, t.project) })) } : null;
@@ -329,7 +388,7 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       }} />`,
   };
 
-  const top = form && !form.project ? form : null;
+  const top = form && !form.project && form.kind !== 'session' ? form : null;
   const topForm = !top ? null : top.kind === 'project'
     ? html`<${NameForm} label="New project" action="Create" onCancel=${() => closeForm('.add')}
         onSubmit=${async name => {
@@ -338,6 +397,13 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
           return !!made;
         }} />`
     : html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`;
+
+  // A double click on a row's link renames it, after the first click has opened it as usual. A click with a modifier is left alone.
+  const renameAt = e => {
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const id = e.target.closest?.('a.row[data-id]')?.dataset.id;
+    if (id) setForm({ kind: 'session', session: id });
+  };
 
   return html`<nav class="list" aria-label="Sessions" ref=${nav}>
     <header class="list-head">
@@ -353,7 +419,7 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       : null}</div>
     ${banner}
     ${topForm}
-    <div class="sections" id="sections" ref=${box}>
+    <div class="sections" id="sections" ref=${box} onDblClick=${renameAt}>
       ${ix
         ? html`<${Sections} ix=${ix} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
@@ -362,6 +428,6 @@ export function SessionList({ ix, error, current, place, edit, archive, onFind, 
       <a href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="link" type="submit">Sign out</button></form>
     </footer>
-    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} onClose=${() => setShown(null)} />` : null}
+    ${shown ? html`<${Menu} key=${shown.key} anchor=${shown.anchor} point=${shown.point} label=${shown.label} items=${shown.key === 'add' ? addMenu.items : shown.items} start=${shown.start} onBack=${shown.onBack} onClose=${() => setShown(null)} />` : null}
   </nav>`;
 }
