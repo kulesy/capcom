@@ -61,6 +61,15 @@ export function FolderBar({ ctrl }) {
 // Starting a session replaces this box with the new session's, so focus is handed on to the box that mounts next.
 let keepFocus = false;
 
+// The search opens a chat from the keyboard, and the chat's box mounts a moment later. Only a box that mounts soon after takes the
+// focus, and only where there is a keyboard, so a later chat opened by a tap is left alone.
+let focusNext = false;
+
+export function focusNextComposer() {
+  focusNext = true;
+  setTimeout(() => { focusNext = false; }, 2000);
+}
+
 export function Composer({ ctrl }) {
   const { status, starting } = useFields(ctrl.store, 'status', 'starting');
   const images = useStore(attached, a => a.images);
@@ -91,8 +100,9 @@ export function Composer({ ctrl }) {
   }, [text]);
 
   useLayoutEffect(() => {
-    if (draft || keepFocus) area.current.focus({ preventScroll: true });
+    if (draft || keepFocus || (focusNext && matchMedia('(pointer: fine)').matches)) area.current.focus({ preventScroll: true });
     keepFocus = false;
+    focusNext = false;
     return () => {
       keepFocus = document.activeElement === area.current;
       setTimeout(() => { keepFocus = false; });

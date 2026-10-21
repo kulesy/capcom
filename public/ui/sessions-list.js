@@ -4,11 +4,11 @@
 import { ask } from './ask.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
-import { DeleteProject, NameForm } from './forms.js';
+import { NameForm } from './forms.js';
 import { folderName, STATE_LABEL, when } from './format.js';
 import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
-import { icons, layerId, Menu, opener } from './menu.js';
+import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { byRecent, byTitle, UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
@@ -17,11 +17,12 @@ import { say } from './toast.js';
 import { archiveTarget, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
 
 function RowLink({ r, title = r.title, current, lifted, marked }) {
-  const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join('  ');
+  const at = when(r.lastActivityAt);
+  const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} aria-current=${current === r.id ? 'page' : null}>
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
     <span class="row-title">${title || UNTITLED}</span>
-    <time class="row-time">${when(r.lastActivityAt)}</time>
+    ${title === at ? null : html`<time class="row-time">${at}</time>`}
     ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
 
@@ -32,6 +33,16 @@ const rowOf = id => `a.row[data-id="${CSS.escape(id)}"]`;
 
 const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
 
+const chevron = () => draw(['m9 18 6-6-6-6'], 'chevron');
+
+const Empty = ({ paths, title, children }) => html`<div data-slot="empty">
+  <div data-slot="empty-header">
+    <div data-slot="empty-icon" data-variant="icon">${draw(paths)}</div>
+    <div data-slot="empty-title">${title}</div>
+    <div data-slot="empty-description">${children}</div>
+  </div>
+</div>`;
+
 // The header of a project or a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click, at the pointer, or the menu key, under the button.
 function Head({ id, name, count, open, toggle, menu, tree, project }) {
@@ -39,8 +50,8 @@ function Head({ id, name, count, open, toggle, menu, tree, project }) {
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
   return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
-    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span></button>
-    ${menu ? html`<button class="btn more" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
+    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
+    ${menu ? html`<button class="more" type="button" aria-label=${menu.label} title=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
   </div>`;
 }
 
@@ -59,7 +70,7 @@ function Routine({ g, current, lifted, marked, open, onToggle, tree }) {
   const renaming = tree.renaming === g.latest.id;
   return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
     ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} />`}
-    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}></button>` : null}
+    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} title=${runs} onClick=${() => onToggle(g.name)}>${chevron()}</button>` : null}
     ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`)}</ul>` : null}
   </li>`;
 }
@@ -93,7 +104,7 @@ export function placeRow(ix, id, section) {
 
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
 // A group always shows, empty or not, and so does the project in view, so one that was just made can be found and filled.
-function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRoutine, drag, tree }) {
+function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRoutine, drag, tree, newKey }) {
   const carried = drag && findRow(ix, drag.id);
   const over = drag?.over;
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
@@ -113,9 +124,8 @@ function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRo
     const editing = tree.form?.project === p.id ? tree.form.kind : null;
     return html`<section class="project" key=${p.id}>
       ${editing === 'rename' ? tree.renameForm(p)
-        : editing === 'delete' ? tree.deleteForm(p, groups.length)
         : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + g.sessions.length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
-      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<p class="drop-hint">No groups yet. Make one with New group, or move one here from a group's menu in Home.</p>`}</div>` : null}
+      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<${Empty} paths=${icons.folderPlus} title="No groups yet">Make one with New group, or move one here from a group's menu in Home.<//>`}</div>` : null}
     </section>`;
   };
   const parts = [
@@ -127,7 +137,7 @@ function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRo
     home && section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
     home && section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
   ].filter(Boolean);
-  return parts.length ? parts : html`<p class="quiet pad">No sessions found.</p>`;
+  return parts.length ? parts : html`<${Empty} paths=${icons.messageSquarePlus} title="No sessions found">Press <kbd>${newKey}</kbd> to start one.<//>`;
 }
 
 // The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a project, a section or a
@@ -142,7 +152,7 @@ function stopBeside(el) {
 }
 
 function walk(e, box) {
-  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form, .confirm')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form')) return;
   const stops = [...box.querySelectorAll(STOPS)];
   const at = stops.indexOf(stopBeside(document.activeElement));
   const go = el => { e.preventDefault(); el.focus(); el.scrollIntoView({ block: 'nearest' }); };
@@ -308,7 +318,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     // A refusal shows in the list's note, so a list hidden behind the chat is brought back to show it.
     if (onScreen && (!problem || !box.current.getClientRects().length)) location.hash = '#/';
     if (problem) problemNote(problem);
-    else say(`${stopped ? 'Stopped and archived' : 'Archived'} ${title}.`, { action: undoAction({ id, title, reopen: onScreen }) });
+    else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”.`, { action: undoAction({ id, title, reopen: onScreen }) });
   }
 
   const confirmStop = (id, title, { back, ring } = {}) => ask({ action: 'Stop and archive', title, detail: STOP_DETAIL, back, run: () => archiveRow(id, title, { ring }) });
@@ -316,7 +326,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   // Moves a session the way a drop does, and says where it went or why it did not. `where` names the place in the note.
   async function moveRow(id, title, section, where) {
     const { problem } = await leaving(id, async () => ({ problem: await latestPlace.current(id, section) }));
-    say(problem || (section === 'pinned' ? `Pinned ${title}.` : `Moved ${title} to ${where}.`), { problem: !!problem });
+    say(problem || (section === 'pinned' ? `Pinned “${title}”.` : `Moved “${title}” to ${where}.`), { problem: !!problem });
   }
 
   // Gives a session a title of its own. One no different from the one it has closes the form without asking the server. The form
@@ -340,7 +350,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       if (reopen && (!location.hash || location.hash === '#/')) location.hash = `#/s/${encodeURIComponent(id)}`;
     }
     if (problem) say(problem, { problem: true, action: undoAction({ id, title, reopen }) });
-    else say(`Unarchived ${title}.`);
+    else say(`Unarchived “${title}”.`);
   }
 
   const undoAction = note => ({ label: 'Undo', onClick: () => undo(note) });
@@ -390,7 +400,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     const target = archiveTarget({
       modal: !!document.querySelector('[aria-modal="true"], [data-slot$="dialog-content"]'),
       menu: shown && { session: shown.session },
-      form: inList && !!el.closest('form, .confirm'),
+      form: inList && !!el.closest('form'),
       ringed: row ? el.dataset.id : null,
       ringedOther: ringed && !row,
       current,
@@ -433,7 +443,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     const to = ix.projects.find(p => p.id === project)?.name ?? 'Home';
     const moved = await change('api/layout/group/move', { id: g.id, project });
     if (moved && project) expand(project);
-    if (moved) say(`Moved ${g.name} to ${to}.`);
+    if (moved) say(`Moved “${g.name}” to ${to}.`);
     setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
   }
 
@@ -452,6 +462,22 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     return !!made;
   }
 
+  // Asks before a project goes, and says what happens to its groups. Cancel has the focus, so Enter does no harm. The project's header
+  // is gone once the view is Home, so the focus then goes to the + button, whichever of the two arrives first.
+  function deleteProject(p) {
+    const groups = ix.groups.filter(g => g.project === p.id).length;
+    const detail = groups ? `Its ${groups === 1 ? 'group moves' : `${groups} groups move`} to Home. No group or session is deleted.` : 'It has no groups.';
+    ask({
+      action: 'Delete project',
+      title: p.name,
+      detail,
+      back: () => nav.current.querySelector(headOf(p.id)) ?? nav.current.querySelector('.add'),
+      run: async () => {
+        if (await change('api/layout/project/remove', { id: p.id })) { projects.choose(null); setBack(['.add']); }
+      },
+    });
+  }
+
   const tree = {
     form,
     shown,
@@ -468,7 +494,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
         { label: 'New group here', icon: icons.folderPlus, run: () => { expand(p.id); setForm({ kind: 'group', project: p.id }); } },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
         { separator: true },
-        { label: 'Delete project', icon: icons.trash, danger: true, run: () => setForm({ kind: 'delete', project: p.id }) },
+        { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
       ],
     }),
     groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} action="Create" onSubmit=${name => addGroup(name, p.id)} onCancel=${() => closeForm(headOf(p.id))} />`,
@@ -476,12 +502,6 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       onSubmit=${async name => {
         const done = await change('api/layout/project/rename', { id: p.id, name });
         if (done) closeForm(headOf(p.id));
-        return !!done;
-      }} />`,
-    deleteForm: (p, groups) => html`<${DeleteProject} name=${p.name} groups=${groups} onCancel=${() => closeForm(headOf(p.id))}
-      onConfirm=${async () => {
-        const done = await change('api/layout/project/remove', { id: p.id });
-        if (done) { projects.choose(null); closeForm('.add'); }
         return !!done;
       }} />`,
   };
@@ -503,10 +523,10 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   <nav class="list" aria-label="Sessions" ref=${nav}>
     <header class="list-head">
       <${ProjectsToggle} projects=${projects} />
-      <div class="brand"><span class="station">${STATION}</span><h1>Capcom</h1></div>
+      <div class="brand"><h1>Capcom</h1><span class="station">${STATION}</span></div>
       <div class="list-actions">
-        <button class="btn add" data-variant="ghost" data-size="icon" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        <button class="btn find" data-variant="ghost" data-size="icon" type="button" aria-label="Find a session" title=${`Find a session (${keyHint(mod, 'K')})`} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} title=${addMenu.label} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" title=${`Find a session (${keyHint(mod, 'K')})`} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       </div>
     </header>
     <p class="problem" id="problem" hidden=${!ix?.problem}>${ix?.problem ? `${ix.problem}.` : ''}</p>
@@ -514,7 +534,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt}>
       ${ix
-        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} newKey=${keyHint(mod, 'N')} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">

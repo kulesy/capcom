@@ -7,7 +7,7 @@ import { createStore } from './store.js';
 
 const asked = createStore({ queue: [] });
 
-// Asks "<action> <title>?" with `detail` under it, and calls `run` if the owner confirms. Declining puts the focus on what `back()`
+// Asks "<action> “<title>”?" with `detail` under it, and calls `run` if the owner confirms. Declining puts the focus on what `back()`
 // gives, or else on what had it. A question asked while another is open waits its turn, and gives the focus back to the same place.
 export function ask({ action, title, detail, run, back }) {
   const { queue } = asked.get();
@@ -31,7 +31,7 @@ function Ask({ open, action, title, detail, run, back, from }) {
 
   return html`<${Dialog} alert open=${open} labelledBy="ask-title" describedBy="ask-detail" initial=${cancel} restoreTo=${() => back?.() ?? from} onClose=${settle}>
     <div data-slot="alert-dialog-header">
-      <h2 id="ask-title" data-slot="alert-dialog-title">${action} ${title}?</h2>
+      <h2 id="ask-title" data-slot="alert-dialog-title">${action} “${title}”?</h2>
       <p id="ask-detail" data-slot="alert-dialog-description">${detail}</p>
     </div>
     <div data-slot="alert-dialog-footer">

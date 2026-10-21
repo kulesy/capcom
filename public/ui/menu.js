@@ -25,7 +25,7 @@ export const icons = {
   trash: ['M3 6h18', 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6', 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2', 'M10 11v6', 'M14 11v6'],
 };
 
-const draw = (paths, className) => html`<svg class=${className} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map(d => html`<path d=${d} />`)}</svg>`;
+export const draw = (paths, className) => html`<svg class=${className} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map(d => html`<path d=${d} />`)}</svg>`;
 
 // The id of a menu's element, which the button that opened it names in aria-controls. `path` names a sub-menu: 2.0 is the first item
 // of the third item's menu.

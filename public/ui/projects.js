@@ -113,7 +113,7 @@ const sidebar = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-
 export function ProjectsToggle({ projects }) {
   const { open, toggle, opener, elsewhere } = projects;
   const mod = useModifier();
-  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded=${open}
+  return html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${opener} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded=${open}
     aria-controls=${open ? PANEL : null} aria-describedby=${elsewhere ? 'projectsElsewhere' : null} onClick=${toggle}>
     ${sidebar()}
     ${elsewhere ? html`<span class="dot" aria-hidden="true"></span><span class="sr" id="projectsElsewhere">A chat in another view needs you</span>` : null}
@@ -171,17 +171,17 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
   const lamp = id => (ix ? lampOf(ix, id) : null);
   return html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
-      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
+      ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${toggle} aria-label="Projects" title=${`Projects (${keyHint(mod, 'B')})`} aria-expanded="true" onClick=${() => closeLevel()}>${sidebar()}</button>`}
       <h2 class="rail-title" id="projectsTitle">Projects</h2>
     </div>
     <ul class="scopes">
       <${Scope} key="home" home=${true} name="Home" lamp=${lamp(HOME_VIEW)} current=${view === HOME_VIEW} onPick=${e => pick(e, HOME_VIEW)} />
       <li class="scope-rule" aria-hidden="true"></li>
       ${(ix?.projects || []).map(p => html`<${Scope} key=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => pick(e, p.id)} />`)}
+      <li>${creating
+        ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
+        : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>
     </ul>
-    ${creating
-      ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
-      : html`<button class="btn new-project" data-variant="ghost" type="button" disabled=${!ix} onClick=${begin}>${plus()}New project</button>`}
     <div role="status">${creating && reason ? html`<p class="problem">${reason}</p>` : null}</div>
   </nav>`;
 }
