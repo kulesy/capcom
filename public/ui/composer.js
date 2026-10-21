@@ -114,7 +114,7 @@ export function Composer({ ctrl }) {
   // A layout effect, so Esc cannot reach a chat that has just closed.
   useLayoutEffect(() => {
     const onKey = e => {
-      if (e.key !== 'Escape' || e.isComposing) return;
+      if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented) return;
       const c = now.current;
       if (!c.draft && c.busy) c.ctrl.stop();
     };

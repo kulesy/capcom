@@ -161,7 +161,8 @@ export function installTooltips() {
   on('focusout', e => { if (tip && triggerOf(e.target) === tip.trigger) hide(); });
 
   // Esc hides the tooltip and goes on to whatever else it closes, so a tooltip on a dialog's own button cannot cost a second press.
-  on('keydown', e => { touched = false; if (e.key === 'Escape') hide(); });
+  // It marks the key as used, so the composer does not also stop a running chat.
+  on('keydown', e => { touched = false; if (e.key === 'Escape') { if (tip) e.preventDefault(); hide(); } });
   on('scroll', e => { if (tip && e.target.contains?.(tip.trigger)) hide(); }, window);
   on('resize', hide, window);
 }

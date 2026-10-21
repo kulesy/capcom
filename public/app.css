@@ -72,6 +72,8 @@
   --warning: oklch(0.82 0.15 78);
   --warning-foreground: oklch(0.36 0.08 70);
   --warning-muted: oklch(0.96 0.04 85);
+  /* Removed lines in a diff. Light takes red-700, because --destructive on the muted code background is under 4.5:1. */
+  --diff-del: oklch(0.505 0.213 27.518);
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -113,6 +115,7 @@
     --success-foreground: oklch(0.78 0.13 150);
     --warning-foreground: oklch(0.86 0.12 82);
     --warning-muted: oklch(0.27 0.04 80);
+    --diff-del: oklch(0.704 0.191 22.216);
     --widget-card: oklch(0.205 0 0);
   }
 }
@@ -1333,7 +1336,7 @@ body.dragging, body.dragging * {
 
 .scope-rule { height: 1px; margin-inline: 0.5rem; background: var(--sidebar-border); }
 
-.group-head, .row, .scope, .more, .runs-toggle, .menu-item, [data-slot="command-item"], .chip, .option, .folder {
+.group-head, .row, .scope, .more, .runs-toggle, .chip, .option, .folder {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -1439,6 +1442,17 @@ body.dragging, body.dragging * {
 @keyframes scroll-fade-reveal-b {
   from { --scroll-fade-b: min(12%, 2.5rem); }
   to { --scroll-fade-b: 0px; }
+}
+
+@property --scroll-fade-t {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes scroll-fade-reveal-t {
+  from { --scroll-fade-t: 0px; }
+  to { --scroll-fade-t: min(12%, 2.5rem); }
 }
 
 @supports (animation-timeline: scroll()) {
@@ -1580,6 +1594,8 @@ button.thumb {
 
 .msg.claude blockquote { padding-left: 1rem; border-left: 2px solid var(--border); color: var(--muted-foreground); }
 
+.msg.claude blockquote code { color: var(--foreground); }
+
 .msg.claude a { font-weight: 500; text-underline-offset: 4px; }
 
 .msg code, .tool code {
@@ -1602,9 +1618,9 @@ button.thumb {
 
 .table table { width: 100%; border-collapse: collapse; font-size: 0.875rem; line-height: 1.25rem; font-variant-numeric: tabular-nums; }
 
-.table th, .table td { padding: 0.5rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.table th, .table td { padding: 0.5rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; overflow-wrap: normal; }
 
-.table th { height: 2.5rem; font-weight: 500; vertical-align: middle; }
+.table th { height: 2.5rem; font-weight: 500; vertical-align: middle; white-space: nowrap; }
 
 .table tbody tr:last-child td { border-bottom: 0; }
 
@@ -2251,12 +2267,22 @@ button.thumb {
 }
 
 @supports (animation-timeline: scroll()) {
-  [data-slot="command-list"], .ask-body {
+  [data-slot="command-list"] {
     -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
     mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
     animation: 1ms ease-in-out scroll-fade-reveal-b;
     animation-timeline: scroll(self y);
     animation-range: calc(100% - 4rem) 100%;
+    animation-fill-mode: both;
+  }
+
+  /* A question card fades at the top too once it scrolls, so an option never looks cut off under the title. */
+  .ask-body {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--scroll-fade-t), #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--scroll-fade-t), #000 calc(100% - var(--scroll-fade-b)), transparent 100%);
+    animation: 1ms ease-in-out scroll-fade-reveal-t, 1ms ease-in-out scroll-fade-reveal-b;
+    animation-timeline: scroll(self y), scroll(self y);
+    animation-range: 0 4rem, calc(100% - 4rem) 100%;
     animation-fill-mode: both;
   }
 }
@@ -2765,11 +2791,13 @@ html.viewing, html.viewing body { overflow: hidden; }
   overflow-wrap: anywhere;
 }
 
-.diff .del { color: var(--destructive); }
+.diff .del { color: var(--diff-del); }
 
 .diff .add { color: var(--success-foreground); }
 
-.ask-body { max-height: min(45dvh, 28rem); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -0.25rem -0.25rem; padding: 0 0.25rem 0.25rem; }
+.ask-body { max-height: min(45dvh, 28rem); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0.75rem -0.25rem -0.25rem; padding: 0 0.25rem 0.25rem; }
+
+.ask-body > .ask:first-child { margin-top: 0; }
 
 .ask { border: 0; margin: 0.75rem 0 0; padding: 0; min-width: 0; }
 
