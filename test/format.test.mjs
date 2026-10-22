@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromeTool, duration, fullToolLabel, groupHolds, holdCause, holdEnd, preview, serverLabel, tokenCount, toolLabel, toolSource } from '../public/ui/format.js';
+import { chromeTool, duration, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -14,6 +14,12 @@ test('a timer reads in seconds, then minutes and seconds, then hours and minutes
 
 test('a token count is exact below a thousand and then rounds to thousands', () => {
   assert.deepEqual([0, 842, 999, 1000, 1234, 9949, 9999, 10_000, 12_345, 123_456].map(tokenCount), ['0', '842', '999', '1k', '1.2k', '9.9k', '10k', '10k', '12k', '123k']);
+});
+
+test('the context meter writes tokens in thousands to one decimal, a window in its shortest round figure, and an exact count with separators', () => {
+  assert.deepEqual([0, 40, 500, 14_300, 47_760, 150_000, 267_000].map(thousands), ['0.0k', '0.0k', '0.5k', '14.3k', '47.8k', '150.0k', '267.0k']);
+  assert.deepEqual([128_000, 200_000, 267_000, 267_500, 300_000, 999_960, 1_000_000, 1_500_000].map(windowSize), ['128k', '200k', '267k', '267.5k', '300k', '1M', '1M', '1.5M']);
+  assert.deepEqual([0, 999, 1000, 47_760, 1_000_000].map(grouped), ['0', '999', '1,000', '47,760', '1,000,000']);
 });
 
 test('a thinking preview is one plain line of the start of the text', () => {

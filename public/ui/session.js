@@ -1,6 +1,7 @@
 // One open chat: the transcript, the live event stream and every action on them. It is plain data and functions, so
 // the components only draw what is in its store and call what it returns.
 import { api } from './api.js';
+import { mergeContext } from './context-rules.js';
 import { HOME } from './env.js';
 import { payload } from './images.js';
 import { createStore } from './store.js';
@@ -32,6 +33,9 @@ const sameNames = (a, b) => {
 // The CLI holds at most 100 messages at once, so keeping that many counts a burst that ended together in full.
 const ENDED_KEPT = 100;
 
+// A transcript changes all through a turn, so the window is counted at most this often.
+const CONTEXT_EVERY = 5000;
+
 // A chat's pane is built again each time the owner opens another chat, so the holds that ended undelivered wait here by chat id.
 const endedByChat = new Map();
 
@@ -46,7 +50,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
-    folder: HOME, folders: [], jump: 0, earlierSeq: 0,
+    folder: HOME, folders: [], jump: 0, earlierSeq: 0, context: null,
   });
   const state = store.get;
   let closed = false;
@@ -56,6 +60,12 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // Once a turn ends the streamed text stays up until the transcript has the real message, so it never blinks out.
   let ended = false;
   let earlier = null;
+  let contextAt = -Infinity;
+  let contextTimer = 0;
+  // Each count is numbered as it is asked, and `shown` is the number of the one on show.
+  let sent = 0;
+  let shown = 0;
+  const asking = {};
 
   const keepEnded = holdsEnded => { endedByChat.set(id, holdsEnded); return { holdsEnded }; };
   const notice = text => store.set({ notice: text || '' });
@@ -98,6 +108,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   function close() {
     closed = true;
+    clearTimeout(contextTimer);
     es?.close();
     document.removeEventListener('visibilitychange', onVisible);
   }
@@ -107,14 +118,14 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   function connect() {
     es = new EventSource(`api/sessions/${enc(id)}/events`);
     const on = (type, fn) => es.addEventListener(type, e => { if (!closed) fn(JSON.parse(e.data || '{}')); });
-    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '' }); fetchNew(); });
+    on('status', s => { ended = false; store.set({ status: s, live: s.live || '', think: s.think || null, work: s.work || null, turnStart: began(s.work), outside: s.outside || null, outsideStart: began(s.outside), notice: '' }); fetchNew(); refreshContext(); });
     // Capcom's own work takes over from a turn another app was running, and the old line must not flash back when its turn ends.
     on('state', d => { patchStatus({ state: d.state }); store.set(d.state === 'idle' ? { work: null, turnStart: 0 } : { outside: null, outsideStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
     on('think', d => store.set(s => ({ think: thought(s.think, d) })));
     on('work', d => store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })));
     on('outside', d => store.set(s => ({ outside: d, outsideStart: !d ? 0 : s.outside?.startedAt === d.startedAt ? Math.min(s.outsideStart, began(d)) : began(d) })));
-    on('changed', () => fetchNew());
+    on('changed', () => { fetchNew(); refreshContext(); });
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));
     on('hold', h => store.set(s => ({ status: { ...s.status, holds: [...(s.status?.holds || []).filter(x => x.id !== h.id), h] } })));
@@ -123,11 +134,11 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       ...(d.state === 'dropped' && keepEnded([...s.holdsEnded.filter(x => x.id !== d.id), d].slice(-ENDED_KEPT))),
     })));
     on('mode', d => patchStatus({ mode: d.mode }));
-    on('model', d => patchStatus({ model: d.model, shownModel: d.model }));
+    on('model', d => { patchStatus({ model: d.model, shownModel: d.model }); refreshContext(); });
     on('effort', d => patchStatus({ effort: d.effort }));
-    on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); });
+    on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); refreshContext(); });
     on('error', d => notice(d.message));
-    on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [], holds: [] }); store.set({ work: null, turnStart: 0 }); });
+    on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [], holds: [] }); store.set({ work: null, turnStart: 0 }); refreshContext(); });
     es.onerror = () => { if (!closed) notice(es.readyState === EventSource.CLOSED ? 'Lost contact with the Mac.' : ''); };
   }
 
@@ -166,6 +177,49 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       fetching = false;
       if (again) { again = false; fetchNew(); }
     }
+  }
+
+  // ---- the context window ------------------------------------------------------------------------------
+
+  // How full the window is. The server asks Claude when Capcom runs the chat and reads the transcript when it does not. A failed ask
+  // leaves the last figure on show, and a draft has no window yet.
+  function loadContext(detail = 'summary') {
+    if (draft) return Promise.resolve(null);
+    asking[detail] ??= (async () => {
+      try {
+        // A reply asked for before the one on show is out of date, so it is dropped. A full count dropped so is asked for once more,
+        // inside this promise, so that whoever waits on it gets the parts.
+        for (let retry = detail === 'full'; ; retry = false) {
+          const n = ++sent;
+          const reply = await api(`api/sessions/${enc(id)}/context`, { detail });
+          if (closed) return null;
+          if (n > shown) {
+            shown = n;
+            const context = mergeContext(state().context, reply, detail);
+            if (context !== state().context) store.set({ context });
+            return context;
+          }
+          if (!retry) return state().context;
+        }
+      } catch {
+        return null;
+      } finally {
+        asking[detail] = null;
+      }
+    })();
+    return asking[detail];
+  }
+
+  // A count that comes sooner than CONTEXT_EVERY after the last one waits for it, and the many that arrive while it waits are one.
+  function refreshContext() {
+    if (draft || closed) return;
+    const wait = Math.min(CONTEXT_EVERY, contextAt + CONTEXT_EVERY - Date.now());
+    if (wait > 0) {
+      contextTimer ||= setTimeout(() => { contextTimer = 0; refreshContext(); }, wait);
+      return;
+    }
+    contextAt = Date.now();
+    loadContext();
   }
 
   async function loadEarlier() {
@@ -280,6 +334,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const status = await api(`api/sessions/${enc(id)}/${kind}`, { [kind]: value });
       if (!closed) store.set({ status });
+      if (kind === 'model') refreshContext();
     } catch (err) {
       if (closed) return;
       patchStatus(Object.fromEntries(Object.keys(patch).map(k => [k, before[k]])));
@@ -325,7 +380,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const imageUrl = ref => `api/sessions/${enc(id)}/images/${enc(ref)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages,
+    id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
   };
 }

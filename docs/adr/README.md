@@ -30,3 +30,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted |
 | 2026-10-22 | [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted |
+| 2026-10-22 | [Show a chat's context usage from the CLI's own count](20261022-context-usage-from-the-cli.md) | Accepted |

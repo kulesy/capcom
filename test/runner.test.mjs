@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands } from '../lib/commands.mjs';
-import { activeStates, startChat } from '../lib/runner.mjs';
+import { activeStates, startChat, sweep } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -341,4 +341,75 @@ test('a reply to initialize with an error or with no commands leaves the chat wi
     assert.equal(chat.status().running, true, 'the chat carries on');
     await assert.rejects(listCommands(dir, path.join(dir, 'no-such-claude')), /ENOENT/, 'the folder has to ask for itself');
   }
+});
+
+test('the context count is asked for with the detail wanted, comes back as the CLI gave it, and is null when the CLI refuses, answers with something else, or is not running', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const log = path.join(dir, 'stdin.log');
+  const cli = path.join(dir, 'counting-claude.mjs');
+  const count = { totalTokens: 47760, maxTokens: 300000, categories: [{ id: 'messages', name: 'Messages', tokens: 20000, kind: 'used' }] };
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    `const replies = { summary: { subtype: 'success', response: ${JSON.stringify(count)} }, full: { subtype: 'error', error: 'Cannot count.' }, text: { subtype: 'success', response: 'text' }, bare: { subtype: 'success' } };`,
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    `  fs.appendFileSync(${JSON.stringify(log)}, line + '\\n');`,
+    '  const m = JSON.parse(line);',
+    "  if (m.type === 'user') return out({ type: 'system', subtype: 'init', session_id: 'sess-context-1', model: 'stub' });",
+    "  if (m.request?.subtype === 'get_context_usage') out({ type: 'control_response', response: { request_id: m.request_id, ...replies[m.request.detail] } });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const asks = () => fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).request).filter(r => r?.subtype === 'get_context_usage');
+
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const before = [chat.state, chat.seq];
+  assert.deepEqual(await chat.contextUsage('summary'), count);
+  assert.equal(await chat.contextUsage('full'), null, 'a refusal is no count');
+  assert.equal(await chat.contextUsage('text'), null, 'a reply that is not an object is none either');
+  assert.equal(await chat.contextUsage('bare'), null, 'nor is a success with nothing in it');
+  assert.deepEqual(asks().map(r => r.detail), ['summary', 'full', 'text', 'bare']);
+  assert.deepEqual([chat.state, chat.seq], before, 'a count is not a turn, so the page hears nothing of it');
+
+  chat.stop();
+  await until(() => !chat.status().running);
+  assert.equal(await chat.contextUsage('summary'), null, 'with no process there is nothing to ask');
+  assert.equal(asks().length, 4);
+});
+
+test('a context count leaves the idle clock alone, so a chat nobody is using is still stopped, while the reply to any other control request restarts it', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const cli = path.join(dir, 'idle-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type === 'user') { out({ type: 'system', subtype: 'init', session_id: 'sess-idle-1', model: 'stub' }); out({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 }); }",
+    "  if (m.request?.subtype === 'get_context_usage') out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { totalTokens: 1, maxTokens: 10 } } });",
+    "  if (m.request?.subtype === 'apply_flag_settings') out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: {} } });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start', images: [], claude: cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => chat.state === 'idle');
+  const idleMinutes = () => (Date.now() - chat.lastActive) / 60_000;
+
+  chat.lastActive = Date.now() - 31 * 60_000;
+  await chat.setEffort('high');
+  assert.ok(idleMinutes() < 1, 'the reply to a change of effort counts as use');
+  sweep(30);
+  assert.equal(chat.status().running, true, 'so the sweep leaves the chat running');
+
+  chat.lastActive = Date.now() - 31 * 60_000;
+  assert.ok(await chat.contextUsage('summary'));
+  assert.ok(await chat.contextUsage('full'));
+  assert.ok(idleMinutes() > 30, 'a count of either detail is no use of the chat');
+  sweep(30);
+  await until(() => !chat.status().running);
 });

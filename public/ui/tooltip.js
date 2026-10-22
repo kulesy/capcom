@@ -2,6 +2,7 @@
 // as a <kbd>), and the listeners below are on the document, so a button needs nothing else. There is one host, so one tooltip shows
 // at a time. Radix opens on the first pointer move over the trigger, at once on keyboard focus, and never for a touch. It closes
 // on a press, a click, the pointer leaving, the trigger losing focus, a scroll, a resize and another tooltip opening.
+// An empty `data-tip` keeps the button a trigger and shows nothing, which is how a button hides its tooltip while its popover is open.
 const GAP = 10;
 const ARROW = 10;
 const SKIP_DELAY = 300;

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
+import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { makeLayout } from './lib/layout.mjs';
@@ -25,6 +26,7 @@ const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
 const chips = makeChips(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
+const windows = makeWindows(cfg.stateDir);
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 // The levels `claude --help` lists for --effort. Models are checked for shape only, because the CLI knows the current names.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -368,6 +370,26 @@ const outsideFor = id => {
   return chat && chat.state !== 'idle' ? null : outside.read(transcriptFor(id));
 };
 
+const modelKey = set => set.model || set.shownModel || null;
+
+// A chat that Capcom runs is asked for its own count. Without a process, or when the CLI cannot answer, the last reply in the
+// transcript gives the total, and the window is the one last seen for the model the chat is set to.
+async function contextFor(id, detail) {
+  const chat = getChat(id);
+  // The count is for the model the chat was on when it was asked, so it is saved only if the chat is still on that model.
+  const asked = chat?.model;
+  const figure = shapeUsage(await chat?.contextUsage(detail), detail);
+  if (figure) {
+    if (asked && chat.model === asked) windows.learn(asked, figure);
+    return { source: 'process', detail, ...figure };
+  }
+  const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+  const found = t && lastReply(t.file);
+  if (!found) return { source: 'none' };
+  if (found.compacted) return { source: 'none', compacted: true };
+  return transcriptFigure(found, windows.get(modelKey(chat || settingsFor(id, findRow(id)))));
+}
+
 // What the page redraws from. The clock is left out because it moves on every read.
 const outsideKey = o => (o ? JSON.stringify([o.startedAt, o.tokens, o.tools.map(t => t.id)]) : '');
 
@@ -693,6 +715,12 @@ async function api(req, res, u) {
     chat.send(body.text || '', images);
     const unarchived = row.archived && unarchive(id);
     return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
+  }
+  // A POST because a count of a chat Capcom runs can save a window to windows.json.
+  if (action === 'context') {
+    const detail = body.detail ?? 'summary';
+    if (detail !== 'summary' && detail !== 'full') return send(res, 400, { error: 'detail must be summary or full.' });
+    return send(res, 200, await contextFor(id, detail));
   }
   const chat = getChat(id);
   if (action === 'mode') {

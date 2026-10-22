@@ -40,6 +40,16 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and writes no session. Capcom keeps a folder's list for 2 minutes. `/clear` is left out, because the CLI answers it with a new
   session that Capcom's chat would not follow. [The decision record](docs/adr/20261022-slash-menu-from-the-cli.md)
   says why the list comes from the CLI.
+- **Context.** A ring at the right end of the row under the prompt box, where Desktop puts its own, shows how full
+  the chat's context window is. It turns amber when the chat is 90% of the way to auto-compact, and its tooltip gives
+  the tokens used and the percent. Press it to see the tokens used out of the window, where auto-compact starts, and
+  what fills the context, largest first, as Claude Code's /context lists it. While Capcom runs the chat, the figures
+  come from the CLI's own count, which runs no model turn and writes nothing to the session. A chat with no process
+  shows the total from its session file instead, as of Claude's last reply, with no parts. The window and the
+  auto-compact point come from the CLI, and Capcom keeps them per model in `windows.json` in its state folder, so a
+  chat with no process shows its window once Capcom has run a chat set to that model. On a narrow phone the
+  permission mode's name shortens to keep that row on one line.
+  [The decision record](docs/adr/20261022-context-usage-from-the-cli.md) says where each figure comes from.
 - **Images.** Paste a screenshot anywhere on the page, drop image files onto it, or pick them with the +, and
   each attaches as a thumbnail above the text, with a cross to take it off again and a click to look at it in the viewer. PNG, JPEG, GIF and WebP, up to 10 to a message,
   and a message may be images alone. Before it sends, the page scales anything over 2000 pixels on its long

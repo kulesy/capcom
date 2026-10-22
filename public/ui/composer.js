@@ -1,6 +1,7 @@
 // The prompt box: the text, the images attached to it, the settings under it, and the folder picker for a session that is not started yet.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands } from './commands.js';
+import { ContextMeter } from './context.js';
 import { attach, attached, detach, draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
 import { modelLabel, tilde } from './format.js';
@@ -278,6 +279,7 @@ export function Composer({ ctrl }) {
       <div class="composer-right">
         <${Pick} id="model" label="Model" value=${s.shownModel || s.model} options=${MODELS} placeholder="Model" labelOf=${modelLabel} disabled=${!status} onChange=${v => ctrl.pick('model', v)} />
         <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" quiet disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
+        <${ContextMeter} ctrl=${ctrl} />
       </div>
     </div>
   </form>`;

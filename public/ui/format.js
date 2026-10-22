@@ -101,6 +101,17 @@ export function tokenCount(n) {
   return n < 10_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n / 1000)}k`;
 }
 
+// The context meter's tokens, always in thousands to one decimal: 14300 is 14.3k and 500 is 0.5k.
+export const thousands = n => `${(n / 1000).toFixed(1)}k`;
+
+// A window is a round figure, so it drops a zero decimal: 300000 is 300k and 1000000 is 1M.
+export function windowSize(n) {
+  const tenths = Math.round(n / 100);
+  return tenths >= 10_000 ? `${+(tenths / 10_000).toFixed(1)}M` : `${tenths / 10}k`;
+}
+
+export const grouped = n => n.toLocaleString('en-US');
+
 export const preview = text => String(text).replace(/[*`]+/g, '').replace(/^#+\s*/gm, '').replace(/\s+/g, ' ').trim().slice(0, 160);
 
 const HOLD_CAUSES = {

@@ -32,7 +32,8 @@ const freePort = () => new Promise(resolve => {
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
 // and when its input closed. It answers an initialize request with CLI_COMMANDS. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
-// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes.
+// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
+// context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached }, with `ago` and
 // `archivedAgo` (when Desktop archived it) in minutes.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
@@ -74,6 +75,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   if (!claude) return {};
   const log = path.join(home, 'claude.log');
   const cli = path.join(home, 'claude');
+  const usageFile = path.join(home, 'context-usage.json');
   fs.writeFileSync(cli, [
     '#!/usr/bin/env node',
     "import fs from 'node:fs';",
@@ -84,8 +86,12 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
     "  try {",
     "    const m = JSON.parse(line);",
-    "    if (m.type === 'control_request') note({ control: m.request.subtype });",
+    "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }) });",
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)} } } });`,
+    "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
+    `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,
+    "      say({ type: 'control_response', response: usage ? { subtype: 'success', request_id: m.request_id, response: usage } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
+    "    }",
     "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",
