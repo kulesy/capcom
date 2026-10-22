@@ -121,7 +121,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   routine's run that was moved into a group or pinned can go back to Routines from there. There is no
   screen yet to rename, delete or reorder groups. Edit `layout.json` for those: Capcom reads it on every
   refresh, and shows the error at the top of the list if it cannot.
-- **Nested sessions** show under a parent session in the list. Drop a row on the middle of another row to
+- **Nested sessions** show under a parent session in the list, indented, with a line from the parent that
+  turns into the last of them, as Claude Desktop draws them. Drop a row on the middle of another row to
   nest it there. A row takes a nest only in the middle half of its height, so a row dropped on the top or
   bottom quarter lands in the section the row is in, as it did before. While you drag, the row that would
   take the nest lights up and says "Nest here" where its time is. Nesting goes one level deep: a session

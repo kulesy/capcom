@@ -41,6 +41,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --row-pad: 0.5rem;
+  --row-gap: 0.25rem;
+  --nest-indent: 1.1875rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -1065,7 +1068,7 @@ body[data-scroll-locked] {
 .rows, .sub-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--row-gap);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1082,7 +1085,7 @@ body[data-scroll-locked] {
   column-gap: 0.5rem;
   width: 100%;
   height: 3rem;
-  padding: 0.5rem;
+  padding: var(--row-pad);
   overflow: hidden;
   border-radius: var(--radius-md);
   color: inherit;
@@ -1132,11 +1135,28 @@ body[data-scroll-locked] {
 
 .row:is([aria-current="page"], [aria-selected="true"], [data-menu]) ~ :is(.more, .fold) { color: var(--sidebar-accent-foreground); }
 
-.sub-rows {
-  margin: 0.25rem 0.875rem 0;
-  padding: 0.125rem 0.625rem;
+.sub-rows { margin-top: var(--row-gap); padding-left: var(--nest-indent); }
+
+.sub-rows > li::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--row-gap));
+  bottom: 0;
+  left: calc(var(--row-pad) + 0.25rem - 0.5px - var(--nest-indent));
   border-left: 1px solid var(--sidebar-border);
+  pointer-events: none;
 }
+
+.sub-rows > li:first-child::before { top: calc(0.375rem - var(--row-gap)); }
+
+.sub-rows > li:last-child::before {
+  bottom: 50%;
+  width: calc(var(--nest-indent) - 0.625rem);
+  border-bottom: 1px solid var(--sidebar-border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.has-fold:has(> .row[data-lifted]) > .sub-rows > li::before { opacity: 0.4; }
 
 .earlier-runs .row { grid-template-areas: "lamp title time"; height: 1.75rem; padding-block: 0; }
 
