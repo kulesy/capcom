@@ -1,10 +1,11 @@
-// What the model menu offers and what its button says, with no page in it so node can test it. The names are Claude Desktop's.
+// What the model menu offers, what its button says and when Desktop's Max note shows, with no page in it so node can test it. The names are Claude Desktop's.
 import { modelLabel } from './format.js';
 
 export const MAIN = [['claude-opus-5-5', 'Opus 5.5'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']];
 export const LONG = ['claude-opus-5-5[1m]', 'Opus 5.5 (1M)'];
 export const EFFORTS = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra'], ['max', 'Max']];
 export const MAX_TIP = 'May use excessive tokens resulting in long response times and may hit token limits. Use sparingly for the hardest tasks.';
+export const MAX_NOTE = 'Claude thinks longer with Max effort and can consume 3.5× or more usage than Medium.';
 
 // Until the CLI's list arrives only Opus 5.5 is known to take fast mode, and from then on the list's own flag decides.
 const FAST_BEFORE_LIST = ['claude-opus-5-5'];
@@ -37,6 +38,9 @@ export function buttonOf({ model, effort, fast, listed }) {
 export function buttonLabel({ model, fast, effort }) {
   return `${[model || 'Model', fast && 'Fast'].filter(Boolean).join(' ')}${effort ? `, ${effort} effort` : ''}`;
 }
+
+// Desktop's note shows above the prompt box while the effort is Max, until its × hides it in this browser.
+export const showsMaxNote = (effort, hidden) => effort === 'max' && !hidden;
 
 // The menu's items. `listed` is the CLI's models while they are known and null before, `error` says why they could not be loaded,
 // and `pick(kind, value)` is what a row does. A checked row does nothing, and a model or effort the lists do not hold gets one of its own.
