@@ -44,6 +44,7 @@
   --row-pad: 0.5rem;
   --row-gap: 0.25rem;
   --nest-indent: 1.1875rem;
+  --nest-line: 1px solid var(--sidebar-border);
   --row-height: 3rem;
   --chat-column: 46rem;
   --list-width: 22rem;
@@ -135,7 +136,14 @@ html { -webkit-text-size-adjust: 100%; }
 @media (pointer: fine) {
   html { font-size: 93.75%; }
 
-  :root { --row-gap: 0.125rem; --row-height: 1.75rem; --chat-column: 47rem; --list-width: 25.5rem; }
+  :root {
+    --row-gap: 0.125rem;
+    --row-height: 1.75rem;
+    --nest-indent: 1.25rem;
+    --nest-line: 0.5px solid color-mix(in oklab, var(--sidebar-foreground) 20%, transparent);
+    --chat-column: 47rem;
+    --list-width: 25.5rem;
+  }
 }
 
 body {
@@ -1180,8 +1188,9 @@ body[data-scroll-locked] {
   position: absolute;
   top: calc(-1 * var(--row-gap));
   bottom: 0;
-  left: calc(var(--row-pad) + 0.25rem - 0.5px - var(--nest-indent));
-  border-left: 1px solid var(--sidebar-border);
+  left: calc(var(--row-pad) + 0.25rem - var(--nest-indent));
+  box-sizing: border-box;
+  border-left: var(--nest-line);
   pointer-events: none;
 }
 
@@ -1190,7 +1199,7 @@ body[data-scroll-locked] {
 .sub-rows > li:last-child::before {
   bottom: 50%;
   width: calc(var(--nest-indent) - 0.625rem);
-  border-bottom: 1px solid var(--sidebar-border);
+  border-bottom: var(--nest-line);
   border-bottom-left-radius: var(--radius-sm);
 }
 
