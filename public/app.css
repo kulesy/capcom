@@ -1422,6 +1422,7 @@ body.dragging, body.dragging * {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-bottom: 4rem;
   padding: 1rem;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;

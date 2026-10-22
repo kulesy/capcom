@@ -86,14 +86,21 @@ export function Transcript({ ctrl }) {
   const [away, setAway] = useState(false);
   useStick(box);
   // A late picture or a docked card opens a gap below the view with no scroll event, so a resize of the viewport or the rows checks too,
-  // once a frame. A view that was at the end stays there, and only a scroll can say it is no longer at the end, so the resize cannot.
+  // once a frame. A view that was at the end stays there until a scroll up lets go, as in shadcn's message scroller. A widget that
+  // grows before its scroll event opens a gap with no scroll up, so the gap alone must not let go.
   useEffect(() => {
     const el = box.current;
     const gap = () => el.scrollHeight - el.scrollTop - el.clientHeight;
     const check = () => setAway(gap() > 8);
     let end = true;
+    let last = el.scrollTop;
     let frame = 0;
-    const scrolled = () => { end = gap() <= 8; check(); };
+    const scrolled = () => {
+      if (gap() <= 8) end = true;
+      else if (el.scrollTop < last - 0.5) end = false;
+      last = el.scrollTop;
+      check();
+    };
     const resized = new ResizeObserver(() => {
       if (end) el.scrollTop = el.scrollHeight;
       cancelAnimationFrame(frame);
