@@ -41,9 +41,8 @@ export function sortRows(rows, sort = DEFAULT_SORT) {
 
 const MAX_DEPTH = 32;
 
-// A family's children as the list shows them: each child of the head in the list's order, followed at once by the children that nest
-// under it, and so on. A child's `via` names the session it nests under, and one with none nests under the head. A child that no walk
-// from the head reaches, as one nested deeper than the limit is, follows the rest.
+// A family's children depth first: each child of the head in the list's order, followed at once by those whose `via` names it, and so on.
+// A child with no `via` nests under the head, and one that no walk reaches, deeper than the limit, goes last.
 export function sortFamily(head, children, sort = DEFAULT_SORT) {
   const compare = comparator(sort);
   const under = new Map();

@@ -144,7 +144,6 @@ test('a change writes the links it is given for other sessions in the same write
   assert.deepEqual(parentsAfter(l => l.pin('s1', true, { unlink: true, relink })), { ...other, s1: null });
   assert.deepEqual(parentsAfter(l => l.nest('s1', 's2', { relink })), { ...other, s1: 's2' });
   assert.deepEqual(parentsAfter(l => l.unnest('s1', { group: 'cg-a', relink })), { ...other, s1: null });
-  assert.deepEqual(parentsAfter(l => l.archive('s1', { relink })), { ...other, s1: 's9' }, 'archiving takes the links as they are given');
   assert.deepEqual(parentsAfter(l => l.move('s1', 'cg-b', { relink: { s7: 's2' } })), { s9: 's8', s7: 's2' }, 'with no unlink the session gets no entry');
 });
 
@@ -156,7 +155,7 @@ test('the links go in the one write that makes the change, and none are written 
   assert.throws(() => f.layout.pin('s1', 'yes', { unlink: true, relink }), { status: 400, message: 'Pinned or not?' });
   assert.throws(() => f.layout.nest('s1', 's1', { relink }), { status: 400, message: 'Nest it under another session.' });
   assert.throws(() => f.layout.unnest('s1', { group: 'cg-none', relink }), { status: 400, message: 'Unknown group.' });
-  f.layout.archive('s6', { relink });
+  f.layout.archive('s6');
   assert.equal(fs.readFileSync(f.file, 'utf8'), before, 's6 is archived already, so there is nothing to write');
 });
 

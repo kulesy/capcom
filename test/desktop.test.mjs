@@ -67,6 +67,8 @@ test('a record that is detached, or that is a user\'s fork, links to nothing', (
       rec('user', { spawnedFrom: { sessionId: 'local_a', userFork: true } }),
       rec('usersde', { spawnedFrom: { sessionId: 'local_a', sideSession: true, userFork: true }, ...fork('z') }),
       rec('notuser', { spawnedFrom: { sessionId: 'local_a', userFork: false } }),
+      rec('userbare', { spawnedFrom: { userFork: true }, ...fork('a') }),
+      rec('userself', { spawnedFrom: { sessionId: 'local_userself', userFork: true }, ...fork('a') }),
     ],
   }), { kept: 'a', notuser: 'a' });
 });
@@ -222,6 +224,13 @@ test('a settings file with no groups says why and still gives the records', () =
   assert.match(desk.problem, /Desktop groups unavailable/);
   assert.equal(desk.sessions.length, 1);
   assert.deepEqual([desk.sorts.pinned, desk.sorts.groups.size], [null, 0]);
+});
+
+test('a settings file with no groups still gives the sorts, the folder modes and the effort level', () => {
+  const desk = load({ prefs: { 'dframe-code-sections': { scope: { sections: SECTIONS } }, 'epitaxy-folder-permission-mode.acct': { '/work': 'plan' }, 'ccd-effort-level': 'high' } });
+  assert.match(desk.problem, /no session groups/);
+  assert.deepEqual([desk.groups, desk.sorts.sessions, desk.sorts.groups.get('cg-a')], [[], { by: 'alpha', ascending: true }, { by: 'created', ascending: true }]);
+  assert.deepEqual([desk.folderModes, desk.effort], [{ '/work': 'plan' }, 'high']);
 });
 
 const stored = (unread, acked, extra = []) => [

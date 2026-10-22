@@ -86,13 +86,12 @@ const linksNow = () => {
 };
 const linkNow = id => linksNow()(id);
 
-// A family shows one level deep, so before one of its sessions nests, leaves or is archived, the rest are linked straight to the
-// session they show under. A link through the one that changes would take them with it, and the page does not show that.
+// A nested session that leaves its place would take the sessions straight under it along, so each is linked to the one it showed
+// under instead, and those further down keep their links. A head takes its whole family along.
 function keepFamily(id, rows) {
-  const link = linksNow();
-  const root = rows.get(id).parent ?? id;
+  const { via } = rows.get(id);
   const links = {};
-  for (const r of rows.values()) if (!r.archived && r.parent === root && r.id !== id && link(r.id) !== root) links[r.id] = root;
+  if (via) for (const r of rows.values()) if (!r.archived && r.via === id) links[r.id] = via;
   return links;
 }
 
@@ -130,7 +129,7 @@ function buildIndex({ archived = false } = {}) {
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone.
   for (const s of started.values()) {
-    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, sortAt: Math.max(s.at, edgeOf(s.id)), createdAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
+    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || UNTITLED, cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, sortAt: Math.max(s.at, edgeOf(s.id)), createdAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
   }
 
   // Projects, groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its
@@ -545,7 +544,8 @@ function setArchived(id, archived, stop) {
   const chat = getChat(id);
   const stopped = !!chat && chat.state !== 'idle';
   if (stopped && stop === false) throw Object.assign(new Error('That chat is running, and archiving it would stop it.'), { status: 409 });
-  layout.archive(id, { relink: keepFamily(id, buildIndex().rows) });
+  // The sessions under an archived one move up to the one it showed under by themselves, so archiving writes no link.
+  layout.archive(id);
   if (stopped) chat.interrupt();
   chat?.stop();
   return { archived, ...(stopped && { stopped: true }) };

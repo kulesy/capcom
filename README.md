@@ -157,8 +157,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and it stays in its parent's group or in
   Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal
   and other. Nest under in any session's menu opens a second menu of the other top level sessions in the
-  same section, so a phone nests without a drag. Archiving a parent archives only the parent, and its nested
-  sessions move up to its place as rows of their own and nest under it again when it comes back. Taking a
+  same section, so a phone nests without a drag. Archiving a parent archives only the parent. Each session
+  that showed straight under it moves up to its place with the ones under it still under it, and they nest
+  under the parent again when it comes back. Taking a
   nested session out, moving it, pinning it or archiving it leaves the rest of the family under the parent,
   even when Desktop links them through that session. Claude Desktop records which sessions it linked to a
   parent: side chats, forks and suggested tasks. Capcom reads those links on every refresh, so it shows the families Desktop shows with no drag,

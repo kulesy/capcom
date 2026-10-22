@@ -391,18 +391,29 @@ test('a family goes depth first as the server sends it, and a session that joins
   assert.deepEqual(viasOf(joined, 'h'), { a: 'h', b: 'a', d: 'b', u1: 'h', c: 'h' });
 });
 
-test('when a session leaves a family the rest link straight to its head, in the list\'s order', () => {
+test('when a session leaves a family the ones straight under it go under the one it showed under, and the rest keep their places', () => {
   const archived = withoutRow(DEEP, 'a');
-  assert.deepEqual(work(archived), ['h[b,c,d]']);
-  assert.deepEqual(viasOf(archived, 'h'), { b: 'h', c: 'h', d: 'h' });
+  assert.deepEqual(work(archived), ['h[b,d,c]']);
+  assert.deepEqual(viasOf(archived, 'h'), { b: 'h', d: 'b', c: 'h' });
 
   const freed = unnestRow(DEEP, 'b');
-  assert.deepEqual(work(freed), ['h[a,c,d]', 'b']);
-  assert.deepEqual(viasOf(freed, 'h'), { a: 'h', c: 'h', d: 'h' });
+  assert.deepEqual(work(freed), ['h[a,d,c]', 'b']);
+  assert.deepEqual(viasOf(freed, 'h'), { a: 'h', d: 'a', c: 'h' });
 
   const dropped = placeRow(DEEP, 'd', 'cg-b');
   assert.deepEqual(shapeOf(dropped).groups, { 'cg-a': ['h[a,b,c]'], 'cg-b': ['d'] });
-  assert.deepEqual(viasOf(dropped, 'h'), { a: 'h', b: 'h', c: 'h' });
+  assert.deepEqual(viasOf(dropped, 'h'), { a: 'h', b: 'a', c: 'h' });
+
+  const last = withoutRow(DEEP, 'c');
+  assert.deepEqual(work(last), ['h[a,b,d]'], 'nothing showed under c, so the rest stay depth first');
+  assert.deepEqual(viasOf(last, 'h'), { a: 'h', b: 'a', d: 'b' });
+});
+
+test('an archived head frees each session straight under it with the ones under that session still under it', () => {
+  const freed = withoutRow(DEEP, 'h');
+  assert.deepEqual(work(freed), ['a[b,d]', 'c']);
+  assert.deepEqual(viasOf(freed, 'a'), { b: 'a', d: 'b' });
+  assert.deepEqual(['a', 'b', 'd', 'c'].map(id => findRow(freed, id).parent ?? null), [null, 'a', 'a', null]);
 });
 
 test('a session placed elsewhere nests under nothing and one nested elsewhere under its new parent, and the rest of its family stays with the head', () => {
@@ -413,7 +424,7 @@ test('a session placed elsewhere nests under nothing and one nested elsewhere un
   const other = nestRow({ ...DEEP, groups: [DEEP.groups[0], { ...DEEP.groups[1], sessions: [person('z', { group: 'cg-b' })] }] }, 'a', 'z');
   assert.deepEqual(shapeOf(other).groups['cg-b'], ['z[a]']);
   assert.equal(findRow(other, 'a').via, 'z');
-  assert.deepEqual(viasOf(other, 'h'), { b: 'h', d: 'h', c: 'h' });
+  assert.deepEqual(viasOf(other, 'h'), { b: 'h', d: 'b', c: 'h' });
 });
 
 test('an edit leaves the lists it was given as they were', () => {

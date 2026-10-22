@@ -460,6 +460,34 @@ test('a file that is listed and then gone, a name that is not a file, and a read
   assert.equal(read(failing).get(KEY), 'newer', 'and the file is tried again, not remembered as empty');
   assert.equal(opened.length, 3, 'both files, then the first again');
   assert.deepEqual(closed, opened, 'every file that was opened was closed, the one whose read failed too');
+  t.mock.restoreAll();
+
+  const blocky = folder();
+  write(blocky, '000004.ldb', small(row(9, set(KEY, 'newer'))));
+  write(blocky, '000006.ldb', small(row(5, set(KEY, 'older'))));
+  let failed = false;
+  t.mock.method(fs, 'readSync', (...args) => {
+    // A table's first data block starts at the top of its file.
+    if (failed || args[4] !== 0) return readSync(...args);
+    failed = true;
+    throw Object.assign(new Error('input/output error'), { code: 'EIO', syscall: 'read' });
+  });
+  assert.equal(read(blocky).get(KEY), 'older', 'a data block whose read fails');
+  assert.equal(read(blocky).get(KEY), 'newer', 'and its table is read again, not remembered as holding nothing');
+  t.mock.restoreAll();
+
+  const odd = folder();
+  write(odd, '000005.ldb', small(row(5, set(KEY, 'good'))));
+  const fifo = write(odd, '000007.log', Buffer.alloc(0));
+  const stat = fs.statSync;
+  const named = [];
+  t.mock.method(fs, 'statSync', (file, ...rest) => (file === fifo ? { ...stat(file, ...rest), isFile: () => false } : stat(file, ...rest)));
+  t.mock.method(fs, 'openSync', (file, ...rest) => {
+    named.push(path.basename(String(file)));
+    return open(file, ...rest);
+  });
+  assert.equal(read(odd).get(KEY), 'good', 'a FIFO, whose open would wait for a writer');
+  assert.deepEqual(named, ['000005.ldb'], 'and it is never opened');
 });
 
 test('a folder that is missing, a path that is not a folder and arguments of the wrong kind read as nothing and never throw', () => {

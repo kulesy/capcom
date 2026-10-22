@@ -88,15 +88,23 @@ const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(ro
 // stay there, and under one in neither each goes to the loose list of its own app, which a routine run has none of.
 export function withoutRow(ix, id, { withChildren = false } = {}) {
   const gone = findRow(ix, id);
-  const freed = withChildren ? [] : (gone?.children ?? []).map(c => ({ ...c, parent: null, via: null }));
+  const kids = withChildren ? [] : gone?.children ?? [];
+  // A freed session keeps the sessions under it, so each that showed straight under the one that went heads a family, as the server
+  // lists them.
+  const kin = new Map(kids.map(c => [c.id, c]));
+  const headOf = c => {
+    for (let n = kids.length; n > 0 && kin.has(c.via); n--) c = kin.get(c.via);
+    return c;
+  };
+  const freed = kids.filter(c => headOf(c) === c).map(h => setChildren({ ...h, parent: null, via: null }, kids.filter(c => c !== h && headOf(c) === h).map(c => ({ ...c, parent: h.id }))));
   const homeOf = c => (gone.pinned ? 'pinned' : gone.group ?? looseHome(c));
-  // The rest of a family link straight to the head when a member leaves, as the server relinks them, and so go in the list's order.
-  // A family is placed by its best member, so a list with a family that lost one is placed again.
-  const leaves = (r, sort) => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, sortFamily(r, r.children.filter(c => c.id !== id).map(c => ({ ...c, via: r.id })), sort)) : r);
+  // The sessions straight under a member that leaves show under the one it showed under, as the server links them. A family is placed
+  // by its best member, so a list with a family that lost one is placed again.
+  const leaves = (r, sort) => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, sortFamily(r, r.children.filter(c => c.id !== id).map(c => (c.via === id ? { ...c, via: gone.via } : c)), sort)) : r);
   const leave = (list, sort, name) => {
     const kept = list.filter(r => r.id !== id);
     const rest = kept.map(r => leaves(r, sort));
-    const arrive = freed.filter(c => homeOf(c) === name);
+    const arrive = freed.filter(c => homeOf(c) === name).map(c => reorder(c, sort));
     return arrive.length || rest.some((r, i) => r !== kept[i]) ? sortRows([...rest, ...arrive], sort) : rest;
   };
   return {
