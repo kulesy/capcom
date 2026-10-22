@@ -33,6 +33,7 @@ export const CLI_MODELS = [
   { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', supportsFastMode: true },
 ];
 const running = [];
+const launches = new WeakMap();
 
 const freePort = () => new Promise(resolve => {
   const probe = net.createServer().listen(0, '127.0.0.1', () => {
@@ -127,6 +128,10 @@ export async function start(mac) {
   fs.mkdirSync(state);
   writePassword(state, PASSWORD);
   const made = mac ? furnish(home, state, mac) : {};
+  return launch(home, state, made);
+}
+
+async function launch(home, state, made) {
   const port = await freePort();
   const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }) };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -139,7 +144,17 @@ export async function start(mac) {
     child.stdout.on('data', chunk => { out += chunk; if (out.includes('Capcom on')) { clearTimeout(timer); resolve(); } });
     child.once('exit', code => { clearTimeout(timer); reject(new Error(`The server exited with ${code}. ${errors}`)); });
   });
-  return { port, home, state, origin: `http://localhost:${port}`, tokens: path.join(state, 'tokens.json'), layout: path.join(state, 'layout.json'), cliLog: made.log, errors: () => errors };
+  const server = { port, home, state, origin: `http://localhost:${port}`, tokens: path.join(state, 'tokens.json'), layout: path.join(state, 'layout.json'), cliLog: made.log, errors: () => errors };
+  launches.set(server, { child, made });
+  return server;
+}
+
+// Stops the server behind `s`, as launchd does, and starts another on its home and state folder, to test what a restart keeps.
+export async function restart(s) {
+  const { child, made } = launches.get(s);
+  // A server that has already exited sends no exit event, and node --test has no timeout to end the wait.
+  if (child.exitCode === null && child.signalCode === null) await new Promise(resolve => { child.once('exit', resolve); child.kill(); });
+  return launch(s.home, s.state, made);
 }
 
 after(() => { for (const child of running) child.kill(); });

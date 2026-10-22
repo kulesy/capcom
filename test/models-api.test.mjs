@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { as, cliCalls, listen, request, signIn, start, until } from './harness.mjs';
+import { as, cliCalls, listen, request, restart, signIn, start, until } from './harness.mjs';
 
 // The fake CLI's models as the page is given them: the ones it lists by id, then the ones it names only by an alias.
 const LIST = [
@@ -158,6 +158,43 @@ test('fast mode picked on a session with no process starts no CLI, shows in the 
   assert.deepEqual(flags(s), [{ fastMode: true }]);
   assert.ok(calls.findIndex(c => c.control === 'initialize') < calls.findIndex(c => c.settings), 'after initialize');
   assert.equal(JSON.stringify(starts(s)).includes('fastMode'), false, 'never in the CLI\'s arguments');
+});
+
+test('the model, effort and fast mode picked on a chat survive a server restart, so its status shows them and the CLI started for it is given all three', async () => {
+  const s = await start({ claude: true, sessions: [calm] });
+  const { token } = await signIn(s);
+  const viewer = listen(s, token, 'calm');
+  await post(s, token, '/api/sessions/calm/send', { text: 'finish the turn' });
+  await until(() => viewer.events.some(e => e.type === 'turn-end'));
+  viewer.close();
+  for (const [action, value] of [['model', 'claude-opus-5-5'], ['effort', 'low'], ['fast', true]]) {
+    assert.equal((await post(s, token, `/api/sessions/calm/${action}`, { [action]: value })).status, 200, action);
+  }
+  assert.deepEqual(picks(s), { calm: { model: 'claude-opus-5-5', effort: 'low', fast: true } });
+  const logged = cliCalls(s).length;
+
+  const restarted = await restart(s);
+  const { token: again } = await signIn(restarted);
+  const reconnected = listen(restarted, again, 'calm');
+  await until(() => reconnected.events.some(e => e.type === 'status'));
+  const { model, shownModel, effort, fast, running } = reconnected.events.find(e => e.type === 'status').data;
+  assert.deepEqual({ model, shownModel, effort, fast, running }, { model: 'claude-opus-5-5', shownModel: 'claude-opus-5-5', effort: 'low', fast: true, running: false });
+
+  await post(restarted, again, '/api/sessions/calm/send', { text: 'finish the turn' });
+  await until(() => reconnected.events.some(e => e.type === 'turn-end'));
+  reconnected.close();
+  // The log is the first CLI's too, which can add its close after the restart, so the new CLI's entries are picked out by kind.
+  const calls = cliCalls(restarted).slice(logged);
+  const spawns = calls.filter(c => c.started);
+  assert.equal(spawns.length, 1, 'one CLI was started after the restart');
+  const args = spawns[0].started;
+  for (const [flag, value] of [['--resume', 'calm'], ['--model', 'claude-opus-5-5'], ['--effort', 'low']]) {
+    assert.ok(args.some((arg, i) => arg === flag && args[i + 1] === value), `${flag} ${value}`);
+  }
+  assert.equal(JSON.stringify(args).includes('fastMode'), false, 'never in the CLI\'s arguments');
+  assert.deepEqual(calls.filter(c => c.settings).map(c => c.settings), [{ fastMode: true }]);
+  const initialized = calls.findIndex(c => c.control === 'initialize');
+  assert.ok(initialized >= 0 && initialized < calls.findIndex(c => c.settings), 'after initialize');
 });
 
 test('a fast mode that is not true or false, and a session that is not there, are refused and ask nothing of Claude', async () => {
