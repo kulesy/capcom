@@ -67,7 +67,10 @@ function Layer({ open, box, onClose, alert = false, sheet = null, part, label, l
         const to = tabTarget(items.length, items.indexOf(document.activeElement), e.shiftKey);
         if (to === null) return;
         e.preventDefault();
-        if (to !== 'stay') items[to].focus({ preventScroll: true });
+        if (to === 'stay') return;
+        // The focus can go to the other end of the layer, which a long sheet may have scrolled out of view.
+        items[to].focus({ preventScroll: true });
+        items[to].scrollIntoView({ block: 'nearest' });
       } else if (alert && shortcut(e)) { e.preventDefault(); e.stopPropagation(); }
     };
     document.addEventListener('focusin', onFocusIn);
