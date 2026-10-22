@@ -1,3 +1,4 @@
+import { tickIn } from './format.js';
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from './html.js';
 import { modifier, onAppChange } from './shortcuts.js';
 import { local } from './storage.js';
@@ -57,14 +58,23 @@ export function useDocumentTitle(title) {
   useEffect(() => { document.title = title; }, [title]);
 }
 
-// Draws the component again every second while `on`, so a timer on screen keeps counting between events.
-export function useClock(on) {
+// Draws the component again every second while `on`, so a timer on screen keeps counting between events. Given the time it counts
+// from, each draw falls just after a whole second of it, so timers counting from one start change together.
+export function useClock(on, since) {
   const [, rerender] = useReducer(n => n + 1, 0);
   useEffect(() => {
     if (!on) return undefined;
-    const timer = setInterval(rerender, 1000);
-    return () => clearInterval(timer);
-  }, [on]);
+    if (!Number.isFinite(since)) {
+      const timer = setInterval(rerender, 1000);
+      return () => clearInterval(timer);
+    }
+    let timer;
+    const wait = () => {
+      timer = setTimeout(() => { rerender(); wait(); }, tickIn(Date.now(), since));
+    };
+    wait();
+    return () => clearTimeout(timer);
+  }, [on, since]);
 }
 
 export const atBottom = el => el.scrollHeight - el.scrollTop - el.clientHeight < 80;

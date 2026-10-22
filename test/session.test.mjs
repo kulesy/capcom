@@ -20,9 +20,10 @@ globalThis.fetch = async url => {
 const { createChat } = await import('../public/ui/session.js');
 
 async function openChat(id) {
-  const chat = createChat({ id, refreshIndex() {} });
+  let reloads = 0;
+  const chat = createChat({ id, refreshIndex() { reloads++; } });
   await chat.open();
-  return { chat, stream: streams.at(-1) };
+  return { chat, stream: streams.at(-1), reloads: () => reloads };
 }
 const undelivered = id => ({ id, from: 'Worker', state: 'dropped', outcome: 'expired' });
 const cards = chat => chat.store.get().holdsEnded.map(d => d.id);
@@ -325,6 +326,63 @@ test('Capcom\'s work in a chat takes over from the turn another app ran, and the
     assert.deepEqual([now().outside.startedAt, now().outsideStart], [7000, 2_939_000], 'and a turn of another app is left alone');
     assert.equal(now().status.state, 'idle');
   });
+});
+
+// The work snapshot Capcom's stream gives a page: `startedAt` names the turn and the rest moves as the turn goes on.
+const workOf = (startedAt, tokens = 0) => ({ thinking: false, writing: false, tools: [], tokens, turnMs: 1000, startedAt });
+
+test('a turn that begins in a chat reloads the list once, when its work first arrives, and the next turn reloads it again', async () => {
+  const { chat, stream, reloads } = await openChat('chat-list-work');
+  stream.emit('status', { state: 'idle', pending: [], work: null });
+  stream.emit('state', { state: 'working' });
+  assert.equal(reloads(), 0, 'the state cannot tell which turn it is');
+  stream.emit('work', workOf(1000));
+  assert.equal(reloads(), 1);
+  stream.emit('work', workOf(1000, 40));
+  assert.equal(reloads(), 1, 'more of the same turn');
+
+  stream.emit('state', { state: 'idle' });
+  stream.emit('work', null);
+  assert.equal(reloads(), 1, 'no work is not a turn');
+  stream.emit('work', workOf(2000));
+  assert.equal(reloads(), 2, 'a new turn');
+  stream.emit('state', { state: 'working' });
+  assert.equal(reloads(), 2, 'and the state that follows the work adds none');
+  chat.close();
+});
+
+test('a message sent from the page reloads the list when its turn reports work, though the reply to it already set the state to working', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, state: 'working' }) }), async () => {
+    const { chat, stream, reloads } = await openChat('chat-list-sent');
+    stream.emit('status', SETTINGS);
+    await chat.send('keep going', [], 'manual');
+    assert.equal(chat.store.get().status.state, 'working', 'the reply is there before the stream is');
+    stream.emit('work', workOf(3000));
+    stream.emit('state', { state: 'working' });
+    assert.equal(reloads(), 1, 'once, for the work, and not again for the state that follows');
+    chat.close();
+  });
+});
+
+test('a chat opened in the middle of a turn does not reload the list as that turn\'s work arrives', async () => {
+  const { chat, stream, reloads } = await openChat('chat-list-midway');
+  stream.emit('status', { state: 'working', pending: [], work: workOf(4000, 10) });
+  stream.emit('work', workOf(4000, 25));
+  stream.emit('work', workOf(4000, 60));
+  assert.equal(reloads(), 0);
+  chat.close();
+});
+
+test('a turn another app begins and the end of it each reload the list once, and more of the same turn does not', async () => {
+  const { chat, stream, reloads } = await openChat('chat-list-outside');
+  stream.emit('status', { state: 'idle', pending: [], outside: null });
+  stream.emit('outside', turnOf(5000, 1000));
+  assert.equal(reloads(), 1);
+  stream.emit('outside', { ...turnOf(5000, 4000), tokens: 40 });
+  assert.equal(reloads(), 1, 'the same turn with more tokens');
+  stream.emit('outside', null);
+  assert.equal(reloads(), 2);
+  chat.close();
 });
 
 // A fake server for the context. `respond(detail, n)` gives the reply to the nth request, which asks for `detail`, and every request is logged.

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createOutside } from '../lib/outside.mjs';
+import { createOutside, STALE_MS } from '../lib/outside.mjs';
 import { as, cliCalls, listen, request, signIn, start, until } from './harness.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-outside-test-'));
@@ -164,6 +164,7 @@ test('a turn that has gone quiet for ten minutes is not live, unless an agent th
 });
 
 test('a turn is live up to the ten minutes, and the limit can be set', () => {
+  assert.equal(STALE_MS, 10 * MINUTE, 'the session list leaves a transcript unread once it has been still this long');
   const c = chat();
   put(c, started(), { quiet: 9 * MINUTE });
   assert.ok(reader().read(c));

@@ -96,6 +96,16 @@ export function duration(ms) {
   return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }
 
+// A timer waits this long past the whole second, so one that fires on time reads the new second and not the one just gone.
+const TICK_SLACK_MS = 5;
+
+// How long until the time since `since` next reaches a whole second, which is when `duration(now - since)` can change. It is never zero,
+// so a clock is drawn each second even before a start that has not come yet, and clocks counting from one start change together.
+export function tickIn(now, since) {
+  const elapsed = now - since;
+  return (Math.floor(elapsed / 1000) + 1) * 1000 - elapsed + TICK_SLACK_MS;
+}
+
 export function tokenCount(n) {
   if (n < 1000) return String(n);
   return n < 10_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n / 1000)}k`;

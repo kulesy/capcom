@@ -11,7 +11,7 @@ import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
-import { findRow, nestRow, placeRow, unnestRow, withoutRow } from './ui/tree.js';
+import { findRow, nestRow, placeRow, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
@@ -44,7 +44,8 @@ function App() {
     const mine = ++latest.current;
     try {
       const next = await api('api/sessions');
-      if (mine > shown.current) { shown.current = mine; setIx(next); setError(''); }
+      const arrived = Date.now();
+      if (mine > shown.current) { shown.current = mine; setIx(stampTurns(next, now.current.ix, arrived)); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
     }

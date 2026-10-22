@@ -12,7 +12,7 @@ import { chainOf, familiesOf } from './lib/families.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
-import { createOutside } from './lib/outside.mjs';
+import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
@@ -42,6 +42,7 @@ const savePick = (id, pick) => {
 };
 const viewers = new Map();
 const outside = createOutside();
+const listOutside = createOutside({ keep: 256 });
 
 // ---- the session index ---------------------------------------------------------------------------
 
@@ -366,10 +367,22 @@ function unarchive(id) {
   }
 }
 
-// A chat Capcom is running shows its own work from the CLI's stream, so only a chat it is not running is read from its transcript.
-const outsideFor = id => {
+const workingChat = id => {
   const chat = getChat(id);
-  return chat && chat.state !== 'idle' ? null : outside.read(transcriptFor(id));
+  return chat && chat.state !== 'idle' ? chat : null;
+};
+
+// A chat Capcom is running shows its own work from the CLI's stream, so only a chat it is not running is read from its transcript.
+const outsideFor = id => (workingChat(id) ? null : outside.read(transcriptFor(id)));
+
+// The list has its own reader, so it never pushes out the files the open chats' checks hold. An open chat is read whatever the index
+// says, because the index's mtime can predate the write that began its turn.
+const turnOf = (id, now) => {
+  const chat = workingChat(id);
+  if (chat) return chat.work.snapshot();
+  const t = transcriptFor(id);
+  if (viewers.get(id)?.size) return outside.read(t);
+  return t && now - t.mtime < STALE_MS ? listOutside.read(t) : null;
 };
 
 const modelKey = set => set.model || set.shownModel || null;
@@ -624,7 +637,20 @@ async function api(req, res, u) {
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
-    const { rows, ...index } = buildIndex({ archived: u.searchParams.get('archived') === '1' });
+    const withArchived = u.searchParams.get('archived') === '1';
+    const { rows, ...index } = buildIndex({ archived: withArchived });
+    // The turns go onto the rows here and not in buildIndex, which findRow runs for every request.
+    const now = Date.now();
+    for (const r of rows.values()) {
+      if (r.archived && !withArchived) continue;
+      const turn = turnOf(r.id, now);
+      if (!turn) continue;
+      r.turnStartedAt = turn.startedAt;
+      r.turnMs = turn.turnMs;
+      // Another app's long tool call can leave its file still past the 2 minutes that count as idle. Active, never working, because the
+      // page lets a working row's archive stop the turn, which Capcom cannot do there.
+      if (r.state === 'idle') r.state = 'active';
+    }
     return send(res, 200, index);
   }
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it

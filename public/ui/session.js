@@ -123,8 +123,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('state', d => { patchStatus({ state: d.state }); store.set(d.state === 'idle' ? { work: null, turnStart: 0 } : { outside: null, outsideStart: 0 }); });
     on('delta', d => { const fresh = ended; ended = false; store.set(s => ({ live: (fresh ? '' : s.live) + d.text })); });
     on('think', d => store.set(s => ({ think: thought(s.think, d) })));
-    on('work', d => store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })));
-    on('outside', d => store.set(s => ({ outside: d, outsideStart: !d ? 0 : s.outside?.startedAt === d.startedAt ? Math.min(s.outsideStart, began(d)) : began(d) })));
+    // A turn that begins here reloads the list, so its row's time starts with this line. The state cannot tell, as send() sets it first.
+    on('work', d => { const begun = d && d.startedAt !== state().work?.startedAt; store.set(s => ({ work: d, turnStart: s.work ? Math.min(s.turnStart, began(d)) : began(d) })); if (begun) refreshIndex(); });
+    // Another app's turn beginning or ending reloads the list, so the row's time keeps up with this line.
+    on('outside', d => { const turned = (d?.startedAt ?? null) !== (state().outside?.startedAt ?? null); store.set(s => ({ outside: d, outsideStart: !d ? 0 : s.outside?.startedAt === d.startedAt ? Math.min(s.outsideStart, began(d)) : began(d) })); if (turned) refreshIndex(); });
     on('changed', () => { fetchNew(); refreshContext(); });
     on('approval', p => store.set(s => ({ status: { ...s.status, pending: [...(s.status?.pending || []).filter(x => x.requestId !== p.requestId), p] } })));
     on('approval-resolved', d => store.set(s => ({ status: { ...s.status, pending: (s.status?.pending || []).filter(x => x.requestId !== d.requestId) } })));

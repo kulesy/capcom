@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromeTool, duration, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
+import { chromeTool, duration, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tickIn, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -10,6 +10,30 @@ const labels = (name, names) => [serverLabel(name, names), toolSource(name, name
 test('a timer reads in seconds, then minutes and seconds, then hours and minutes', () => {
   assert.deepEqual([0, 999, 1000, 59_999, 60_000, 65_000, 3_599_000, 3_600_000, 3_725_000].map(duration), ['0s', '0s', '1s', '59s', '1m 00s', '1m 05s', '59m 59s', '1h 00m', '1h 02m']);
   assert.equal(duration(-5), '0s');
+});
+
+// What format.js waits past the whole second, so a timer that fires on time reads the new second.
+const SLACK = 5;
+
+test('a clock waits for the next whole second of its time, and a little past it', () => {
+  assert.equal(tickIn(10_000, 7_000), 1000 + SLACK, 'on a whole second it waits for the next');
+  assert.equal(tickIn(10_250, 7_000), 750 + SLACK, 'part way through a second it waits for what is left');
+  assert.equal(tickIn(10_999, 7_000), 1 + SLACK, 'a millisecond short of the turn it waits for that millisecond');
+  for (let elapsed = 0; elapsed < 130_000; elapsed++) {
+    const wait = tickIn(elapsed, 0);
+    assert.ok(wait > 0 && wait <= 1000 + SLACK, `${elapsed} ms waits ${wait}`);
+    assert.notEqual(duration(elapsed + wait), duration(elapsed), `${elapsed} ms still reads the same after the wait`);
+  }
+});
+
+test('a clock counting from a start that has not come yet still waits a positive time under a second and a little', () => {
+  assert.equal(tickIn(10_000, 12_500), 500 + SLACK);
+  assert.equal(tickIn(10_000, 11_000), 1000 + SLACK);
+  assert.equal(tickIn(10_000, 10_001), 1 + SLACK);
+  for (let elapsed = -5000; elapsed <= 0; elapsed++) {
+    const wait = tickIn(elapsed, 0);
+    assert.ok(wait > 0 && wait <= 1000 + SLACK, `${elapsed} ms waits ${wait}`);
+  }
 });
 
 test('a token count is exact below a thousand and then rounds to thousands', () => {

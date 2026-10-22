@@ -26,7 +26,7 @@ function turnOf({ status, outside }) {
 
 // How long the turn has run, the tokens of the replies Claude has finished, and what it is doing now, after the lamps that run.
 function Working({ work, since, on, outside, names }) {
-  useClock(on);
+  useClock(on, since);
   const text = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`, doingNow(work, names)].filter(Boolean).join(' · ');
   return html`<p class="working" id="working" hidden=${!on}><span class="chaser" aria-hidden="true"><span></span><span></span><span></span></span>
     <span class="working-text" id="workingText" title=${outside ? OUTSIDE_TITLE : OWN_TITLE}>${text}</span></p>`;

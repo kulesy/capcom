@@ -48,6 +48,19 @@ export const everyRow = ix => withKids([...ix.pinned, ...ix.groups.flatMap(g => 
 
 export const findRow = (ix, id) => (ix ? everyRow(ix).find(r => r.id === id) || null : null);
 
+// Puts on each row with a turn running the time the turn began by this page's clock, which the row counts from. An answer can only be
+// late, so a row still in the same turn keeps its earlier start. `turnStartedAt` is the server's clock and only names the turn.
+export function stampTurns(ix, before, receivedAt) {
+  const seen = new Map((before ? everyRow(before) : []).map(r => [r.id, r]));
+  for (const r of everyRow(ix)) {
+    if (!Number.isFinite(r.turnMs)) continue;
+    const start = receivedAt - r.turnMs;
+    const old = seen.get(r.id);
+    r.turnStart = Number.isFinite(old?.turnStart) && old.turnStartedAt === r.turnStartedAt ? Math.min(old.turnStart, start) : start;
+  }
+  return ix;
+}
+
 // The row a session shows under, or itself when it is not nested.
 export function rootOf(ix, id) {
   const row = findRow(ix, id);

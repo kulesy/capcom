@@ -31,11 +31,12 @@ test('nothing is reported before a turn begins, and the snapshot is empty', () =
   assert.equal(t.work.thought(), null);
 });
 
-test('a turn starts the clock, and the snapshot says how long it has run', () => {
+test('a turn starts the clock, and the snapshot says how long it has run and when it began', () => {
   const t = turn();
-  assert.deepEqual(t.work.begin(), [['work', { thinking: false, writing: false, tools: [], tokens: 0, turnMs: 0 }]]);
+  assert.deepEqual(t.work.begin(), [['work', { thinking: false, writing: false, tools: [], tokens: 0, turnMs: 0, startedAt: 1_000_000 }]]);
   t.clock.t += 12_500;
   assert.equal(t.work.snapshot().turnMs, 12_500);
+  assert.equal(t.work.snapshot().startedAt, 1_000_000, 'the start stays where it began');
   assert.deepEqual(t.work.begin(), [], 'a second start does not move it');
   assert.equal(t.work.snapshot().turnMs, 12_500);
 });
@@ -140,7 +141,7 @@ test('the end of a turn clears everything, so the next one starts from nothing',
   assert.equal(t.work.thought(), null);
   t.clock.t += 5_000;
   t.work.begin();
-  assert.deepEqual(t.work.snapshot(), { thinking: false, writing: false, tools: [], tokens: 0, turnMs: 0 });
+  assert.deepEqual(t.work.snapshot(), { thinking: false, writing: false, tools: [], tokens: 0, turnMs: 0, startedAt: 1_005_000 });
 });
 
 // A block that is not an object. The array holds a tool call of its own, which must not be tracked.

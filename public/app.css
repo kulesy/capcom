@@ -1160,12 +1160,14 @@ body[data-scroll-locked] {
 
 .row-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.row-nest, .row-meta {
+.row-nest, .row-run, .row-meta {
   color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
   font-size: 0.75rem;
 }
 
-.row-nest { grid-area: nest; margin-left: 0.5rem; white-space: nowrap; }
+.row-nest, .row-run { grid-area: nest; margin-left: 0.5rem; white-space: nowrap; }
+
+.row-run { font-variant-numeric: tabular-nums; }
 
 .row-meta { grid-area: meta; display: flex; min-width: 0; }
 
@@ -1173,7 +1175,7 @@ body[data-scroll-locked] {
 
 .row-time { flex: none; font-variant-numeric: tabular-nums; white-space: pre; }
 
-.row:is([aria-current="page"], [aria-selected="true"], [data-menu], [data-over]) :is(.row-nest, .row-meta) {
+.row:is([aria-current="page"], [aria-selected="true"], [data-menu], [data-over]) :is(.row-nest, .row-run, .row-meta) {
   color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent);
 }
 
@@ -1475,7 +1477,7 @@ body.dragging .rows .more { opacity: 0; }
 
   .group-head:hover .name { color: inherit; }
 
-  .row:hover :is(.row-nest, .row-meta) { color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent); }
+  .row:hover :is(.row-nest, .row-run, .row-meta) { color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent); }
 
   .more:hover, .fold:hover {
     background: var(--sidebar-accent);

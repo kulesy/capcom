@@ -1,9 +1,10 @@
-// Run with `npm test`. The session list and what a message does to it, over HTTP against the real server, with a fake Mac under a temporary home.
+// Run with `npm test`. The session list, what a message does to it and the turn a working row shows, over HTTP against the real server, with a fake Mac under a temporary home.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { as, cliCalls, request, signIn, start, until } from './harness.mjs';
+import { findRow } from '../public/ui/tree.js';
+import { as, cliCalls, listen, request, signIn, start, until } from './harness.mjs';
 
 const titles = list => list.map(r => r.title);
 
@@ -158,4 +159,112 @@ test('a message to an archived session still goes through when layout.json canno
   await until(() => cliCalls(s).some(c => c.user === 'a message while the layout is broken'));
   await until(() => /Could not unarchive archived: layout\.json cannot be read/.test(s.errors()));
   assert.equal(fs.readFileSync(s.layout, 'utf8'), '{ not json');
+});
+
+// ---- the turn each working row shows ---------------------------------------------------------------------------
+
+const MINUTE = 60_000;
+const rowOf = async (s, token, id) => findRow((await request(s, 'GET', '/api/sessions', { headers: as(token) })).body(), id);
+const turnKeys = row => Object.keys(row).filter(key => key.startsWith('turn'));
+const send = (s, token, id, text) => request(s, 'POST', `/api/sessions/${id}/send`, { headers: as(token), json: { text } });
+
+// A transcript Desktop or a terminal wrote. `ago` is in minutes, and a session made with the same `ago` has the same last write
+// before and after, because the server keeps the times it read first for a few seconds.
+const entry = (ago, entrypoint, extra) => ({ cwd: '/test-folder', isSidechain: false, entrypoint, timestamp: new Date(Date.now() - ago * MINUTE).toISOString(), ...extra });
+const prompted = (ago, entrypoint = 'cli') => entry(ago, entrypoint, { type: 'user', message: { role: 'user', content: 'Check the build' } });
+const answered = (ago, entrypoint = 'cli') => entry(ago, entrypoint, { type: 'assistant', message: { id: 'end', role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'Passed.' }] } });
+
+const transcriptOf = (s, id) => path.join(s.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`);
+
+function rewrite(s, id, ago, entries) {
+  const file = transcriptOf(s, id);
+  fs.writeFileSync(file, entries.map(e => `${JSON.stringify(e)}\n`).join(''));
+  const at = (Date.now() - ago * MINUTE) / 1000;
+  fs.utimesSync(file, at, at);
+}
+
+test('a chat Capcom is working on lists when its turn began and how long it has run, and neither once the turn ends', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'busy', title: 'Busy one', ago: 1 }] });
+  const { token } = await signIn(s);
+  const asked = Date.now();
+  await send(s, token, 'busy', 'keep going');
+  await until(() => cliCalls(s).some(c => c.user === 'keep going'));
+  const first = await rowOf(s, token, 'busy');
+  const listed = Date.now();
+  assert.equal(first.state, 'working');
+  assert.ok(first.turnStartedAt >= asked && first.turnStartedAt <= listed, 'it began when the message was sent');
+  assert.ok(first.turnMs >= 0 && first.turnMs <= listed - first.turnStartedAt, 'its age was read when the list was');
+
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const later = await rowOf(s, token, 'busy');
+  assert.equal(later.turnStartedAt, first.turnStartedAt);
+  assert.ok(later.turnMs >= first.turnMs + 50);
+
+  await send(s, token, 'busy', 'finish the turn');
+  await until(async () => (await rowOf(s, token, 'busy')).state === 'idle');
+  assert.deepEqual(turnKeys(await rowOf(s, token, 'busy')), []);
+});
+
+test('a chat Capcom is working on lists its own turn, though its transcript holds one that another app left open', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'mixed', title: 'Mixed one', ago: 1 }] });
+  const { token } = await signIn(s);
+  rewrite(s, 'mixed', 1, [prompted(3, 'claude-desktop')]);
+  const asked = Date.now();
+  await send(s, token, 'mixed', 'keep going');
+  await until(() => cliCalls(s).some(c => c.user === 'keep going'));
+  const row = await rowOf(s, token, 'mixed');
+  assert.equal(row.state, 'working');
+  assert.ok(row.turnStartedAt >= asked, "Desktop's prompt from three minutes ago does not set it");
+});
+
+test('a chat another app runs lists the start of its open turn and reads as active for ten minutes after its last write, though two make a chat idle', async () => {
+  const s = await start({ sessions: [{ id: 'term', title: 'Terminal one', source: 'cli', ago: 5 }, { id: 'desk', title: 'Desktop one', ago: 9 }] });
+  const { token } = await signIn(s);
+  const typed = prompted(5);
+  const asked = prompted(9, 'claude-desktop');
+  rewrite(s, 'term', 5, [typed]);
+  rewrite(s, 'desk', 9, [asked]);
+  for (const [id, began, minutes] of [['term', typed, 5], ['desk', asked, 9]]) {
+    const row = await rowOf(s, token, id);
+    assert.equal(row.state, 'active', id);
+    assert.equal(row.turnStartedAt, Date.parse(began.timestamp), id);
+    assert.ok(row.turnMs >= minutes * MINUTE && row.turnMs < minutes * MINUTE + 30_000, `${id} has run ${row.turnMs} ms`);
+  }
+});
+
+test('an idle row, and a row whose turn has finished, carry no turn', async () => {
+  const s = await start({ sessions: [{ id: 'quiet', title: 'Quiet one', ago: 30 }, { id: 'done', title: 'Done one', source: 'cli', ago: 1 }] });
+  const { token } = await signIn(s);
+  rewrite(s, 'done', 1, [prompted(2), answered(1.5)]);
+  for (const [id, state] of [['quiet', 'idle'], ['done', 'active']]) {
+    const row = await rowOf(s, token, id);
+    assert.equal(row.state, state, id);
+    assert.deepEqual(turnKeys(row), [], id);
+  }
+});
+
+test('a transcript last written more than ten minutes ago carries no turn, though its last entry is a prompt', async () => {
+  const s = await start({ sessions: [{ id: 'old', title: 'Old one', source: 'cli', ago: 11 }] });
+  const { token } = await signIn(s);
+  rewrite(s, 'old', 11, [prompted(11)]);
+  const row = await rowOf(s, token, 'old');
+  assert.equal(row.state, 'idle');
+  assert.deepEqual(turnKeys(row), []);
+});
+
+test('a chat that is open lists the turn another app begins in it at once, though the list still holds the write its transcript had 30 minutes ago', async () => {
+  const s = await start({ sessions: [{ id: 'open', title: 'Open one', source: 'cli', ago: 30 }] });
+  const { token } = await signIn(s);
+  rewrite(s, 'open', 30, [prompted(31), answered(30)]);
+  assert.deepEqual(turnKeys(await rowOf(s, token, 'open')), [], 'its last turn has ended');
+
+  const viewer = listen(s, token, 'open');
+  await until(() => viewer.events.length);
+  // The server keeps the last write it read for a few seconds, so the list is still on the one from 30 minutes ago.
+  const prompt = prompted(0);
+  fs.appendFileSync(transcriptOf(s, 'open'), `${JSON.stringify(prompt)}\n`);
+  const row = await rowOf(s, token, 'open');
+  assert.equal(row.turnStartedAt, Date.parse(prompt.timestamp));
+  assert.ok(row.turnMs >= 0 && row.turnMs < 30_000, `it has run ${row.turnMs} ms`);
+  viewer.close();
 });

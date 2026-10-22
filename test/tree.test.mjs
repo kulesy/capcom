@@ -1,9 +1,9 @@
 // Run with `npm test`. The rules of the sidebar tree that need no page: where the arrow keys go, where a group or a session can be
-// moved or nested, what the list shows once a session is archived, moved or nested, which row takes the focus, and which session Cmd+A
-// archives.
+// moved or nested, what the list shows once a session is archived, moved or nested, which row takes the focus, which session Cmd+A
+// archives, and when the turn of each running row began.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, stampTurns, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -332,6 +332,46 @@ test('none of these changes the list it was given', () => {
   const loosely = JSON.stringify(LOOSE_FAM);
   for (const edit of [ix => unnestRow(ix, 'lc'), ix => unnestRow(ix, 'lr'), ix => withoutRow(ix, 'lp')]) edit(LOOSE_FAM);
   assert.equal(JSON.stringify(LOOSE_FAM), loosely);
+});
+
+// The server sends a row's turn as its age (`turnMs`) and when it began by the server's clock (`turnStartedAt`), which only names the turn.
+const turning = (id, turnMs, turnStartedAt, extra) => person(id, { turnMs, turnStartedAt, ...extra });
+const listWith = (...sessions) => ({ ...FAM, pinned: [], groups: [{ id: 'cg-a', name: 'Work', project: null, sessions }], routines: [], ungrouped: [] });
+const startOf = (ix, id) => findRow(ix, id).turnStart;
+
+test('a row with a turn running starts that long before its list arrived, and a row with no turn gets no start', () => {
+  const ix = listWith(turning('a', 4_000, 1_000), person('b'), turning('c', null, 1_000), turning('d', '4000', 1_000));
+  assert.equal(stampTurns(ix, null, 100_000), ix, 'the list it was given comes back');
+  assert.equal(startOf(ix, 'a'), 96_000);
+  for (const id of ['b', 'c', 'd']) assert.equal('turnStart' in findRow(ix, id), false, id);
+});
+
+test('a row in the same turn keeps the earlier start it had, so a slow answer never steps the count back, and takes an earlier one', () => {
+  const first = stampTurns(listWith(turning('a', 4_000, 1_000)), null, 100_000);
+  const slow = stampTurns(listWith(turning('a', 9_000, 1_000)), first, 110_000);
+  assert.equal(startOf(slow, 'a'), 96_000, 'this answer would start it at 101000');
+  const early = stampTurns(listWith(turning('a', 20_000, 1_000)), slow, 110_000);
+  assert.equal(startOf(early, 'a'), 90_000);
+});
+
+test('a row in another turn starts again from its own age, and one that had no turn running starts again too', () => {
+  const first = stampTurns(listWith(turning('a', 40_000, 1_000)), null, 100_000);
+  const next = stampTurns(listWith(turning('a', 2_000, 70_000)), first, 130_000);
+  assert.equal(startOf(next, 'a'), 128_000);
+  const idle = stampTurns(listWith(person('a')), next, 140_000);
+  assert.equal('turnStart' in findRow(idle, 'a'), false, 'the time goes when the turn ends');
+  assert.equal(startOf(stampTurns(listWith(turning('a', 1_000, 70_000)), idle, 150_000), 'a'), 149_000);
+});
+
+test('a nested session, a routine run and a row that moved between lists are stamped like any other', () => {
+  const ix = {
+    ...listWith(person('g1', { children: [kid('k1', 'g1', { turnMs: 3_000, turnStartedAt: 5 })] }), turning('m', 6_000, 1_000)),
+    routines: [{ name: 'nightly', latest: turning('r1', 1_000, 6, { routine: 'nightly' }), earlier: [turning('r0', 8_000, 7, { routine: 'nightly' })] }],
+  };
+  const before = stampTurns({ ...listWith(), ungrouped: [turning('m', 4_000, 1_000)] }, null, 40_000);
+  stampTurns(ix, before, 50_000);
+  assert.deepEqual(['k1', 'r1', 'r0', 'g1'].map(id => startOf(ix, id)), [47_000, 49_000, 42_000, undefined]);
+  assert.equal(startOf(ix, 'm'), 36_000, 'the earlier list had it in another place');
 });
 
 test('the focus goes to the next row, or to the one before when the row was the last', () => {

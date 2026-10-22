@@ -112,14 +112,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   order. Every other section lists its newest session first. A group shows when it is empty, so one that
   was just made can be found and filled, and a project with no groups says so beside a New group button.
   The other sections show only when they hold a session. A session's row is one line on a mouse, as in
-  Claude Desktop: the title, and a dot at the right end that shows the session's state. The dots button
-  takes the dot's place only on a mouse in a window at least 48rem wide, while the pointer is over the row
-  or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier runs sits
-  to its left, and shows only then or while they are folded. Below that width, or with no hover, the dot,
-  the arrow and the dots all show. A tooltip with the folder, branch, state and when the session last ran
-  opens on the right of the row 700ms after the pointer reaches it, at once if another tooltip closed in
-  the last 300ms, and at once on keyboard focus. A touch screen has no tooltips, so its rows have a second
-  line with those details, and the dot and the buttons always show.
+  Claude Desktop: the title, and a dot at the right end that shows the session's state. A row whose turn
+  is running also shows how long that turn has run, left of the dot and of any fold arrow, for a chat
+  Capcom runs and for one Desktop or a terminal runs. The open chat's row keeps time with its status line.
+  Other rows pick up a turn's start and end on the list's next load, up to 15 seconds later. The dots
+  button takes the dot's place only on a mouse in a window at least 48rem wide, while the pointer is over
+  the row or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier
+  runs sits to its left, and shows only then or while they are folded. Below that width, or with no hover,
+  the dot, the arrow and the dots all show. A tooltip with the folder, branch, state and when the session
+  last ran opens on the right of the row 700ms after the pointer reaches it, at once if another tooltip
+  closed in the last 300ms, and at once on keyboard focus. A touch screen has no tooltips, so its rows
+  have a second line with those details, and the dot and the buttons always show.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,

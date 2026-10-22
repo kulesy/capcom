@@ -77,7 +77,7 @@ function Swap({ text, fade = true }) {
 const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors, running }) {
   const g = summarize(rows);
   const began = running ? groupStart(rows) : null;
-  useClock(began !== null);
+  useClock(began !== null, began);
   const was = useRef(running);
   const starting = running && !was.current;
   was.current = running;

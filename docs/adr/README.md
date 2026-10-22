@@ -21,13 +21,13 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-15 | [Send pasted images as content blocks and show transcript images through an endpoint](20261015-images-in-the-prompt-box.md) | Accepted, amended 2026-10-17 |
 | 2026-10-15 | [Capcom runs routines itself, from Desktop's prompt files](20261015-capcom-runs-routines-itself.md) | Accepted |
 | 2026-10-16 | [Run the server under a small Capcom app, so macOS permissions belong to Capcom](20261016-capcom-app-for-macos-permissions.md) | Accepted |
-| 2026-10-16 | [Show Claude's live work from the CLI's stream, and ask the CLI for thinking summaries](20261016-live-work-from-the-cli-stream.md) | Accepted, amended 2026-10-19 and 2026-10-21 |
+| 2026-10-16 | [Show Claude's live work from the CLI's stream, and ask the CLI for thinking summaries](20261016-live-work-from-the-cli-stream.md) | Accepted, amended 2026-10-19, 2026-10-21 and 2026-10-22 |
 | 2026-10-16 | [Show the CLI's own user turns as compact notices, from a closed list of known tags](20261016-notices-for-cli-written-user-turns.md) | Accepted, amended 2026-10-16 |
 | 2026-10-16 | [Sign in with passkeys that Capcom checks itself on node:crypto, against a list of origins](20261016-passkeys-on-node-crypto.md) | Accepted |
 | 2026-10-16 | [Show messages between chats by sender, and show a held message with no way to approve it](20261016-peer-messages-between-chats.md) | Accepted |
 | 2026-10-16 | [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md) | Accepted, amended 2026-10-21 and 2026-10-22 |
 | 2026-10-19 | [Draw widgets the way Desktop does, in a frame that cannot reach Capcom](20261019-widgets-render-like-desktop.md) | Accepted |
-| 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted |
+| 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted, amended 2026-10-22 |
 | 2026-10-22 | [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md) | Accepted |
 | 2026-10-22 | [Show a chat's context usage from the CLI's own count](20261022-context-usage-from-the-cli.md) | Accepted |
