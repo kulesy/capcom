@@ -57,6 +57,96 @@ test('a chat keeps its 100 newest undelivered messages and drops the oldest firs
   assert.deepEqual([kept[0], kept.at(-1)], ['m5', 'm104']);
 });
 
+// The changes a chat posts, for one test: `sent` lists them as [url, body], and `answer(url)` is what each one gets back.
+async function withChanges(answer, run) {
+  const real = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    if (init?.method !== 'POST') return real(url, init);
+    sent.push([String(url), JSON.parse(init.body)]);
+    return answer(String(url));
+  };
+  try { await run(sent); } finally { globalThis.fetch = real; }
+}
+const SETTINGS = { state: 'idle', running: true, mode: 'manual', model: 'claude-opus-5-5', shownModel: 'claude-opus-5-5', effort: 'high', fast: false, pending: [] };
+
+test('fast mode shows at once, is posted to its own route as true or false, and takes the status Capcom answers with', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, fast: true }) }), async sent => {
+    const { chat, stream } = await openChat('chat-fast');
+    stream.emit('status', SETTINGS);
+    const picking = chat.pick('fast', true);
+    assert.equal(chat.store.get().status.fast, true, 'it shows before Capcom has answered');
+    await picking;
+    assert.deepEqual(sent.filter(([url]) => !url.endsWith('/context')), [['api/sessions/chat-fast/fast', { fast: true }]]);
+    assert.equal(chat.store.get().status.fast, true);
+    chat.close();
+  });
+});
+
+test('a fast mode change that Capcom refuses is put back, with the reason in a notice', async () => {
+  await withChanges(() => ({ status: 400, ok: false, json: async () => ({ error: 'Not on this model.' }) }), async () => {
+    const { chat, stream } = await openChat('chat-fast-refused');
+    stream.emit('status', { ...SETTINGS, fast: true });
+    await chat.pick('fast', false);
+    assert.equal(chat.store.get().status.fast, true);
+    assert.equal(chat.store.get().notice, 'Not on this model.');
+    chat.close();
+  });
+});
+
+test('a refused pick shows the status Capcom answers with, so two quick picks that are both refused leave the model the chat is on', async () => {
+  const held = [];
+  const refusal = { status: 400, ok: false, json: async () => ({ error: 'Claude refused that change.', status: SETTINGS }) };
+  await withChanges(url => (url.endsWith('/model') ? new Promise(resolve => held.push(resolve)) : { status: 200, ok: true, json: async () => ({}) }), async () => {
+    const { chat, stream } = await openChat('chat-two-picks');
+    stream.emit('status', SETTINGS);
+    const first = chat.pick('model', 'claude-haiku-5-5');
+    const second = chat.pick('model', 'claude-sonnet-5-5');
+    assert.equal(chat.store.get().status.model, 'claude-sonnet-5-5');
+    held[0](refusal);
+    await first;
+    held[1](refusal);
+    await second;
+    assert.equal(chat.store.get().status.model, 'claude-opus-5-5', 'the first pick is not put back over the second');
+    assert.equal(chat.store.get().notice, 'Claude refused that change.');
+    chat.close();
+  });
+});
+
+test('a fast event from Capcom, as when another page switches it, changes the status', async () => {
+  const { chat, stream } = await openChat('chat-fast-event');
+  stream.emit('status', SETTINGS);
+  stream.emit('fast', { fast: true });
+  assert.equal(chat.store.get().status.fast, true);
+  stream.emit('fast', { fast: false });
+  assert.equal(chat.store.get().status.fast, false);
+  chat.close();
+});
+
+test('a new chat holds fast mode as a pick and sends it to the new session only once it has been picked', async () => {
+  globalThis.location = {};
+  try {
+    await withChanges(() => ({ status: 200, ok: true, json: async () => ({ id: 'made' }) }), async sent => {
+      const plain = createChat({ draft: true, refreshIndex() {} });
+      plain.setFolder('/work');
+      await plain.startNew('hello', [], () => {});
+      assert.equal('fast' in sent[0][1], false);
+
+      const fast = createChat({ draft: true, refreshIndex() {} });
+      fast.setFolder('/work');
+      assert.equal(fast.store.get().status.fast, false, 'a new chat starts with it off');
+      await fast.pick('fast', true);
+      assert.equal(fast.store.get().status.fast, true);
+      assert.equal(sent.length, 1, 'nothing is posted before the session exists');
+      await fast.startNew('hello', [], () => {});
+      assert.equal(sent[1][0], 'api/new');
+      assert.equal(sent[1][1].fast, true);
+    });
+  } finally {
+    delete globalThis.location;
+  }
+});
+
 // A fake server for one test: the chat opens on `starts[0]`, each Load earlier moves to the next start, and `pictures` answers the list of pictures.
 async function withServer({ starts, pictures }, run) {
   const real = globalThis.fetch;

@@ -14,7 +14,7 @@ import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readI
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { createOutside } from './lib/outside.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
-import { listCommands } from './lib/commands.mjs';
+import { listCommands, listModels } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
@@ -33,7 +33,7 @@ const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MODEL = /^[a-z][\w.-]*(\[1m\])?$/i;
 const startedFile = path.join(cfg.stateDir, 'started.json');
 const readStarted = () => { try { return JSON.parse(fs.readFileSync(startedFile, 'utf8')); } catch { return []; } };
-// The model and effort picked in Capcom for each session, kept here because Desktop's own records are read only.
+// The model, effort and fast mode picked in Capcom for each session, kept here because Desktop's own records are read only.
 const picksFile = path.join(cfg.stateDir, 'picks.json');
 const readPicks = () => { try { return JSON.parse(fs.readFileSync(picksFile, 'utf8')); } catch { return {}; } };
 const savePick = (id, pick) => {
@@ -205,21 +205,21 @@ function desktopSettings(row) {
   return { mode, model: row?.model || null, shownModel: row?.model || user.model || null, effort: row?.effort || desk.effort || null };
 }
 
-// What Desktop would use, with whatever model and effort was picked here laid over it.
+// What Desktop would use, with whatever model, effort and fast mode was picked here laid over it.
 function settingsFor(id, row) {
-  const { model, effort } = readPicks()[id] || {};
-  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), chrome: cfg.chrome };
+  const { model, effort, fast } = readPicks()[id] || {};
+  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], mode, model, effort, title, routine }) {
+async function newSession({ cwd, text, images = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
     const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
     fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
-    if (model || effort) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }) });
+    if (model || effort || fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(fast && { fast }) });
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
@@ -348,7 +348,7 @@ function loginPage(message = '') {
 
 function ensureChat(id, row, { mode } = {}) {
   const s = settingsFor(id, row);
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, chrome: s.chrome, claude: cfg.claude, chips });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips });
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
 }
@@ -513,6 +513,32 @@ async function editStructure(req, res, change) {
   }
 }
 
+// What the CLI lists under `key` for a session or a folder, named in the body as `id` or `cwd`. A chat with a process answers from its own
+// reply, and anything else from a probe of its folder.
+async function askLists(req, res, key, list) {
+  const body = await readJson(req, 10_000);
+  if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+  const { id, cwd } = body;
+  let folder = cwd;
+  if (typeof id === 'string') {
+    if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
+    const known = getChat(id)?.[key];
+    if (known) return send(res, 200, { [key]: known });
+    const row = findRow(id);
+    if (!row) return send(res, 404, { error: NO_SESSION });
+    folder = row.cwd && fs.existsSync(row.cwd) ? row.cwd : os.homedir();
+  } else if (cwd === undefined) {
+    return send(res, 400, { error: 'Which session or folder?' });
+  } else if (typeof cwd !== 'string' || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+    return send(res, 400, { error: 'That folder does not exist on this Mac.' });
+  }
+  try {
+    return send(res, 200, { [key]: await list(folder, cfg.claude) });
+  } catch (e) {
+    return send(res, 502, { error: e.message });
+  }
+}
+
 // GET api/routines lists them. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches one on or off.
 async function routinesApi(req, res, parts) {
   if (parts.length === 2) return req.method === 'GET' ? send(res, 200, routines.list()) : send(res, 405, { error: 'Method not allowed' });
@@ -619,41 +645,21 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, images: sent } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    const { cwd, text, mode, model, effort, fast, images: sent } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
     if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
     if (!text?.trim() && !images.length) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
+    if (fast !== undefined && typeof fast !== 'boolean') return send(res, 400, { error: 'Unknown fast mode.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text: text || '', images, mode: chosen, model, effort });
+    const id = await newSession({ cwd, text: text || '', images, mode: chosen, model, effort, fast });
     return send(res, 200, { id });
   }
-  // A POST, so a page on another site can never start a CLI through it (the same-origin check covers POSTs only).
-  if (req.method === 'POST' && u.pathname === '/api/commands') {
-    const body = await readJson(req, 10_000);
-    if (!body) return send(res, 400, { error: 'Send a JSON body.' });
-    const { id, cwd } = body;
-    let folder = cwd;
-    if (typeof id === 'string') {
-      if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
-      const known = getChat(id)?.commands;
-      if (known) return send(res, 200, { commands: known });
-      const row = findRow(id);
-      if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
-      folder = row.cwd && fs.existsSync(row.cwd) ? row.cwd : os.homedir();
-    } else if (cwd === undefined) {
-      return send(res, 400, { error: 'Which session or folder?' });
-    } else if (typeof cwd !== 'string' || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
-      return send(res, 400, { error: 'That folder does not exist on this Mac.' });
-    }
-    try {
-      return send(res, 200, { commands: await listCommands(folder, cfg.claude) });
-    } catch (e) {
-      return send(res, 502, { error: e.message });
-    }
-  }
+  // POSTs, so a page on another site can never start a CLI through them (the same-origin check covers POSTs only).
+  if (req.method === 'POST' && u.pathname === '/api/commands') return askLists(req, res, 'commands', listCommands);
+  if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
   if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
@@ -733,16 +739,17 @@ async function api(req, res, u) {
     }
     return send(res, 200, { mode: body.mode });
   }
-  if (action === 'model' || action === 'effort') {
+  if (action === 'model' || action === 'effort' || action === 'fast') {
     const value = body[action];
-    if (action === 'model' ? !MODEL.test(value || '') : !EFFORTS.includes(value)) return send(res, 400, { error: `Unknown ${action}.` });
+    if (action === 'model' ? !MODEL.test(value || '') : action === 'effort' ? !EFFORTS.includes(value) : typeof value !== 'boolean') return send(res, 400, { error: `Unknown ${action}.` });
     const row = findRow(id);
     if (!chat && !row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const target = chat || ensureChat(id, row);
     try {
-      await (action === 'model' ? target.setModel(value) : target.setEffort(value));
+      await (action === 'model' ? target.setModel(value) : action === 'effort' ? target.setEffort(value) : target.setFast(value));
     } catch (e) {
-      return send(res, 400, { error: e.message });
+      // The chat's status holds a later pick that went through, which the page would otherwise overwrite with the value it had before this one.
+      return send(res, 400, { error: e.message, status: target.status() });
     }
     savePick(id, { [action]: value });
     return send(res, 200, target.status());

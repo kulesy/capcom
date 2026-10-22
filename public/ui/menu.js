@@ -1,13 +1,18 @@
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { holdPointer, onPressOutside } from './layer.js';
 import { isSecondary } from './layer-rules.js';
-import { graceArea, inside, nextMatch, place, stepIn } from './menu-rules.js';
+import { graceArea, inside, keyedItem, nextMatch, place, roleOf, stepIn } from './menu-rules.js';
 import { usePresence } from './presence.js';
 import { shortcut } from './shortcuts.js';
 
 // shadcn's dropdown and context menus, which are Radix's, and modal as they are: the page under an open menu takes no press.
 // `items` are { label, run, icon, hint, danger, disabled }, { separator: true }, { group, items } for items under a heading, or
-// { label, icon, items } for an item that opens a sub-menu. `hint` names the key that does the same.
+// { label, icon, items } for an item that opens a sub-menu. `hint` names the key that does the same. A group with `heading: false` keeps
+// its name for assistive technology and draws none. An item can also have:
+// `checked` (true or false) to be a radio item, which draws a check in place of its hint when true; `switch` (true or false) to be a switch;
+// `value` for muted text at the right; `warn` for a warning icon there; `key`, one character that picks the item while this menu has the
+// focus, ahead of typing to find an item; `tip`, the words of a tooltip; and `id`, which keeps the focus on the item when the items
+// before it change, as they do when the CLI's models arrive.
 
 // Whether the last input was a key. A menu opened by a key lights its first item, and one opened by a pointer lights none.
 let keyboard = false;
@@ -25,6 +30,8 @@ export const icons = {
   trash: ['M3 6h18', 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6', 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2', 'M10 11v6', 'M14 11v6'],
   indentIncrease: ['M21 12H11', 'M21 18H11', 'M21 6H11', 'm3 8 4 4-4 4'],
   indentDecrease: ['M21 12H11', 'M21 18H11', 'M21 6H11', 'm7 8-4 4 4 4'],
+  check: ['M20 6 9 17l-5-5'],
+  triangleAlert: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
 };
 
 export const draw = (paths, className) => html`<svg class=${className} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map(d => html`<path d=${d} />`)}</svg>`;
@@ -63,7 +70,7 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
   const pressed = useRef(null);
   const placed = at !== null;
   const subPath = n => (path ? `${path}.${n}` : String(n));
-  const enabled = () => [...box.current.querySelectorAll('[role="menuitem"]:not([data-disabled])')];
+  const enabled = () => [...box.current.querySelectorAll('[role^="menuitem"]:not([data-disabled])')];
   const lit = el => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); };
   const openSub = (n, which = null) => setSub({ at: n, entry: which && { which } });
 
@@ -150,6 +157,8 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
       if (to >= 0) { e.preventDefault(); list[to].focus(); return; }
     }
     if (e.key.length !== 1) return;
+    const keyed = keyedItem(flat, e.key);
+    if (keyed >= 0) { e.preventDefault(); root.pick(flat[keyed]); return; }
     const t = typed.current;
     clearTimeout(t.timer);
     t.text += e.key;
@@ -209,20 +218,21 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     const n = flat.indexOf(def);
     const opens = !!def.items;
     const shown = opens && open && sub?.at === n;
-    return html`<div class="menu-item" role="menuitem" tabindex="-1" id=${`${id}-item-${n}`} data-at=${n}
+    const { role, checked } = roleOf(def);
+    return html`<div key=${def.id ?? n} class="menu-item" role=${role} aria-checked=${checked} tabindex="-1" id=${`${id}-item-${n}`} data-at=${n} data-tip=${def.tip || null}
       data-variant=${def.danger ? 'destructive' : null} data-disabled=${def.disabled ? '' : null} aria-disabled=${def.disabled ? 'true' : null}
       data-state=${opens ? (shown ? 'open' : 'closed') : null} aria-haspopup=${opens ? 'menu' : null} aria-expanded=${opens ? shown : null}
       aria-controls=${opens ? layerId(root.id, subPath(n)) : null} ref=${el => { rows.current[n] = el; }}
       onClick=${e => pick(def, e.currentTarget, n)} onPointerDown=${e => { pressed.current = e.currentTarget; }} onPointerUp=${e => release(e, def)}
       onPointerMove=${e => hover(e, def, e.currentTarget, n)} onPointerLeave=${e => leave(e, e.currentTarget, n)}>
-      ${def.icon ? draw(def.icon) : null}<span class="menu-text">${def.label}</span>${def.hint ? html`<span class="menu-shortcut">${def.hint}</span>` : null}${opens ? draw(['m9 18 6-6-6-6'], 'menu-chevron') : null}
+      ${def.icon ? draw(def.icon) : null}<span class="menu-text">${def.label}</span>${def.value ? html`<span class="menu-value">${def.value}</span>` : null}${def.warn ? draw(icons.triangleAlert, 'menu-warning') : null}${role === 'menuitemradio' && checked ? draw(icons.check, 'menu-check') : def.hint ? html`<span class="menu-shortcut">${def.hint}</span>` : null}${role === 'menuitemcheckbox' ? html`<span class="menu-switch" data-state=${checked ? 'checked' : 'unchecked'} aria-hidden="true"><span class="menu-switch-thumb"></span></span>` : null}${opens ? draw(['m9 18 6-6-6-6'], 'menu-chevron') : null}
     </div>`;
   };
 
   const body = items.map(it => (it.separator
     ? html`<div class="menu-separator" role="separator"></div>`
     : it.group
-      ? html`<div role="group" aria-label=${it.group}><div class="menu-label" aria-hidden="true">${it.group}</div>${it.items.map(row)}</div>`
+      ? html`<div role="group" aria-label=${it.group}>${it.heading === false ? null : html`<div class="menu-label" aria-hidden="true">${it.group}</div>`}${it.items.map(row)}</div>`
       : row(it)));
 
   const style = at
@@ -253,8 +263,9 @@ function Tree({ menu, open, onClose, onGone }) {
       if (back) { if (later) setTimeout(focus); else focus(); }
       close.current();
     };
-    // The menu closes first, so a choice that opens a form or moves the focus is not undone by the menu leaving.
-    root.pick = item => { close.current(); item.run?.(); };
+    // The menu closes first, so a choice that opens a form or moves the focus is not undone by the menu leaving. An item with nothing
+    // to run, such as the checked one, hands the focus back to the button as Esc does.
+    root.pick = item => { if (!item.run) return root.shut(true); close.current(); item.run(); };
     shared.current = root;
   }
   const root = shared.current;

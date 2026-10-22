@@ -25,10 +25,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `.claude/settings.local.json`.
 - **The prompt box** follows Desktop's. It is one row: a + on the left attaches images, the text sits in the middle
   and the send button on the right. As you type more lines the text grows to 40% of the window's height and then
-  scrolls, with the + and send level with its last line. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions), the model and the
-  effort sit under the box as plain text, and each opens its list when you click it. A model or effort change applies from
+  scrolls, with the + and send level with its last line. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions) sits under the box
+  as plain text and opens its list when you click it. One button on the right names the model, `Fast` when fast mode is on, and the effort, and opens a
+  menu like Desktop's. Opus 5.5, Fable 5.1, Sonnet 5.5 and Haiku 5.5 come first, and the keys 1 to 4 pick them while the focus is in that list.
+  Effort opens Low, Medium, High, Extra and Max, with a warning on Max. More models holds Opus 5.5 (1M) and every other model the CLI
+  lists. When the model takes fast mode, the menu also has an Enable fast mode switch. A change applies from
   Claude's next request, even mid-turn, and is remembered
-  for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
+  for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart. Fast mode is off until you switch it on for a session.
 - **Skills and commands.** Type / at the start of the prompt box and a list of the skills and slash commands that
   chat can run opens above it, filtered by name and alias as you type. The arrow keys move, Enter or Tab picks, a
   click or tap picks, and Esc closes the list without stopping a running chat. Picking writes `/name ` into the box
@@ -362,8 +365,8 @@ Things to know:
 - Settings follow Claude Desktop. A session Desktop knows continues with the permission mode, model
   and effort Desktop recorded for it. Any other session, and every new one, gets Desktop's mode for
   that folder (falling back to `permissions.defaultMode` in `~/.claude/settings.json`), Desktop's
-  effort level, and the model from `~/.claude/settings.json`. The mode, model and effort can still be
-  changed per chat from the prompt box.
+  effort level, and the model from `~/.claude/settings.json`. You can change the mode, model, effort and fast mode
+  per chat from the prompt box.
 
 ## Routines
 

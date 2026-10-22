@@ -46,7 +46,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const touched = draft ? new Set() : null;
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
-    status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null } : null,
+    status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
@@ -135,6 +135,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     })));
     on('mode', d => patchStatus({ mode: d.mode }));
     on('model', d => { patchStatus({ model: d.model, shownModel: d.model }); refreshContext(); });
+    on('fast', d => patchStatus({ fast: d.fast }));
     on('effort', d => patchStatus({ effort: d.effort }));
     on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); refreshContext(); });
     on('error', d => notice(d.message));
@@ -325,9 +326,11 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     }
   }
 
-  // The change shows at once and is put back if Claude refuses it. It applies from Claude's next request, even mid-turn.
+  // The change shows at once and applies from Claude's next request, even mid-turn. When Claude refuses it, the page shows the status
+  // Capcom answers with, which holds a later pick that went through, and puts the old value back only when there is none.
+  // `kind` is 'model', 'effort' or 'fast', and fast mode's value is true or false.
   async function pick(kind, value) {
-    const patch = kind === 'model' ? { model: value, shownModel: value } : { effort: value };
+    const patch = kind === 'model' ? { model: value, shownModel: value } : { [kind]: value };
     if (draft) return setDraft(patch);
     const before = state().status || {};
     patchStatus(patch);
@@ -337,7 +340,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       if (kind === 'model') refreshContext();
     } catch (err) {
       if (closed) return;
-      patchStatus(Object.fromEntries(Object.keys(patch).map(k => [k, before[k]])));
+      if (err.data?.status) store.set({ status: err.data.status });
+      else patchStatus(Object.fromEntries(Object.keys(patch).map(k => [k, before[k]])));
       notice(err.message);
     }
   }
@@ -363,7 +367,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const { id: created } = await api('api/new', {
         cwd: state().folder.trim(), text, mode: s.mode, ...(images.length && { images: payload(images) }),
-        ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }),
+        ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();
       startedHere = { id: created, text, images };

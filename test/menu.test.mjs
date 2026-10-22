@@ -1,8 +1,8 @@
 // Run with `npm test`. The rules of the popup menus that need no page: where a menu sits next to its button or at a point, when it
-// flips or slides to stay in view, which item an arrow key or a typed letter lands on.
+// flips or slides to stay in view, which item an arrow key, a typed letter or an item's own key lands on, and what role an item has.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { graceArea, inside, nextMatch, place, stepIn } from '../public/ui/menu-rules.js';
+import { graceArea, inside, keyedItem, nextMatch, place, roleOf, stepIn } from '../public/ui/menu-rules.js';
 
 const VIEW = { width: 1280, height: 900 };
 const SIZE = { width: 180, height: 100 };
@@ -140,6 +140,23 @@ test('one letter typed again and again counts as that letter, so it steps throug
 test('an empty search or no items finds nothing', () => {
   assert.equal(nextMatch(LABELS, '', 0), -1);
   assert.equal(nextMatch([], 'a', -1), -1);
+});
+
+test('a key picks the first enabled item that names it, and no item that opens a sub-menu', () => {
+  const items = [{ label: 'Effort', key: '2', items: [] }, { label: 'A', key: '1', disabled: true }, { label: 'B', key: '1' }, { label: 'C', key: '1' }, { label: 'D' }];
+  assert.equal(keyedItem(items, '1'), 2);
+  assert.equal(keyedItem(items, '2'), -1);
+  assert.equal(keyedItem(items, '3'), -1);
+  assert.equal(keyedItem([], '1'), -1);
+});
+
+test('an item with checked is a radio item and one with switch a checkbox item, each saying whether it is on, and any other is a plain item', () => {
+  assert.deepEqual(roleOf({ label: 'Opus', checked: true }), { role: 'menuitemradio', checked: true });
+  assert.deepEqual(roleOf({ label: 'Haiku', checked: false }), { role: 'menuitemradio', checked: false });
+  assert.deepEqual(roleOf({ label: 'Fast', switch: false }), { role: 'menuitemcheckbox', checked: false });
+  assert.deepEqual(roleOf({ label: 'Fast', switch: true }), { role: 'menuitemcheckbox', checked: true });
+  assert.deepEqual(roleOf({ label: 'Rename', hint: 'R' }), { role: 'menuitem', checked: null });
+  assert.deepEqual(roleOf({ label: 'Effort', items: [] }), { role: 'menuitem', checked: null });
 });
 
 const SUB = { left: 105, right: 285, top: 40, bottom: 240 };

@@ -28,7 +28,7 @@ Should Capcom copy all four?
 Chosen option: "Build all four changes", because the owner wants Capcom to work the way Desktop does.
 
 - **New session.** "+ New session" opens an empty chat with a folder picker above the prompt box. The first message starts the session in that folder.
-- **Controls.** The mode, model and effort pickers sit under the text, with Desktop's labels. The `+` menu holds the Chrome switch.
+- **Controls.** The mode, model and effort pickers sit under the text, with Desktop's labels. The `+` menu holds the Chrome switch. **Amended 2026-10-22.** The model and effort became one button with one menu, which also holds a fast mode switch. See [Pick the model, effort and fast mode from one menu](20261022-model-menu-from-the-cli.md).
 - **Send and Stop.** While Claude works and the box is empty, Send turns into Stop, and Esc stops too. A message typed during a turn redirects Claude. The CLI holds it until the running tool finishes, and Claude reads it before its next step.
 - **Tool calls.** Calls between Claude's messages collapse into one row, such as "Read 3 files, ran 2 commands". A Normal and Verbose switch in the chat header shows them ungrouped, and the browser remembers the choice.
 - **Model and effort.** A change goes to the running process as a `set_model` or `apply_flag_settings` control request, so Capcom does not restart the process. It applies from Claude's next request, even mid-turn. Capcom saves each pick in `picks.json` in its state folder, so the pick survives the idle stop and a restart.

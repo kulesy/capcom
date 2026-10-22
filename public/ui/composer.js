@@ -1,19 +1,19 @@
 // The prompt box: the text, the images attached to it, the settings under it, and the folder picker for a session that is not started yet.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
-import { SlashMenu, useCommands } from './commands.js';
+import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
 import { attach, attached, detach, draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
-import { modelLabel, tilde } from './format.js';
+import { tilde } from './format.js';
 import { draftImages, imageKey } from './gallery.js';
 import { useFields, useStore } from './hooks.js';
 import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
+import { draw, icons, layerId, Menu, opener } from './menu.js';
+import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
 import { openViewer } from './viewer.js';
 
 const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
-const MODELS = [['claude-opus-5-5', 'Opus 5.5'], ['claude-opus-5-5[1m]', 'Opus 5.5 (1M)'], ['claude-fable-5-1', 'Fable 5.1'], ['claude-sonnet-5-5', 'Sonnet 5.5'], ['claude-haiku-5-5', 'Haiku 5.5']];
-const EFFORTS = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
 // NOTE: [16 Oct 2026] EK - Grammarly's extension leaves a field alone when it carries these attributes.
 // Without them it puts its own buttons inside the message box.
 const NO_GRAMMARLY = { 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' };
@@ -38,15 +38,13 @@ const Arrow = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hi
 const Ring = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="30 11"/></svg>`;
 const Square = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="12" height="12" rx="2.5" fill="currentColor"/></svg>`;
 
-// A model or effort the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
+// A mode the list does not hold, such as one Desktop recorded, gets an option of its own so the box shows the truth.
 // The choice shows as plain text, as in Desktop, with the native picker laid invisibly over it so a tap still opens it.
-function Pick({ id, label, value, options, placeholder, labelOf = v => v, quiet, disabled, onChange }) {
-  const extra = value && !options.some(([v]) => v === value) ? [[value, labelOf(value)]] : [];
-  const all = [...options, ...extra];
-  const shown = all.find(([v]) => v === value)?.[1] || placeholder;
-  return html`<label class=${`btn pick${quiet ? ' quiet' : ''}`} data-variant="ghost" data-size="sm" data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
+function Pick({ id, label, value, options, disabled, onChange }) {
+  const all = value && !options.some(([v]) => v === value) ? [...options, [value, value]] : options;
+  const shown = all.find(([v]) => v === value)?.[1];
+  return html`<label class="btn pick" data-variant="ghost" data-size="sm" data-disabled=${disabled || null}><span class="sr">${label}</span><span aria-hidden="true">${shown}</span>
     <select id=${id} disabled=${disabled} value=${value || ''} onChange=${e => onChange(e.target.value)}>
-      ${placeholder ? html`<option value="" hidden>${placeholder}</option>` : null}
       ${all.map(([v, l]) => html`<option key=${v} value=${v}>${l}</option>`)}
     </select></label>`;
 }
@@ -93,6 +91,8 @@ export function Composer({ ctrl }) {
   const [composing, setComposing] = useState(false);
   const [dismissed, setDismissed] = useState(null);
   const [choice, setChoice] = useState({ query: null, at: 0 });
+  const [shown, setShown] = useState(null);
+  const opened = useRef(0);
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
   // Images alone are a message too.
   const ready = !!text.trim() || images.length > 0;
@@ -102,12 +102,23 @@ export function Composer({ ctrl }) {
   // The / list opens while the first word of the message is being typed, with the caret in it.
   const typed = caret === null ? null : typedCommand(text, caret);
   const query = typed ? typed.query : null;
-  const { commands, error } = useCommands(draft ? { cwd: folder.trim() } : { id: ctrl.id }, query !== null && focused);
+  const target = draft ? { cwd: folder.trim() } : { id: ctrl.id };
+  const { commands, error } = useCommands(target, query !== null && focused);
   const matches = useMemo(() => (commands && query !== null ? matching(commands, query) : []), [commands, query]);
   const open = query !== null && focused && !composing && dismissed !== query && (!commands || matches.length > 0);
   const at = open && commands ? (choice.query === query ? Math.min(choice.at, matches.length - 1) : 0) : -1;
   const hint = hintFor(commands, text);
   useLayoutEffect(() => { if (dismissed !== null && dismissed !== query) setDismissed(null); }, [dismissed, query]);
+
+  // The model and the effort share one menu, as in Desktop. The CLI's models are asked for when it opens, and the menu is made again on
+  // each render so they appear in it as they arrive.
+  const model = s.shownModel || s.model;
+  const { models, error: modelsError } = useModels(target, !!shown);
+  const look = buttonOf({ model, effort: s.effort, fast: s.fast, listed: models });
+  const popModel = (button, entry) => setShown(open => (open && !entry ? null : { id: `composer-${++opened.current}`, anchor: button, entry }));
+  // A pick hands the focus back to the button, as Radix's menus do, so a keyboard is not left on a menu that has gone.
+  const pickSetting = (kind, value) => { shown.anchor.focus({ preventScroll: true }); ctrl.pick(kind, value); };
+  const modelItems = shown ? modelMenu({ model, effort: s.effort, fast: s.fast, listed: models, error: modelsError, pick: pickSetting }) : null;
 
   // Sizing an untouched empty box would round its natural height down, so it waits for the first text.
   const typedOnce = useRef(false);
@@ -277,10 +288,13 @@ export function Composer({ ctrl }) {
         <${Pick} id="mode" label="Permission mode" value=${s.mode || 'manual'} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
       </div>
       <div class="composer-right">
-        <${Pick} id="model" label="Model" value=${s.shownModel || s.model} options=${MODELS} placeholder="Model" labelOf=${modelLabel} disabled=${!status} onChange=${v => ctrl.pick('model', v)} />
-        <${Pick} id="effort" label="Effort" value=${s.effort} options=${EFFORTS} placeholder="Effort" quiet disabled=${!status} onChange=${v => ctrl.pick('effort', v)} />
+        <button class="btn pick" id="model" type="button" data-variant="ghost" data-size="sm" disabled=${!status} aria-label=${buttonLabel(look)} aria-haspopup="menu" aria-expanded=${!!shown}
+          aria-controls=${shown ? layerId(shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${opener(popModel)}>
+          <span class="pick-line"><span>${look.model || 'Model'}</span>${look.fast ? html`<span>Fast</span>` : null}${look.effort ? html`<span class="quiet">${look.effort}</span>` : null}${look.max ? draw(icons.triangleAlert, 'pick-warning') : null}</span>
+        </button>
         <${ContextMeter} ctrl=${ctrl} />
       </div>
     </div>
+    <${Menu} menu=${shown && { ...shown, label: 'Model and effort', items: modelItems }} onClose=${() => setShown(null)} />
   </form>`;
 }

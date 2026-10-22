@@ -21,6 +21,17 @@ export const CLI_COMMANDS = [
   { name: 'code-review', description: 'Review the diff', argumentHint: '[level]', builtin: true, aliases: ['review'] },
   { name: '__remote-workflow', builtin: true },
 ];
+// And its models: the aliases come first, then the full ids, as the real one lists them. Only some Opus models take fast mode.
+export const CLI_MODELS = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', supportsFastMode: true },
+  { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', supportsFastMode: true },
+  { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku' },
+  { value: 'claude-haiku-4-5-20251001', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+  { value: 'claude-sonnet-5', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet 5' },
+  { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', supportsFastMode: true },
+  { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5' },
+  { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', supportsFastMode: true },
+];
 const running = [];
 
 const freePort = () => new Promise(resolve => {
@@ -31,7 +42,9 @@ const freePort = () => new Promise(resolve => {
 });
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
-// and when its input closed. It answers an initialize request with CLI_COMMANDS. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
+// and when its input closed. It answers an initialize request with CLI_COMMANDS and CLI_MODELS, and a change of model or setting with success, logging the settings.
+// It refuses a switch to the model `refused-by-the-fake`.
+// Sent 'begin a session' it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
 // context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached }, with `ago` and
@@ -87,17 +100,20 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }) });",
-    `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)} } } });`,
+    `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,
     "      say({ type: 'control_response', response: usage ? { subtype: 'success', request_id: m.request_id, response: usage } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
     "    }",
     "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
+    "    if (m.type === 'control_request' && m.request.settings) note({ settings: m.request.settings });",
+    "    if (m.type === 'control_request' && ['set_model', 'apply_flag_settings'].includes(m.request.subtype)) say({ type: 'control_response', response: m.request.model === 'refused-by-the-fake' ? { subtype: 'error', request_id: m.request_id, error: 'The fake refused that model.' } : { subtype: 'success', request_id: m.request_id } });",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
+    "    if (m.message.content === 'begin a session') say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' });",
     "  } catch {}",
     "}).on('close', () => { note({ closed: true }); process.exit(0); });",
     '',

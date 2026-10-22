@@ -1,11 +1,11 @@
-// Run with `npm test`. The commands the prompt box's / list shows: how the CLI's list is tidied, and how a folder's list is asked for,
-// shared and kept. The CLI is a small script that logs each start, so a start that should not have happened shows.
+// Run with `npm test`. The commands the prompt box's / list shows and the models its model menu offers: how the CLI's lists are tidied, and how a
+// folder's lists are asked for, shared and kept. The CLI is a small script that logs each start, so a start that should not have happened shows.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listCommands, rememberCommands, tidy } from '../lib/commands.mjs';
+import { listCommands, listModels, remember, tidy, tidyModels } from '../lib/commands.mjs';
 
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-commands-test-'));
 const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -21,10 +21,24 @@ const TIDIED = [
   { name: 'review-pr', description: 'Review a pull request', hint: '[number]', aliases: [] },
   { name: 'code-review', description: 'Review the diff', hint: '[level]', aliases: ['review'] },
 ];
+// And its models: the aliases come first, with a `value` that is not the model they resolve to, and then the full ids.
+const MODELS = [
+  { value: 'default', resolvedModel: 'claude-opus-5', displayName: 'Default (recommended)', supportsFastMode: true },
+  { value: 'opus', resolvedModel: 'claude-opus-5', displayName: 'Opus', supportsFastMode: true },
+  { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku' },
+  { value: 'claude-haiku-4-5-20251001', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+  { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', supportsFastMode: true },
+  { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', supportsFastMode: false },
+];
+const MODELS_TIDIED = [
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', fast: false },
+  { id: 'claude-opus-5', label: 'Opus 5', fast: true },
+  { id: 'claude-fable-5', label: 'Fable 5', fast: false },
+];
 
 // A CLI that logs each start (its process, arguments and folder), then answers an initialize request the way its mode file says:
-// 'answer' with LISTED, 'slow' with LISTED after 400 ms, 'bare' with no commands, 'refuse' with an error, 'silent' not at all, and
-// 'fail' by writing a message and exiting at once. Before its reply it writes lines the probe has to ignore.
+// 'answer' with LISTED and MODELS, 'slow' with the same after 400 ms, 'old' with LISTED and no models, 'bare' with no commands, 'refuse' with an
+// error, 'silent' not at all, and 'fail' by writing a message and exiting at once. Before its reply it writes lines the probe has to ignore.
 function stubCli() {
   const dir = fs.mkdtempSync(path.join(base, 'cli-'));
   const cli = path.join(dir, 'claude.mjs');
@@ -43,8 +57,9 @@ function stubCli() {
     '  const m = JSON.parse(line);',
     "  if (m.type !== 'control_request' || m.request.subtype !== 'initialize' || mode === 'silent') return;",
     '  const reply = {',
-    "    answer: { subtype: 'success', request_id: m.request_id, response: { commands: COMMANDS } },",
-    "    slow: { subtype: 'success', request_id: m.request_id, response: { commands: COMMANDS } },",
+    "    answer: { subtype: 'success', request_id: m.request_id, response: { commands: COMMANDS, models: MODELS } },",
+    "    slow: { subtype: 'success', request_id: m.request_id, response: { commands: COMMANDS, models: MODELS } },",
+    "    old: { subtype: 'success', request_id: m.request_id, response: { commands: COMMANDS } },",
     "    bare: { subtype: 'success', request_id: m.request_id, response: {} },",
     "    refuse: { subtype: 'error', request_id: m.request_id, error: 'The fake CLI refused.' },",
     '  }[mode];',
@@ -56,6 +71,7 @@ function stubCli() {
     "  }, mode === 'slow' ? 400 : 0);",
     "}).on('close', () => process.exit(0));",
     `const COMMANDS = ${JSON.stringify(LISTED)};`,
+    `const MODELS = ${JSON.stringify(MODELS)};`,
     '',
   ].join('\n'), { mode: 0o755 });
   return {
@@ -109,6 +125,47 @@ test('tidy gives a command with no description, hint or aliases empty ones, and 
   assert.deepEqual(tidy([{ name: 'a', aliases: 'x' }])[0].aliases, []);
 });
 
+test('tidyModels keeps the models listed by full id, each with its display name and whether it takes fast mode, in the CLI\'s order', () => {
+  assert.deepEqual(tidyModels(MODELS), MODELS_TIDIED);
+});
+
+test('tidyModels lists a model the CLI names only by an alias after the models it lists by id, under the name its id gives and with the alias\'s fast mode flag', () => {
+  const list = tidyModels([
+    { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', supportsFastMode: true },
+    { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', supportsFastMode: false },
+    { value: 'best', resolvedModel: 'claude-opus-5', displayName: 'Best' },
+    { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', supportsFastMode: true },
+    { value: 'x' },
+  ]);
+  assert.deepEqual(list, [{ id: 'claude-opus-5', label: 'Opus 5', fast: true }, { id: 'claude-opus-5-5', label: 'Opus 5.5', fast: true }]);
+});
+
+test('tidyModels turns every run of white space in a display name into one space, and names a model by its id when it has none', () => {
+  const [a, b, c] = tidyModels([
+    { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: '  Opus\n 4.8\t' },
+    { value: 'claude-sonnet-5', resolvedModel: 'claude-sonnet-5' },
+    { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: '   ' },
+  ]);
+  assert.deepEqual([a.label, b.label, c.label], ['Opus 4.8', 'Sonnet 5', 'Fable 5']);
+});
+
+test('tidyModels says a model takes fast mode only when the CLI says so with true', () => {
+  const of = supportsFastMode => tidyModels([{ value: 'a', resolvedModel: 'a', supportsFastMode }])[0].fast;
+  assert.deepEqual([true, false, undefined, 'true', 1, null].map(of), [true, false, false, false, false, false]);
+});
+
+test('tidyModels drops a model whose id came before, and anything in the list that is not a model', () => {
+  const list = tidyModels([
+    { value: 'a', resolvedModel: 'a', displayName: 'first' }, null, 'b', 5, {}, { value: '', resolvedModel: '' }, { value: 7, resolvedModel: 7 },
+    { value: 'a', resolvedModel: 'a', displayName: 'second' }, { value: 'c', resolvedModel: 'c' },
+  ]);
+  assert.deepEqual(list.map(m => [m.id, m.label]), [['a', 'first'], ['c', 'c']]);
+});
+
+test('tidyModels gives nothing when the CLI\'s answer is not a list', () => {
+  for (const answer of [undefined, null, {}, 'models', 7]) assert.deepEqual(tidyModels(answer), []);
+});
+
 test('the commands of a folder come from a CLI started there that makes no session, no MCP server and no hook, and that stops once it has answered', async () => {
   const cli = stubCli();
   const cwd = folder();
@@ -150,7 +207,7 @@ test('a CLI that does not answer in time is stopped and rejected, and the failur
   cli.mode('silent');
   const cwd = folder();
   // NOTE: [22 Oct 2026] EK - At 1000 ms a loaded machine stopped the stub before it had started and logged, so the count below was 0.
-  await assert.rejects(listCommands(cwd, cli.cli, { timeoutMs: 3000 }), { message: 'Claude did not list its commands in time.' });
+  await assert.rejects(listCommands(cwd, cli.cli, { timeoutMs: 3000 }), { message: 'Claude did not answer in time.' });
   assert.equal(cli.starts().length, 1);
   assert.equal(await gone(cli.starts()[0].pid), true, 'the CLI was stopped');
   cli.mode('answer');
@@ -163,7 +220,7 @@ test('a CLI that answers with an error, or with no commands, is rejected with wh
   cli.mode('refuse');
   await assert.rejects(listCommands(folder(), cli.cli), { message: 'The fake CLI refused.' });
   cli.mode('bare');
-  await assert.rejects(listCommands(folder(), cli.cli), { message: 'Claude did not list its commands.' });
+  await assert.rejects(listCommands(folder(), cli.cli), { message: 'Claude did not list its commands and models.' });
 });
 
 test('a CLI that stops without answering is rejected with the last line it wrote, and a failure is asked for again', async () => {
@@ -187,13 +244,13 @@ test('a CLI that is not there is rejected', async () => {
 test('a list a chat remembers is the list of its folder, and the folders remembered longest ago are forgotten first', async () => {
   const cli = stubCli();
   const cwd = folder();
-  rememberCommands(cwd, TIDIED);
+  remember(cwd, { commands: TIDIED, models: MODELS_TIDIED });
   assert.deepEqual(await listCommands(cwd, cli.cli), TIDIED);
   assert.deepEqual(cli.starts(), [], 'no CLI was needed');
 
   const oldest = folder();
-  rememberCommands(oldest, TIDIED);
-  for (let n = 0; n < 40; n++) rememberCommands(`/remembered/${n}`, TIDIED);
+  remember(oldest, { commands: TIDIED, models: MODELS_TIDIED });
+  for (let n = 0; n < 40; n++) remember(`/remembered/${n}`, { commands: TIDIED, models: MODELS_TIDIED });
   await listCommands(oldest, cli.cli);
   assert.equal(cli.starts().length, 1, 'the oldest was forgotten');
   await listCommands('/remembered/39', cli.cli);
@@ -217,9 +274,50 @@ test('a list a chat remembers for a folder is also the list of that folder writt
   const cli = stubCli();
   const plain = folder();
   const slashed = folder();
-  rememberCommands(plain, TIDIED);
-  rememberCommands(`${slashed}/`, TIDIED);
+  remember(plain, { commands: TIDIED, models: MODELS_TIDIED });
+  remember(`${slashed}/`, { commands: TIDIED, models: MODELS_TIDIED });
   assert.deepEqual(await listCommands(`${plain}/`, cli.cli), TIDIED);
   assert.deepEqual(await listCommands(slashed, cli.cli), TIDIED);
   assert.deepEqual(cli.starts(), [], 'no CLI was needed');
+});
+
+test('the models of a folder come from the same probe as its commands, so asking for both starts one CLI and each ask after it starts none', async () => {
+  const cli = stubCli();
+  const cwd = folder();
+  assert.deepEqual(await listModels(cwd, cli.cli), MODELS_TIDIED);
+  assert.deepEqual(await listCommands(cwd, cli.cli), TIDIED);
+  assert.equal(cli.starts().length, 1);
+  const other = folder();
+  cli.mode('slow');
+  const both = await Promise.all([listCommands(other, cli.cli), listModels(other, cli.cli)]);
+  assert.deepEqual(both, [TIDIED, MODELS_TIDIED]);
+  assert.equal(cli.starts().length, 2, 'asks made while the probe ran shared it');
+});
+
+test('a CLI that lists its commands and no models gives no models, and the commands still come', async () => {
+  const cli = stubCli();
+  cli.mode('old');
+  const cwd = folder();
+  assert.deepEqual(await listModels(cwd, cli.cli), []);
+  assert.deepEqual(await listCommands(cwd, cli.cli), TIDIED);
+  assert.equal(cli.starts().length, 1);
+});
+
+test('the models of a folder are rejected as its commands are, when the CLI refuses, lists nothing or does not answer in time', async () => {
+  const cli = stubCli();
+  cli.mode('refuse');
+  await assert.rejects(listModels(folder(), cli.cli), { message: 'The fake CLI refused.' });
+  cli.mode('bare');
+  await assert.rejects(listModels(folder(), cli.cli), { message: 'Claude did not list its commands and models.' });
+  cli.mode('silent');
+  await assert.rejects(listModels(folder(), cli.cli, { timeoutMs: 3000 }), { message: 'Claude did not answer in time.' });
+});
+
+test('a list a chat remembers holds its models too, so a model ask for that folder needs no CLI', async () => {
+  const cli = stubCli();
+  const cwd = folder();
+  remember(cwd, { commands: TIDIED, models: MODELS_TIDIED });
+  assert.deepEqual(await listModels(cwd, cli.cli), MODELS_TIDIED);
+  assert.deepEqual(await listModels(`${cwd}/`, cli.cli), MODELS_TIDIED);
+  assert.deepEqual(cli.starts(), []);
 });

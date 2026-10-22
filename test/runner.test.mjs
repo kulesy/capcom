@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listCommands } from '../lib/commands.mjs';
+import { listCommands, listModels } from '../lib/commands.mjs';
 import { activeStates, startChat, sweep } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -332,12 +332,128 @@ test('the commands Claude lists in its reply to initialize are tidied onto the c
   assert.deepEqual(await listCommands(dir, path.join(dir, 'no-such-claude')), chat.commands, 'the folder starts no CLI for what a chat has just listed');
 });
 
+test('the models Claude lists in its reply to initialize are tidied onto the chat, and its folder keeps them for the next model menu opened there', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const models = [
+    { value: 'default', resolvedModel: 'claude-opus-5', displayName: 'Default (recommended)', supportsFastMode: true },
+    { value: 'claude-haiku-4-5-20251001', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
+    { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', supportsFastMode: true },
+  ];
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: listingCli(dir, { subtype: 'success', response: { commands: [], models } }), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => chat.models);
+  assert.deepEqual(chat.models, [{ id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', fast: false }, { id: 'claude-opus-5', label: 'Opus 5', fast: true }]);
+  assert.deepEqual(await listModels(dir, path.join(dir, 'no-such-claude')), chat.models, 'the folder starts no CLI for what a chat has just listed');
+});
+
+test('a reply to initialize that lists commands and no models leaves the chat with no models to offer and its commands intact', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: listingCli(dir, { subtype: 'success', response: { commands: [{ name: 'review-pr' }] } }), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => chat.commands);
+  assert.deepEqual(chat.models, []);
+  assert.deepEqual(chat.commands.map(c => c.name), ['review-pr']);
+});
+
+// A CLI that logs how it was started and each control request it is sent. It answers an initialize request with `models`, any other request
+// with success, or with an error when `refuse` is set, and starts its session when it is sent the first message.
+const recordingCli = (dir, { models = [], refuse = false } = {}) => {
+  const log = path.join(dir, 'recorded.log');
+  const cli = path.join(dir, 'recording-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
+    "note({ started: process.argv.slice(2) });",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type === 'control_request') {",
+    '    note(m.request);',
+    `    const reply = m.request.subtype === 'initialize' ? { subtype: 'success', response: { commands: [], models: ${JSON.stringify(models)} } } : ${JSON.stringify(refuse)} ? { subtype: 'error', error: 'Not on this model.' } : { subtype: 'success' };`,
+    "    return out({ type: 'control_response', response: { request_id: m.request_id, ...reply } });",
+    '  }',
+    "  if (m.type === 'user') out({ type: 'system', subtype: 'init', session_id: 'sess-recording', model: 'stub' });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const noted = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []);
+  return { cli, started: () => noted().find(e => e.started).started, requests: () => noted().filter(e => e.subtype) };
+};
+
+test('a chat started in fast mode turns it on with apply_flag_settings once initialize is sent, and puts nothing about it in the CLI\'s arguments', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir);
+  const chat = await startChat({ cwd: dir, mode: 'manual', model: 'claude-opus-5-5', effort: 'high', fast: true, text: 'hello', images: [], claude: recorded.cli, chrome: true, chips: null });
+  t.after(() => chat.stop());
+  await until(() => recorded.requests().some(r => r.subtype === 'set_max_thinking_tokens'));
+  const asked = recorded.requests();
+  assert.deepEqual(asked.filter(r => r.subtype === 'apply_flag_settings'), [{ subtype: 'apply_flag_settings', settings: { fastMode: true } }]);
+  assert.ok(asked.findIndex(r => r.subtype === 'initialize') < asked.findIndex(r => r.subtype === 'apply_flag_settings'), 'after initialize');
+  assert.equal(JSON.stringify(recorded.started()).includes('fastMode'), false, 'a value given at spawn could not be turned off later');
+  assert.equal(chat.status().fast, true);
+});
+
+test('a chat started with fast mode off or unsaid asks for nothing about it', async t => {
+  for (const fast of [undefined, false]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+    const recorded = recordingCli(dir);
+    const chat = await startChat({ cwd: dir, mode: 'manual', fast, text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+    t.after(() => chat.stop());
+    await until(() => recorded.requests().some(r => r.subtype === 'set_max_thinking_tokens'));
+    assert.equal(recorded.requests().some(r => r.subtype === 'apply_flag_settings'), false, String(fast));
+    assert.equal(chat.status().fast, false, String(fast));
+  }
+});
+
+test('a start in fast mode that Claude refuses costs only that, because the request is not waited for and a reply to it is ignored', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir, { refuse: true });
+  const chat = await startChat({ cwd: dir, mode: 'manual', fast: true, text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => recorded.requests().some(r => r.subtype === 'apply_flag_settings'));
+  assert.equal(chat.status().running, true, 'the chat carries on');
+  assert.equal(chat.status().lastError, '');
+});
+
+test('turning fast mode on or off asks Claude with apply_flag_settings and tells the page, and the status says which', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+  await chat.setFast(true);
+  assert.equal(chat.status().fast, true);
+  await chat.setFast(false);
+  assert.equal(chat.status().fast, false);
+  assert.deepEqual(recorded.requests().filter(r => r.subtype === 'apply_flag_settings'), [
+    { subtype: 'apply_flag_settings', settings: { fastMode: true } },
+    { subtype: 'apply_flag_settings', settings: { fastMode: false } },
+  ]);
+  assert.deepEqual(heard.filter(e => e.type === 'fast').map(e => e.data), [{ fast: true }, { fast: false }]);
+});
+
+test('a fast mode change Claude refuses throws what Claude said, tells no page and leaves fast mode as it was', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir, { refuse: true });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+  await assert.rejects(chat.setFast(true), { message: 'Not on this model.' });
+  assert.equal(chat.status().fast, false);
+  assert.deepEqual(heard.filter(e => e.type === 'fast'), []);
+});
+
 test('a reply to initialize with an error or with no commands leaves the chat with no list, keeps nothing for its folder, and does not stop the chat', async t => {
   for (const reply of [{ subtype: 'error', error: 'Not today.' }, { subtype: 'success', response: {} }]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
     const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: listingCli(dir, reply), chrome: false, chips: null });
     t.after(() => chat.stop());
     assert.equal(chat.commands, null, reply.subtype);
+    assert.equal(chat.models, null, reply.subtype);
     assert.equal(chat.status().running, true, 'the chat carries on');
     await assert.rejects(listCommands(dir, path.join(dir, 'no-such-claude')), /ENOENT/, 'the folder has to ask for itself');
   }

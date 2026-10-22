@@ -1,4 +1,4 @@
-// The rules of a menu that need no page: where it sits, which item a key lands on, and which item a typed letter finds.
+// The rules of a menu that need no page: where it sits, which item a key lands on, which item a typed letter finds, and what role an item has.
 // Placement follows Floating UI as Radix uses it: shift along the anchor's edge, flip to the best side, then size to the room left.
 
 const OPPOSITE = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
@@ -125,6 +125,20 @@ export function nextMatch(labels, search, at) {
   const pool = text.length === 1 ? order.filter(i => i !== at) : order;
   const hit = pool.find(i => labels[i].toLowerCase().startsWith(text));
   return hit === undefined || hit === at ? -1 : hit;
+}
+
+// The item that pressing `key` picks, among a menu's items in the order they are drawn: the first enabled one that names the key and
+// does not open a sub-menu. -1 when none does.
+export function keyedItem(items, key) {
+  return items.findIndex(it => it.key === key && !it.disabled && !it.items);
+}
+
+// An item's ARIA role and aria-checked. An item with `checked` is a radio item and one with `switch` is a checkbox item, each true or false,
+// so one that is off still says so. The fast mode switch is a checkbox item because a menu may own nothing but items.
+export function roleOf(item) {
+  if (typeof item.checked === 'boolean') return { role: 'menuitemradio', checked: item.checked };
+  if (typeof item.switch === 'boolean') return { role: 'menuitemcheckbox', checked: item.switch };
+  return { role: 'menuitem', checked: null };
 }
 
 // The area a pointer may cross on its way from a sub-menu's trigger to the sub-menu, without the sub-menu closing: where it left

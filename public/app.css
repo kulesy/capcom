@@ -858,7 +858,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .menu-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .menu-shortcut {
-  margin-left: auto;
   color: var(--muted-foreground);
   font-size: 0.75rem;
   line-height: 1rem;
@@ -866,7 +865,48 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   white-space: nowrap;
 }
 
-.menu-chevron { margin-left: auto; }
+.menu-text + :is(.menu-value, .menu-warning, .menu-check, .menu-shortcut, .menu-switch, .menu-chevron) { margin-left: auto; }
+
+.menu-value { color: var(--muted-foreground); white-space: nowrap; }
+
+.menu-item .menu-check { color: currentColor; }
+
+.menu-item .menu-warning { color: var(--warning-foreground); }
+
+.menu-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  width: 2rem;
+  height: 1.15rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background-color: var(--input);
+  box-shadow: var(--shadow-xs);
+  transition: background-color 150ms;
+}
+
+.menu-switch[data-state="checked"] { background-color: var(--primary); }
+
+.menu-switch-thumb {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background-color: var(--background);
+  pointer-events: none;
+  transition: transform 150ms;
+}
+
+.menu-switch[data-state="checked"] .menu-switch-thumb { transform: translateX(calc(100% - 2px)); }
+
+@media (prefers-color-scheme: dark) {
+  .menu-switch[data-state="unchecked"] { background-color: color-mix(in oklab, var(--input) 80%, transparent); }
+
+  .menu-switch[data-state="unchecked"] .menu-switch-thumb { background-color: var(--foreground); }
+
+  .menu-switch[data-state="checked"] .menu-switch-thumb { background-color: var(--primary-foreground); }
+}
 
 .menu-label { padding: 0.375rem 0.5rem; font-size: 0.875rem; font-weight: 500; line-height: 1.25rem; }
 
@@ -2183,9 +2223,7 @@ button.thumb {
 
 .composer-right { margin-left: auto; }
 
-.composer-right .pick:has(+ .pick) { padding-right: 0.25rem; }
-
-.composer-right .pick + .pick { padding-left: 0.25rem; }
+.pick-line { display: inline-flex; align-items: center; gap: 0.375rem; }
 
 @media (max-width: 39.99rem) {
   .composer-bar { flex-wrap: nowrap; }
@@ -2199,7 +2237,7 @@ button.thumb {
   .composer-right { flex-shrink: 0; }
 }
 
-.btn.pick.quiet { --btn-fg: var(--muted-foreground); }
+.btn .pick-warning { width: 0.875rem; height: 0.875rem; color: var(--warning-foreground); }
 
 .pick select {
   position: absolute;
@@ -2702,6 +2740,7 @@ kbd.row-time { font-size: 0.75rem; }
 
 [data-slot="tooltip-content"] {
   width: fit-content;
+  max-width: 20rem;
   padding: 0.375rem 0.75rem;
   border-radius: var(--radius-md);
   background-color: var(--foreground);

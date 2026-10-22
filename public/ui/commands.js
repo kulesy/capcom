@@ -1,5 +1,6 @@
-// The prompt box's / list: asks the server what a chat can run, and draws shadcn's command list in a popover above the box.
-// The box keeps the focus and does the choosing (see composer.js), so the list only shows the choice and takes a click or a tap.
+// The prompt box's / list: asks the server what a chat can run, and draws shadcn's command list in a popover above the box. It asks the
+// same way for the models the model menu offers. The box keeps the focus and does the choosing (see composer.js), so the / list only
+// shows the choice and takes a click or a tap.
 import { api } from './api.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 
@@ -7,19 +8,19 @@ const FRESH_MS = 60_000;
 const EDGE = 8;
 const asked = new Map();
 
-const keyOf = target => (target.id ? `id:${target.id}` : `cwd:${target.cwd}`);
+const keyOf = (what, target) => `${what}:${target.id ? `id:${target.id}` : `cwd:${target.cwd}`}`;
 
-// The commands of a chat (`{ id }`) or of a folder (`{ cwd }`). An answer is reused for a minute, and a failed ask is forgotten so the
-// next / asks again.
-export function loadCommands(target) {
-  const key = keyOf(target);
+// What the server lists under `what` ('commands' or 'models') for a chat (`{ id }`) or a folder (`{ cwd }`). An answer is reused for a
+// minute, and a failed ask is forgotten so the next one asks again.
+function load(what, target) {
+  const key = keyOf(what, target);
   const now = Date.now();
   for (const [k, entry] of asked) if (now - entry.at >= FRESH_MS) asked.delete(k);
   let entry = asked.get(key);
   if (!entry) {
-    const promise = api('api/commands', target).then(({ commands }) => {
-      if (!Array.isArray(commands)) throw new Error('No commands came back.');
-      return commands;
+    const promise = api(`api/${what}`, target).then(answer => {
+      if (!Array.isArray(answer[what])) throw new Error(`No ${what} came back.`);
+      return answer[what];
     });
     entry = { at: now, promise };
     asked.set(key, entry);
@@ -28,9 +29,12 @@ export function loadCommands(target) {
   return entry.promise;
 }
 
-// The commands for `target`, asked for each time `wanted` turns on. The list from the last ask stays until the new one arrives.
-export function useCommands(target, wanted) {
-  const key = keyOf(target);
+export const loadCommands = target => load('commands', target);
+export const loadModels = target => load('models', target);
+
+// The list for `target`, asked for each time `wanted` turns on. The list from the last ask stays until the new one arrives.
+function useListed(what, target, wanted) {
+  const key = keyOf(what, target);
   const latest = useRef(key);
   latest.current = key;
   const [got, setGot] = useState({ key: null });
@@ -39,13 +43,16 @@ export function useCommands(target, wanted) {
     setGot(was => (was.error ? { key: null } : was));
     // NOTE: [22 Oct 2026] EK - Only a changed key drops a reply, never `wanted` turning off. The space after /name does that before
     // the list arrives, and a dropped reply loses the argument hint.
-    loadCommands(target).then(
-      commands => { if (latest.current === key) setGot({ key, commands }); },
+    load(what, target).then(
+      list => { if (latest.current === key) setGot({ key, [what]: list }); },
       e => { if (latest.current === key) setGot({ key, error: e.message }); },
     );
   }, [wanted, key]);
   return got.key === key ? got : {};
 }
+
+export const useCommands = (target, wanted) => useListed('commands', target, wanted);
+export const useModels = (target, wanted) => useListed('models', target, wanted);
 
 // The list scrolls inside the room above the prompt box, which on a phone is what the on-screen keyboard leaves.
 function useRoom(box) {
