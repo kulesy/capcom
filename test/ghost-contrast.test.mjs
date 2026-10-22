@@ -79,6 +79,7 @@ const MARKS = [
   ['--sidebar-ring', ['--sidebar']],
   ['--eye-ink', ['--background', '--sidebar']],
   ['--eye', ['--socket']],
+  ['--shell', ['--background', '--sidebar']],
   ['--warning', ['--background', '--sidebar', '--socket']],
   ['--ready', ['--sidebar']],
   ['--warning-foreground', ['--sidebar']],
