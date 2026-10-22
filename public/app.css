@@ -1135,7 +1135,7 @@ body[data-scroll-locked] {
 
 .row:is([aria-current="page"], [aria-selected="true"], [data-menu]) ~ :is(.more, .fold) { color: var(--sidebar-accent-foreground); }
 
-.sub-rows { margin-top: var(--row-gap); padding-left: var(--nest-indent); }
+.sub-rows { margin-top: var(--row-gap); margin-left: var(--nest-indent); }
 
 .sub-rows > li::before {
   content: "";
@@ -1156,7 +1156,9 @@ body[data-scroll-locked] {
   border-bottom-left-radius: var(--radius-sm);
 }
 
-.has-fold:has(> .row[data-lifted]) > .sub-rows > li::before { opacity: 0.4; }
+.sub-rows > li > .row { position: relative; }
+
+.has-fold:has(> .row[data-lifted]) > .sub-rows:not(.earlier-runs) > li::before { opacity: 0.4; }
 
 .earlier-runs .row { grid-template-areas: "lamp title time"; height: 1.75rem; padding-block: 0; }
 

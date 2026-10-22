@@ -131,8 +131,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   place, with the parent's group or pin, and counts in that section and project. The arrow on a parent's row
   folds its nested sessions, every family starts open, and the browser remembers which are folded. A family
   sorts by its newest session, so a busy nested session keeps its parent near the top of a list that goes
-  newest first. Drop a nested session on a section, or move or pin it from its menu, and it leaves its
-  parent and goes there. Move out of in its menu takes it out, and it stays in its parent's group or in
+  newest first. Drop a nested session on a section, the indent beside its family included, or move or
+  pin it from its menu, and it leaves its parent and goes there. Move out of in its menu takes it out,
+  and it stays in its parent's group or in
   Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal
   and other. Nest under in any session's menu opens a second menu of the other top level sessions in the
   same section, so a phone nests without a drag. Archiving a parent archives only the parent, and its nested
