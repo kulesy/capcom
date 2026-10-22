@@ -1,9 +1,8 @@
 // Run with `npm test`. What the model menu offers and what its button says: the four models and their keys, the effort sub-menu, More
-// models from the CLI's list, a row for a model or effort the lists do not hold, the fast mode switch, the words on the button, and
-// when the note about Max effort shows above the prompt box.
+// models from the CLI's list, a row for a model or effort the lists do not hold, the fast mode switch, and the words on the button.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buttonLabel, buttonOf, effortName, MAX_NOTE, MAX_TIP, modelMenu, modelName, showsMaxNote, takesFast } from '../public/ui/model-rules.js';
+import { buttonLabel, buttonOf, effortName, MAX_TIP, modelMenu, modelName, takesFast } from '../public/ui/model-rules.js';
 
 const LISTED = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', fast: false },
@@ -253,20 +252,4 @@ test('the button\'s name for assistive technology begins with the words it shows
   assert.equal(buttonLabel({ model: 'Sonnet 5.5', fast: false, effort: null }), 'Sonnet 5.5');
   assert.equal(buttonLabel({ model: null, fast: false, effort: null }), 'Model');
   assert.equal(buttonLabel(buttonOf({ model: 'claude-opus-5-5', effort: 'max', fast: true, listed: null })), 'Opus 5.5 Fast, Max effort');
-});
-
-test('the Max note shows while the effort is max, and goes once its × has hidden it in this browser', () => {
-  assert.equal(showsMaxNote('max', false), true);
-  assert.equal(showsMaxNote('max', true), false);
-});
-
-test('the Max note never shows for another effort, for one the list does not hold such as Max or ultra, or for none, hidden or not', () => {
-  for (const effort of ['low', 'medium', 'high', 'xhigh', 'Max', 'ultra', null, undefined]) {
-    assert.equal(showsMaxNote(effort, false), false, String(effort));
-    assert.equal(showsMaxNote(effort, true), false, String(effort));
-  }
-});
-
-test('the Max note has Desktop\'s words, with a multiplication sign in 3.5×', () => {
-  assert.equal(MAX_NOTE, 'Claude thinks longer with Max effort and can consume 3.5× or more usage than Medium.');
 });

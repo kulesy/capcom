@@ -2139,31 +2139,6 @@ button.thumb {
 
 .notice:empty { display: none; }
 
-.max-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.375rem;
-  margin-bottom: 0.375rem;
-  padding: 0.375rem 0.5rem;
-  border-radius: var(--radius-lg);
-  background: var(--muted);
-  color: var(--warning-foreground);
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-}
-
-.max-note > svg { flex-shrink: 0; width: 0.875rem; height: 0.875rem; margin-top: 0.3125rem; }
-
-.max-note p { flex: 1; min-width: 0; margin: 0.125rem 0; }
-
-.max-note .btn {
-  --btn-fg: var(--muted-foreground);
-  --btn-bg-hover: color-mix(in oklab, var(--foreground) 8%, transparent);
-  --btn-fg-hover: var(--foreground);
-}
-
-.max-note .btn svg { width: 1rem; height: 1rem; }
-
 .composer-box {
   --field-pad: calc((2.75rem - var(--field-lh)) / 2) 0.25rem;
   flex-direction: column;

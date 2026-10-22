@@ -32,8 +32,6 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   lists. When the model takes fast mode, the menu also has an Enable fast mode switch. A change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart. Fast mode is off until you switch it on for a session.
-  While a chat's effort is Max, Desktop's note sits above the box: "Claude thinks longer with Max effort and can consume 3.5× or
-  more usage than Medium." Its × hides the note in every chat in that browser, and it stays hidden after a reload.
 - **Skills and commands.** Type / at the start of the prompt box and a list of the skills and slash commands that
   chat can run opens above it, filtered by name and alias as you type. The arrow keys move, Enter or Tab picks, a
   click or tap picks, and Esc closes the list without stopping a running chat. Picking writes `/name ` into the box

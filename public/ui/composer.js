@@ -1,4 +1,4 @@
-// The prompt box: the text, the images attached to it, the settings under it, the note above it while the effort is Max, and the folder picker for a session that is not started yet.
+// The prompt box: the text, the images attached to it, the settings under it, and the folder picker for a session that is not started yet.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
@@ -6,11 +6,11 @@ import { attach, attached, detach, draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
 import { draftImages, imageKey } from './gallery.js';
-import { useFields, useLocal, useStore } from './hooks.js';
+import { useFields, useStore } from './hooks.js';
 import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
-import { buttonLabel, buttonOf, MAX_NOTE, modelMenu, showsMaxNote } from './model-rules.js';
+import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
 import { openViewer } from './viewer.js';
 
 const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
@@ -31,11 +31,6 @@ function Attachments({ images, preparing }) {
       <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
-}
-
-function MaxNote({ onHide }) {
-  return html`<div class="max-note" role="note">${draw(icons.triangleAlert)}<p id="max-note">${MAX_NOTE}</p>
-    <button class="btn" data-variant="ghost" data-size="icon-xs" type="button" aria-label="Dismiss" aria-describedby="max-note" data-tip="Dismiss" onClick=${onHide}>${draw(['M18 6 6 18', 'm6 6 12 12'])}</button></div>`;
 }
 
 const Plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4.25v11.5M4.25 10h11.5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>`;
@@ -98,7 +93,6 @@ export function Composer({ ctrl }) {
   const [choice, setChoice] = useState({ query: null, at: 0 });
   const [shown, setShown] = useState(null);
   const opened = useRef(0);
-  const [maxNoteHidden, setMaxNoteHidden] = useLocal('maxNoteHidden', false);
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
   // Images alone are a message too.
   const ready = !!text.trim() || images.length > 0;
@@ -221,12 +215,6 @@ export function Composer({ ctrl }) {
     if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
   };
 
-  // The focused × leaves with the note, so a mouse hands the focus to the box. A touch screen would raise its keyboard, so it is left alone.
-  const hideMaxNote = () => {
-    setMaxNoteHidden(true);
-    if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
-  };
-
   const track = () => {
     const el = area.current;
     setCaret(el.selectionStart === el.selectionEnd ? el.selectionStart : null);
@@ -278,7 +266,6 @@ export function Composer({ ctrl }) {
 
   const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
-    ${showsMaxNote(s.effort, maxNoteHidden) ? html`<${MaxNote} onHide=${hideMaxNote} />` : null}
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
       ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
