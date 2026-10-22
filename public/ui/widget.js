@@ -43,6 +43,7 @@ window.addEventListener('message', e => {
   const m = e.data;
   if (!frame || !m || typeof m !== 'object') return;
   if (m.capcom === 'height') frame.height(m.h);
+  else if (m.capcom === 'tabbable') frame.tabbable(m.yes === true);
   else if (m.capcom === 'prompt') frame.prompt(m.text);
   else if (m.capcom === 'link') frame.link(m.url);
   else if (m.capcom === 'acted') frame.acted = Date.now();
@@ -104,6 +105,8 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
   const frame = useRef(null);
   const li = useRef(null);
   const [height, setHeight] = useState(0);
+  // A frame stays a tab stop until it says it holds nothing to focus, so one that never says keeps its controls in reach.
+  const [tabbable, setTabbable] = useState(true);
   const [closed, setClosed] = useState(false);
   const [request, setRequest] = useState(null);
   const asking = useRef(null);
@@ -169,6 +172,7 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
     frames.set(win, {
       acted: 0,
       height: h => { const px = clampHeight(h); if (px !== null) setHeight(px); },
+      tabbable: yes => { if (alive.current) setTabbable(yes); },
       prompt: text => { setTimeout(decide, SETTLE_MS, text); },
       link: url => {
         const target = linkTarget(url);
@@ -197,7 +201,7 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
   const style = height ? { height: `${height}px` } : ratio ? { height: 'auto', aspectRatio: `${ratio.width} / ${ratio.height}` } : undefined;
   const note = request ? (request.kind === 'link' ? 'A widget wants to open a link. Choose Open link or Cancel.' : 'A widget wants to send a message. Choose Send or Cancel.') : '';
   return html`<li class="widget" ref=${li}>
-    <iframe ref=${frame} class=${card ? 'card' : undefined} sandbox="allow-scripts" title=${humanTitle(t.input?.title)} srcdoc=${doc} style=${style} onLoad=${onLoad}></iframe>
+    <iframe ref=${frame} class=${card ? 'card' : undefined} sandbox="allow-scripts" title=${humanTitle(t.input?.title)} tabindex=${tabbable ? null : -1} srcdoc=${doc} style=${style} onLoad=${onLoad}></iframe>
     ${request ? html`<${Ask} request=${request} onConfirm=${confirm} onCancel=${close} />` : null}
     <p class="sr" role="status">${note}</p></li>`;
 });

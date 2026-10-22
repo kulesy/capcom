@@ -81,17 +81,21 @@ test('the boot script is written into the frame as text, so it cannot close the 
 // ---- the boot script, run against a stand-in window ------------------------------------------------------------------------
 
 // The boot script as `frameDoc` writes it, run in a context of its own. The window has only what the script touches. `fire` calls the
-// listeners the script registered, as the browser would, and `posted` is what the script sent up to the page.
-function boot() {
+// listeners the script registered, as the browser would, and `posted` is what the script sent up to the page. `page.focusable` is
+// whether the page holds anything to focus, and `changed` runs the script's mutation observers.
+function boot({ focusable = false } = {}) {
   const clock = { t: 1_000 };
   const listeners = [];
   const posted = [];
+  const observers = [];
+  const page = { focusable };
   class Element {}
   const window = {
     Element,
     Date: { now: () => clock.t },
     innerHeight: 150,
     ResizeObserver: class { observe() {} },
+    MutationObserver: class { constructor(fn) { observers.push(fn); } observe() {} },
     // Messages are made in the script's own realm, so they are copied to be compared.
     parent: { postMessage: message => posted.push(JSON.parse(JSON.stringify(message))) },
     addEventListener: (type, fn, capture) => listeners.push({ type, fn, capture }),
@@ -100,19 +104,32 @@ function boot() {
       body: { scrollHeight: 120, getBoundingClientRect: () => ({ height: 100 }) },
       documentElement: { setAttribute() {}, style: {} },
       addEventListener() {},
+      querySelector: () => (page.focusable ? new Element() : null),
     },
   };
   window.window = window;
   vm.runInNewContext(`(${frameBoot})()`, window);
   const atBoot = posted.splice(0);
   return {
-    window, clock, listeners, posted, atBoot,
+    window, clock, listeners, posted, atBoot, page,
     fire: (type, event) => listeners.filter(l => l.type === type).forEach(l => l.fn({ isTrusted: true, ...event })),
+    changed: () => observers.forEach(fn => fn([])),
   };
 }
 
-test('the boot script runs in a bare window and reports the height of the page at once', () => {
-  assert.deepEqual(boot().atBoot, [{ capcom: 'height', h: 120 }]);
+test('the boot script runs in a bare window and reports at once the height of the page and that it holds nothing to focus', () => {
+  assert.deepEqual(boot().atBoot, [{ capcom: 'height', h: 120 }, { capcom: 'tabbable', yes: false }]);
+});
+
+test('the frame says whether Tab can reach anything in it, and says it again only when that changes', () => {
+  const t = boot({ focusable: true });
+  assert.deepEqual(t.atBoot.filter(m => m.capcom === 'tabbable'), [{ capcom: 'tabbable', yes: true }]);
+  t.changed();
+  assert.deepEqual(t.posted, []);
+  t.page.focusable = false;
+  t.changed();
+  t.changed();
+  assert.deepEqual(t.posted, [{ capcom: 'tabbable', yes: false }]);
 });
 
 test('sendPrompt and openLink post their text and address up to the page, and window.open posts a link and opens nothing', () => {

@@ -2,7 +2,8 @@
 // without a browser. widget.js puts the document in a sandboxed frame and judges every message the frame sends.
 //
 // A message between the page and a frame is an object with a `capcom` field.
-//   frame to page: height { h }, prompt { text }, link { url }, acted (no fields: the owner clicked or pressed a key in the frame)
+//   frame to page: height { h }, tabbable { yes }, prompt { text }, link { url },
+//     acted (no fields: the owner clicked or pressed a key in the frame)
 //   page to frame: mode { mode }, icons { font, glyphs }
 //
 // The names a widget may rely on are the contract: the CSS variables and the SVG classes in widget-theme.js, the `.ti` icon classes,
@@ -78,9 +79,23 @@ export function frameBoot() {
     lastGap = gap;
     say('height', { h });
   };
+  // A frame with nothing to focus must be no tab stop, or Tab parks on its body with no ring. Anything that might take the focus
+  // counts, since a needless stop costs less than a control Tab cannot reach.
+  const focusable = 'a,area,button,input:not([type="hidden"]),select,textarea,summary,iframe,audio[controls],video[controls],'
+    + '[contenteditable]:not([contenteditable="false"]),[tabindex]:not([tabindex^="-"])';
+  let lastTabbable = null;
+  const tabbable = () => {
+    const yes = document.querySelector(focusable) !== null;
+    if (yes === lastTabbable) return;
+    lastTabbable = yes;
+    say('tabbable', { yes });
+  };
   const watch = () => {
     new ResizeObserver(measure).observe(document.body);
     measure();
+    const changes = { subtree: true, childList: true, attributes: true, attributeFilter: ['type', 'controls', 'contenteditable', 'tabindex'] };
+    new MutationObserver(tabbable).observe(root, changes);
+    tabbable();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
   else watch();
