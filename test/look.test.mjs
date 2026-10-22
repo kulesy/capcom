@@ -10,7 +10,7 @@ import { PASSWORD, start } from './harness.mjs';
 const INDEX = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const APP = '<script type="module" src="app.js"></script>';
 const STANDARD = ['#ffffff', '#0a0a0a'];
-const GHOST = ['#f5f6f8', '#17181d'];
+const GHOST = ['#f6f6f6', '#181818'];
 
 // Read as the head ends, before the body is parsed and before any module can set them.
 const BOOTED = `<script>window.booted = { look: document.documentElement.dataset.look ?? null, colours: [...document.querySelectorAll('meta[name="theme-color"]')].map(meta => meta.content) }</script>`;
