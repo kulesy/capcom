@@ -3100,7 +3100,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 
   .chat { grid-column: 3; }
 
-  .rail-head { min-height: 0; padding: 0.5rem 0.5rem 0; }
+  .rail-head { flex-shrink: 0; min-height: 0; padding: 0.5rem 0.5rem 0; }
 
   .rail-title {
     display: flex;
