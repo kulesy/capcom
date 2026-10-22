@@ -290,6 +290,8 @@ const PUBLIC = path.join(ROOT, 'public');
 const page = name => fs.readFileSync(path.join(PUBLIC, name), 'utf8');
 // NOTE: [15 Oct 2026] EK - Every file under public/ with one of these extensions is served before sign-in. The page templates
 // (.html) and the vendor license texts are not on the list, so keep anything private out of public/.
+// NOTE: [22 Oct 2026] EK - test/load-hooks.mjs mirrors the module types here (.js, .mjs) and asset()'s lookup by raw path in its SCRIPT
+// rule. Change that rule when this list changes, or test/load.test.mjs stops matching what the server sends.
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
 
 // The weak tag is the file's size and modified time. It is taken before the file is read, so a file changed in between costs one more download, never a stale copy.
