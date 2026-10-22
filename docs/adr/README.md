@@ -28,3 +28,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-16 | [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md) | Accepted, amended 2026-10-21 and 2026-10-22 |
 | 2026-10-19 | [Draw widgets the way Desktop does, in a frame that cannot reach Capcom](20261019-widgets-render-like-desktop.md) | Accepted |
 | 2026-10-22 | [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md) | Accepted |
+| 2026-10-22 | [List a chat's skills and commands under / from the CLI's own list](20261022-slash-menu-from-the-cli.md) | Accepted |

@@ -14,6 +14,13 @@ export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const PASSWORD = 'a long password for the tests';
 export const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-server-test-'));
+// What the fake CLI answers to an initialize request, as the real one does: `clear` and `__remote-workflow` are for the server to leave out.
+export const CLI_COMMANDS = [
+  { name: 'review-pr', description: 'Review a pull request  (user)', argumentHint: '[number]' },
+  { name: 'clear', description: 'Clear the conversation', builtin: true },
+  { name: 'code-review', description: 'Review the diff', argumentHint: '[level]', builtin: true, aliases: ['review'] },
+  { name: '__remote-workflow', builtin: true },
+];
 const running = [];
 
 const freePort = () => new Promise(resolve => {
@@ -24,7 +31,7 @@ const freePort = () => new Promise(resolve => {
 });
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
-// and when its input closed. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
+// and when its input closed. It answers an initialize request with CLI_COMMANDS. Sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig }, with `ago` and `archivedAgo` (when Desktop archived it) in minutes.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
@@ -75,6 +82,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "  try {",
     "    const m = JSON.parse(line);",
     "    if (m.type === 'control_request') note({ control: m.request.subtype });",
+    `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)} } } });`,
     "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",

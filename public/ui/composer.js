@@ -1,10 +1,12 @@
 // The prompt box: the text, the images attached to it, the settings under it, and the folder picker for a session that is not started yet.
+import { hintFor, matching, pick, typedCommand } from './command-rules.js';
+import { SlashMenu, useCommands } from './commands.js';
 import { attach, attached, detach, draftText, setDraftText } from './draft.js';
 import { HOME } from './env.js';
 import { modelLabel, tilde } from './format.js';
 import { draftImages, imageKey } from './gallery.js';
 import { useFields, useStore } from './hooks.js';
-import { html, useLayoutEffect, useRef, useState } from './html.js';
+import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
 import { openViewer } from './viewer.js';
 
@@ -73,7 +75,7 @@ export function focusNextComposer() {
 }
 
 export function Composer({ ctrl }) {
-  const { status, starting } = useFields(ctrl.store, 'status', 'starting');
+  const { status, starting, folder } = useFields(ctrl.store, 'status', 'starting', 'folder');
   const images = useStore(attached, a => a.images);
   const preparing = useStore(attached, a => a.preparing);
   const [text, setLocal] = useState(draftText);
@@ -83,11 +85,28 @@ export function Composer({ ctrl }) {
   const area = useRef(null);
   const form = useRef(null);
   const picker = useRef(null);
+  const follow = useRef(false);
+  const caretAt = useRef(null);
+  const [caret, setCaret] = useState(null);
+  const [focused, setFocused] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [dismissed, setDismissed] = useState(null);
+  const [choice, setChoice] = useState({ query: null, at: 0 });
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
   // Images alone are a message too.
   const ready = !!text.trim() || images.length > 0;
   // While Claude works and the box is empty, the Send button is the Stop button. Typing or attaching turns it back into Send.
   const stop = isBusy(status) && !draft && !ready;
+
+  // The / list opens while the first word of the message is being typed, with the caret in it.
+  const typed = caret === null ? null : typedCommand(text, caret);
+  const query = typed ? typed.query : null;
+  const { commands, error } = useCommands(draft ? { cwd: folder.trim() } : { id: ctrl.id }, query !== null && focused);
+  const matches = useMemo(() => (commands && query !== null ? matching(commands, query) : []), [commands, query]);
+  const open = query !== null && focused && !composing && dismissed !== query && (!commands || matches.length > 0);
+  const at = open && commands ? (choice.query === query ? Math.min(choice.at, matches.length - 1) : 0) : -1;
+  const hint = hintFor(commands, text);
+  useLayoutEffect(() => { if (dismissed !== null && dismissed !== query) setDismissed(null); }, [dismissed, query]);
 
   // Sizing an untouched empty box would round its natural height down, so it waits for the first text.
   const typedOnce = useRef(false);
@@ -105,6 +124,14 @@ export function Composer({ ctrl }) {
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
   }, []);
+
+  // The box is controlled, so a caret placed by choosing a command has to wait for the render that writes the new text.
+  useLayoutEffect(() => {
+    const to = caretAt.current;
+    if (to === null) return;
+    caretAt.current = null;
+    area.current.setSelectionRange(to, to);
+  }, [text]);
 
   useLayoutEffect(() => {
     if (draft || keepFocus || (focusNext && matchMedia('(pointer: fine)').matches)) area.current.focus({ preventScroll: true });
@@ -176,8 +203,45 @@ export function Composer({ ctrl }) {
     if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
   };
 
+  const track = () => {
+    const el = area.current;
+    setCaret(el.selectionStart === el.selectionEnd ? el.selectionStart : null);
+  };
+  const onInput = e => {
+    if (open) follow.current = true;
+    setText(e.target.value);
+    track();
+  };
+  const onFocus = () => { setFocused(true); track(); };
+  const onCompositionEnd = () => { setComposing(false); track(); };
+
+  const choose = command => {
+    const el = area.current;
+    const next = pick(el.value, command.name);
+    if (next.text === el.value) el.setSelectionRange(next.caret, next.caret);
+    else { caretAt.current = next.caret; setText(next.text); }
+    setCaret(next.caret);
+    el.focus({ preventScroll: true });
+  };
+
+  // With the / list open the arrows move through it, Enter and Tab choose, and Esc closes it. Any other key is typed as usual.
+  const slashKey = e => {
+    if (!open || e.isComposing || e.keyCode === 229) return false;
+    if (e.key === 'Escape') { setDismissed(query); return true; }
+    if (!commands) return false;
+    const by = e.altKey || e.ctrlKey || e.metaKey || e.shiftKey ? 0 : { ArrowDown: 1, ArrowUp: -1 }[e.key];
+    if (by) {
+      const next = Math.max(0, Math.min(at + by, matches.length - 1));
+      if (next !== at) { follow.current = true; setChoice({ query, at: next }); }
+      return true;
+    }
+    if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { choose(matches[at]); return true; }
+    return false;
+  };
+
   // Enter sends where there is a keyboard. On a touch screen it makes a new line, as does Shift+Enter anywhere.
   const onKeyDown = e => {
+    if (slashKey(e)) { e.preventDefault(); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
       e.preventDefault();
       if (e.currentTarget.value.trim() || images.length) form.current.requestSubmit();
@@ -192,10 +256,18 @@ export function Composer({ ctrl }) {
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
+      ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
       <div class="composer-row">
         <button class="btn attach" data-variant="ghost" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" data-tip="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
         <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
-        <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
+        <div class="composer-field">
+          <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded=${open}
+            aria-controls=${open ? 'slash-list' : undefined} aria-activedescendant=${at >= 0 ? `slash-${at}` : undefined} aria-describedby=${hint ? 'slash-hint' : undefined}
+            placeholder="Type / for commands" aria-label="Message" value=${text}
+            onInput=${onInput} onKeyDown=${onKeyDown} onKeyUp=${track} onClick=${track} onFocus=${onFocus} onBlur=${() => setFocused(false)}
+            oncompositionstart=${() => setComposing(true)} oncompositionend=${onCompositionEnd}></textarea>
+          ${hint ? html`<div class="composer-hint" aria-hidden="true"><span>${text}</span>${hint}</div><span class="sr" id="slash-hint">Arguments: ${hint}</span>` : null}
+        </div>
         <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>

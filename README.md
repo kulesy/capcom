@@ -27,6 +27,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   effort sit under the box as plain text, and each opens its list when you click it. A model or effort change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
+- **Skills and commands.** Type / at the start of the prompt box and a list of the skills and slash commands that
+  chat can run opens above it, filtered by name and alias as you type. The arrow keys move, Enter or Tab picks, a
+  click or tap picks, and Esc closes the list without stopping a running chat. Picking writes `/name ` into the box
+  and shows the command's argument hint in grey after it, and sending runs it as a terminal would. While the list
+  is open Enter picks, so a command typed in full takes a second Enter to send. After Esc, Enter sends what you
+  typed, and a message that starts with / but matches nothing, such as a path, sends as typed. The list is the
+  CLI's own. A running chat uses the one its process gave when it started. A new session, or a chat with no process
+  yet, gets it from a short `claude -p` run in its folder that sends no message, starts no MCP servers, runs no hooks
+  and writes no session. Capcom keeps a folder's list for 2 minutes. `/clear` is left out, because the CLI answers it with a new
+  session that Capcom's chat would not follow. [The decision record](docs/adr/20261022-slash-menu-from-the-cli.md)
+  says why the list comes from the CLI.
 - **Images.** Paste a screenshot anywhere on the page, drop image files onto it, or pick them with the +, and
   each attaches as a thumbnail above the text, with a cross to take it off again and a click to look at it in the viewer. PNG, JPEG, GIF and WebP, up to 10 to a message,
   and a message may be images alone. Before it sends, the page scales anything over 2000 pixels on its long

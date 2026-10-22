@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { listCommands } from '../lib/commands.mjs';
 import { activeStates, startChat } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
@@ -294,4 +295,50 @@ test('Always allow is offered and kept for a tool with suggestions but never for
   await until(() => bypass.status().pending.length === 1 && answers('bypassPermissions').length === 1);
   assert.deepEqual(bypass.status().pending.map(p => p.tool), ['Bash']);
   assert.deepEqual(answers('bypassPermissions'), [['ask-chrome', 'allow', undefined]]);
+});
+
+// A CLI that answers an initialize request with `reply`, and starts its session when it is sent the first message.
+const listingCli = (dir, reply) => {
+  const cli = path.join(dir, 'listing-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    `  if (m.type === 'control_request' && m.request.subtype === 'initialize') return out({ type: 'control_response', response: { request_id: m.request_id, ...${JSON.stringify(reply)} } });`,
+    "  if (m.type === 'user') out({ type: 'system', subtype: 'init', session_id: 'sess-listing', model: 'stub' });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  return cli;
+};
+
+test('the commands Claude lists in its reply to initialize are tidied onto the chat, and its folder keeps them for the next session started there', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const commands = [
+    { name: 'review-pr', description: 'Review a pull request  (user)', argumentHint: '[number]' },
+    { name: 'clear', description: 'Clear the conversation', builtin: true },
+    { name: 'code-review', description: 'Review the diff', argumentHint: '[level]', builtin: true, aliases: ['review'] },
+    { name: '__remote-workflow', builtin: true },
+  ];
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: listingCli(dir, { subtype: 'success', response: { commands } }), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  await until(() => chat.commands);
+  assert.deepEqual(chat.commands, [
+    { name: 'review-pr', description: 'Review a pull request (user)', hint: '[number]', aliases: [] },
+    { name: 'code-review', description: 'Review the diff', hint: '[level]', aliases: ['review'] },
+  ]);
+  assert.deepEqual(await listCommands(dir, path.join(dir, 'no-such-claude')), chat.commands, 'the folder starts no CLI for what a chat has just listed');
+});
+
+test('a reply to initialize with an error or with no commands leaves the chat with no list, keeps nothing for its folder, and does not stop the chat', async t => {
+  for (const reply of [{ subtype: 'error', error: 'Not today.' }, { subtype: 'success', response: {} }]) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+    const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: listingCli(dir, reply), chrome: false, chips: null });
+    t.after(() => chat.stop());
+    assert.equal(chat.commands, null, reply.subtype);
+    assert.equal(chat.status().running, true, 'the chat carries on');
+    await assert.rejects(listCommands(dir, path.join(dir, 'no-such-claude')), /ENOENT/, 'the folder has to ask for itself');
+  }
 });

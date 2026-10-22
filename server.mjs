@@ -12,6 +12,7 @@ import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readI
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { createOutside } from './lib/outside.mjs';
 import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
+import { listCommands } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
@@ -541,6 +542,30 @@ async function api(req, res, u) {
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
     const id = await newSession({ cwd, text: text || '', images, mode: chosen, model, effort });
     return send(res, 200, { id });
+  }
+  // A POST, so a page on another site can never start a CLI through it (the same-origin check covers POSTs only).
+  if (req.method === 'POST' && u.pathname === '/api/commands') {
+    const body = await readJson(req, 10_000);
+    if (!body) return send(res, 400, { error: 'Send a JSON body.' });
+    const { id, cwd } = body;
+    let folder = cwd;
+    if (typeof id === 'string') {
+      if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
+      const known = getChat(id)?.commands;
+      if (known) return send(res, 200, { commands: known });
+      const row = findRow(id);
+      if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
+      folder = row.cwd && fs.existsSync(row.cwd) ? row.cwd : os.homedir();
+    } else if (cwd === undefined) {
+      return send(res, 400, { error: 'Which session or folder?' });
+    } else if (typeof cwd !== 'string' || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
+      return send(res, 400, { error: 'That folder does not exist on this Mac.' });
+    }
+    try {
+      return send(res, 200, { commands: await listCommands(folder, cfg.claude) });
+    } catch (e) {
+      return send(res, 502, { error: e.message });
+    }
   }
   if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
   if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned));
