@@ -162,7 +162,13 @@ export function ProjectsPanel({ ix, projects, tree, creating, onNew, onCancel, o
     const start = Math.max(stops.indexOf(e.currentTarget.querySelector('[aria-current="true"]')), 0);
     const here = document.activeElement;
     const to = nextStop(stops.length, stops.indexOf(here.matches('.more') ? here.parentElement.querySelector('.scope') : here), e.key, start);
-    if (to >= 0) { e.preventDefault(); stops[to].focus(); }
+    if (to < 0) return;
+    e.preventDefault();
+    // focus() alone would put a stop that was out of view in the middle of the sidebar, so the sidebar scrolls only as far as its
+    // nearest edge. The first stop takes it back to the top, where the title shows.
+    stops[to].focus({ preventScroll: true });
+    if (to === 0) e.currentTarget.scrollTop = 0;
+    else stops[to].scrollIntoView({ block: 'nearest' });
   };
 
   const lamp = id => (ix ? lampOf(ix, id) : null);

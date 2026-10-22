@@ -80,6 +80,14 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
   const subPath = n => (path ? `${path}.${n}` : String(n));
   const enabled = () => [...box.current.querySelectorAll('[role^="menuitem"]:not([data-disabled])')];
   const lit = el => { if (el && document.activeElement !== el) el.focus({ preventScroll: true }); };
+  // focus() alone would put an item that was out of view in the middle of the menu, so the menu scrolls only as far as its nearest
+  // edge. The first item of a group brings the group's label with it, as the search does with its headings.
+  const reach = el => {
+    el.focus({ preventScroll: true });
+    const group = el.closest('[role="group"]');
+    if (group?.querySelector('[role^="menuitem"]:not([data-disabled])') === el) group.querySelector('.menu-label')?.scrollIntoView({ block: 'nearest' });
+    el.scrollIntoView({ block: 'nearest' });
+  };
   const openSub = (n, which = null) => setSub({ at: n, entry: which && { which } });
 
   const lay = () => {
@@ -186,7 +194,7 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (!e.shiftKey) {
       const to = stepIn(list.length, here, e.key);
-      if (to >= 0) { e.preventDefault(); list[to].focus(); return; }
+      if (to >= 0) { e.preventDefault(); reach(list[to]); return; }
     }
     if (e.key.length !== 1) return;
     const keyed = keyedItem(flat, e.key);
@@ -197,7 +205,7 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     t.timer = setTimeout(() => { t.text = ''; }, 1000);
     if (e.key === ' ') e.preventDefault();
     const hit = nextMatch(list.map(el => el.querySelector('.menu-text').textContent.trim()), t.text, here);
-    if (hit >= 0) list[hit].focus();
+    if (hit >= 0) reach(list[hit]);
   }
 
   const toward = e => !!root.grace && root.dir === root.grace.side && inside({ x: e.clientX, y: e.clientY }, root.grace.area);

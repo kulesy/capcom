@@ -165,7 +165,8 @@ function walk(e, box) {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !box || e.target.closest?.('input, textarea, form')) return;
   const stops = [...box.querySelectorAll(STOPS)];
   const at = stops.indexOf(stopBeside(document.activeElement));
-  const go = el => { e.preventDefault(); el.focus(); el.scrollIntoView({ block: 'nearest' }); };
+  // focus() alone would put a stop that was out of view in the middle of the list, so the list scrolls only as far as its nearest edge.
+  const go = el => { e.preventDefault(); el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest' }); };
   const to = nextStop(stops.length, at, e.key, Math.max(stops.indexOf(box.querySelector('a.row[aria-current="page"]')), 0));
   if (to >= 0) return go(stops[to]);
   const here = stops[at];

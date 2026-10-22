@@ -1361,6 +1361,7 @@ body.dragging .rows .more { opacity: 0; }
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom);
   padding: env(safe-area-inset-top) env(safe-area-inset-right) calc(0.5rem + env(safe-area-inset-bottom)) env(safe-area-inset-left);
   background: var(--sidebar);
   color: var(--sidebar-foreground);
