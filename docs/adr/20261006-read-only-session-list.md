@@ -1,6 +1,6 @@
 # List sessions from transcripts and Desktop's records, read only
 
-- Status: Accepted, amended 2026-10-21
+- Status: Accepted, amended 2026-10-21 and 2026-10-22
 - Deciders: Eli
 - Date: 2026-10-06
 - Tags: sessions, claude-desktop, groups, read-only
@@ -37,6 +37,8 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 **Amended 2026-10-18.** Desktop names a claude.ai connector's tools by an id, so Capcom also reads each connector's id and name from the session's record (`remoteMcpServersConfig`) to show the connector by its name. Only the id and the name reach the page, with that session's messages. The connector's address, tools and instructions are dropped as the record is read.
 
 **Amended 2026-10-21.** Capcom also keeps its own session titles in `layout.json`, and shows one in place of the title in Desktop's record or the transcript. Both are still read, read only. See [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md).
+
+**Amended 2026-10-22.** Capcom also reads the links Desktop records between sessions (`spawnedFrom` and `lineageDetached` in a session's record) on every refresh, and shows a linked session under its parent. Both fields are read, read only, and Capcom's own choice of parent beats Desktop's link. See [Nest sessions under a parent](20261022-nest-sessions-under-a-parent.md).
 
 ### Consequences
 

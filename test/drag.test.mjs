@@ -1,5 +1,6 @@
 // Run with `npm test`. Lifting a row of the list: a finger that holds still after the long press asks for the row's menu and leaves the
-// list where it is, and one that moves drags the row. The page is a small stand-in with just what drag.js touches.
+// list where it is, and one that moves drags the row, onto a section or onto another row. The page is a small stand-in with just what
+// drag.js touches.
 import test, { afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -20,6 +21,14 @@ const target = () => {
   };
 };
 
+// A drop target as the page draws one: its `data-drop`, whether only its middle half counts, where it is, and the target around it.
+const dropTarget = (drop, { middle = false, top = 0, height = 40, within = null } = {}) => ({
+  dataset: { drop },
+  hasAttribute: name => name === 'data-drop-middle' && middle,
+  getBoundingClientRect: () => ({ top, height }),
+  parentElement: { closest: () => within },
+});
+
 // A list 600 pixels tall with one row near its bottom edge, scrolled down by 100, and the callbacks drag.js reports to.
 async function mount() {
   mock.timers.enable({ apis: ['setTimeout'] });
@@ -29,7 +38,7 @@ async function mount() {
   const drop = { over: null };
   globalThis.document = Object.assign(target(), {
     body: { append() {}, classList: { add() {}, remove() {} } },
-    elementFromPoint: () => drop.over && { closest: () => ({ dataset: { drop: drop.over } }) },
+    elementFromPoint: () => drop.over && { closest: () => drop.over },
   });
   globalThis.window = target();
   const copy = { classList: { add() {} }, removeAttribute() {}, setAttribute() {}, style: {}, remove() {} };
@@ -110,7 +119,7 @@ test('a finger that has moved and lets go over a section drops the row there, wi
   const t = await mount();
   t.down('touch', 100, 300);
   mock.timers.tick(HOLD_MS);
-  t.drop.over = 'pinned';
+  t.drop.over = dropTarget('pinned');
   t.move(100, 200);
   t.up(100, 200);
   assert.deepEqual(t.log.filter(([name]) => name !== 'over'), [['start', 'r1'], ['end', 'r1', 'pinned']]);
@@ -136,5 +145,50 @@ test('a mouse that has lifted the row scrolls the list at the edge at once', asy
   assert.ok(t.box.scrollTop > 100, String(t.box.scrollTop));
   t.up(110, 590);
   assert.deepEqual(t.log.filter(([name]) => name === 'menu'), []);
+  t.stop();
+});
+
+test('a row that takes a nest counts in the middle half of its height, and above and below that the drop falls to the section around it', async () => {
+  const t = await mount();
+  const over = () => t.log.findLast(([name]) => name === 'over')?.[1] ?? null;
+  t.down('mouse', 100, 300);
+  t.move(110, 300);
+  t.drop.over = dropTarget('nest:r2', { middle: true, top: 100, height: 40, within: dropTarget('cg-work') });
+  const seen = [100, 109, 110, 120, 130, 131, 139, 140].map(y => (t.move(110, y), over()));
+  assert.deepEqual(seen, ['cg-work', 'cg-work', 'nest:r2', 'nest:r2', 'nest:r2', 'cg-work', 'cg-work', 'cg-work']);
+  t.up(110, 120);
+  assert.deepEqual(t.log.at(-1), ['end', 'r1', 'nest:r2']);
+  t.stop();
+});
+
+test('a row that takes a nest and sits in no section has no target on its edges, and a target without the marker counts all over', async () => {
+  const t = await mount();
+  const over = () => t.log.findLast(([name]) => name === 'over')?.[1] ?? null;
+  t.down('mouse', 100, 300);
+  t.move(110, 300);
+  t.drop.over = dropTarget('nest:r2', { middle: true, top: 100, height: 40 });
+  t.move(110, 104);
+  assert.equal(over(), null);
+  t.drop.over = dropTarget('pinned', { top: 100, height: 40 });
+  t.move(110, 104);
+  assert.equal(over(), 'pinned');
+  t.up(110, 104);
+  assert.deepEqual(t.log.at(-1), ['end', 'r1', 'pinned']);
+  t.stop();
+});
+
+test('the list of a carried session\'s own family takes a nest under their parent wherever a row of it does not, so its edges never fall to the section', async () => {
+  const t = await mount();
+  const over = () => t.log.findLast(([name]) => name === 'over')?.[1] ?? null;
+  const family = dropTarget('nest:parent', { top: 60, height: 120, within: dropTarget('cg-work') });
+  t.down('mouse', 100, 300);
+  t.move(110, 300);
+  t.drop.over = dropTarget('nest:sibling', { middle: true, top: 100, height: 40, within: family });
+  assert.deepEqual([100, 109, 120, 131, 139].map(y => (t.move(110, y), over())), ['nest:parent', 'nest:parent', 'nest:sibling', 'nest:parent', 'nest:parent']);
+  t.drop.over = family;
+  t.move(110, 70);
+  assert.equal(over(), 'nest:parent', 'between rows, or on the border of the list');
+  t.up(110, 70);
+  assert.deepEqual(t.log.at(-1), ['end', 'r1', 'nest:parent']);
   t.stop();
 });

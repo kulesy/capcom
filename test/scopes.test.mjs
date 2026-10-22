@@ -206,3 +206,40 @@ test('a search keeps each found view\'s lamp and count', () => {
   const ix = list({ groups: [group('cg-a', WEB, [row('a-1', 'waiting'), row('a-2')])] });
   assert.deepEqual(viewsNamed(ix, ['website']), [{ id: WEB, name: 'Website', lamp: 'waiting', count: 2 }]);
 });
+
+// A session with the sessions nested under it, as the server's list has them.
+const holding = (id, kids, state = 'idle') => ({ ...row(id, state), children: kids.map(k => ({ ...k, parent: id })) });
+
+test('a nested session is held by the view its parent is in', () => {
+  const ix = list({
+    pinned: [holding('pin-1', [row('pin-kid')])],
+    groups: [group('cg-checkout', WEB, [holding('web-1', [row('web-kid')])]), group('cg-notes', null, [holding('home-1', [row('home-kid')])])],
+    ungrouped: [holding('loose-1', [row('loose-kid')])],
+  });
+  assert.deepEqual(['web-kid', 'home-kid', 'loose-kid'].map(id => holder(ix, id)), [WEB, HOME_VIEW, HOME_VIEW]);
+  assert.equal(holder(ix, 'pin-kid'), EVERY_VIEW);
+  assert.equal(holder(ix, 'web-1'), WEB);
+});
+
+test('a nested session lights its view\'s lamp, and a pinned one lights none', () => {
+  const ix = list({
+    groups: [group('cg-a', WEB, [holding('a-1', [row('a-kid', 'waiting')])]), group('cg-b', APP, [holding('b-1', [row('b-kid', 'working')])])],
+    routines: [], started: [], ungrouped: [holding('u-1', [row('u-kid', 'waiting')])], other: [],
+  });
+  assert.deepEqual([WEB, APP, HOME_VIEW].map(view => lampOf(ix, view)), ['waiting', 'working', 'waiting']);
+  const pinned = list({ pinned: [holding('pin-1', [row('pin-kid', 'waiting')])] });
+  for (const view of [HOME_VIEW, WEB, APP]) assert.equal(lampOf(pinned, view), null, String(view));
+});
+
+test('a project counts the sessions nested in its groups, and the views carry that count', () => {
+  const ix = list({ groups: [group('cg-a', WEB, [holding('a-1', [row('a-2'), row('a-3')]), row('a-4')]), group('cg-b', APP, [row('b-1')])] });
+  assert.equal(countOf(ix, WEB), 4);
+  assert.equal(countOf(ix, APP), 1);
+  assert.deepEqual(viewsOf(ix).map(v => v.count), [undefined, 4, 1]);
+});
+
+test('another view is waiting when a session nested in it needs you', () => {
+  const ix = list({ groups: [group('cg-a', APP, [holding('a-1', [row('a-kid', 'waiting')])])], routines: [], started: [], ungrouped: [], other: [] });
+  assert.equal(othersWaiting(ix, WEB), true);
+  assert.equal(othersWaiting(ix, APP), false);
+});

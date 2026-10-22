@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
+import { chainOf, familiesOf } from './lib/families.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
@@ -43,6 +44,28 @@ const outside = createOutside();
 // ---- the session index ---------------------------------------------------------------------------
 
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
+
+// What a session is linked to: Capcom's own choice, a null included, wins over Desktop's link, as it does for archiving.
+const linkOf = (own, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : desk.links.get(id) ?? null);
+const linksNow = () => {
+  const own = layout.read();
+  const desk = loadDesktop(cfg.desktopDir);
+  return id => linkOf(own, desk, id);
+};
+const linkNow = id => linksNow()(id);
+
+// A family shows one level deep, so before one of its sessions nests, leaves or is archived, the rest are linked straight to the
+// session they show under. A link through the one that changes would take them with it, and the page does not show that.
+function keepFamily(id, rows) {
+  const link = linksNow();
+  const root = rows.get(id).parent ?? id;
+  const links = {};
+  for (const r of rows.values()) if (!r.archived && r.parent === root && r.id !== id && link(r.id) !== root) links[r.id] = root;
+  return links;
+}
+
+// A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone reads Desktop's links.
+const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
 
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
@@ -92,18 +115,34 @@ function buildIndex({ archived = false } = {}) {
     if (title) { r.title = title; r.renamed = true; }
   }
 
+  // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
+  const families = familiesOf(rows, id => linkOf(own, desk, id), { archived });
+  const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
+  for (const r of rows.values()) {
+    const { holder, parent } = families.get(r.id);
+    Object.assign(r, { parent }, places.get(holder));
+  }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
-  // Every list shows its newest session first, except a group, which goes by title.
-  const pinned = visible.filter(r => r.pinned).sort(byRecent);
-  const groups = own.groups.map(g => ({ id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sessions: visible.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
+  const kids = new Map();
+  for (const r of visible.filter(r => r.parent)) kids.set(r.parent, [...(kids.get(r.parent) ?? []), r]);
+  for (const [id, list] of kids) {
+    const parent = rows.get(id);
+    parent.children = list.sort(parent.group && !parent.pinned ? byTitle : byRecent);
+  }
+
+  // Every list shows its newest session first, except a group, which goes by title. A child is listed under its parent only.
+  const top = visible.filter(r => !r.parent);
+  const pinned = top.filter(r => r.pinned).sort(byRecent);
+  const groups = own.groups.map(g => ({ id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sessions: top.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
   const routines = new Map();
-  for (const r of visible.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
+  for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
     else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
-  const loose = visible.filter(r => !r.group && !r.routine && !r.pinned).sort(byRecent);
+  const loose = top.filter(r => !r.group && !r.routine && !r.pinned).sort(byRecent);
   // A list stops at its newest 60 but keeps every session brought back from the archive, so an old one is not lost between the two.
-  const newest = list => list.filter((r, i) => i < 60 || unarchived.has(r.id));
+  // A family counts as one and stays whole when any of its members was brought back.
+  const newest = list => list.filter((r, i) => i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
   return {
     station: cfg.station,
     problem: [desk.problem, own.problem].filter(Boolean).join('. ') || null,
@@ -369,6 +408,9 @@ function events(req, res, id) {
   });
 }
 
+const NO_SESSION = 'No session with that id on this Mac.';
+const refuse = (status, message) => Object.assign(new Error(message), { status });
+
 async function editLayout(req, res, change) {
   const body = await readJson(req);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
@@ -376,7 +418,7 @@ async function editLayout(req, res, change) {
   if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   const { id } = body;
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
-  if (!findRow(id)) return send(res, 404, { error: 'No session with that id on this Mac.' });
+  if (!findRow(id)) return send(res, 404, { error: NO_SESSION });
   let extra;
   try {
     extra = change(id, body);
@@ -399,10 +441,33 @@ function setArchived(id, archived, stop) {
   const chat = getChat(id);
   const stopped = !!chat && chat.state !== 'idle';
   if (stopped && stop === false) throw Object.assign(new Error('That chat is running, and archiving it would stop it.'), { status: 409 });
-  layout.archive(id);
+  layout.archive(id, { relink: keepFamily(id, buildIndex().rows) });
   if (stopped) chat.interrupt();
   chat?.stop();
   return { archived, ...(stopped && { stopped: true }) };
+}
+
+// Nests a session under another, or takes it out when `parent` is null. A family is one level deep, so a drop on a child nests under that
+// child's parent. The answer carries the parent the list now shows.
+function nest(id, parent) {
+  if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
+  const rows = buildIndex().rows;
+  if (parent === null) {
+    // A null written with no link to override would hide one that Desktop makes later.
+    if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, rows) });
+    return { parent: null };
+  }
+  const target = rows.get(parent);
+  if (!target) throw refuse(404, NO_SESSION);
+  if (target.archived) throw refuse(400, 'That session is archived.');
+  if (target.routine) throw refuse(400, 'A routine run cannot hold sessions.');
+  // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
+  if ([target, ...chainOf(rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
+  const root = target.parent ?? target.id;
+  // A session that shows under that parent already keeps its own group and any link Desktop makes.
+  if (rows.get(id).parent === root) return { parent: root };
+  layout.nest(id, root, { relink: keepFamily(id, rows) });
+  return { parent: buildIndex().rows.get(id).parent };
 }
 
 // Projects and groups change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
@@ -567,8 +632,9 @@ async function api(req, res, u) {
       return send(res, 502, { error: e.message });
     }
   }
-  if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null));
-  if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned));
+  if (req.method === 'POST' && u.pathname === '/api/layout/move') return editLayout(req, res, (id, body) => layout.move(id, body.group ?? null, leaving(id)));
+  if (req.method === 'POST' && u.pathname === '/api/layout/pin') return editLayout(req, res, (id, body) => layout.pin(id, body.pinned, leaving(id)));
+  if (req.method === 'POST' && u.pathname === '/api/layout/nest') return editLayout(req, res, (id, body) => nest(id, body.parent));
   if (req.method === 'POST' && u.pathname === '/api/layout/rename') return editLayout(req, res, (id, body) => ({ title: layout.rename(id, body.title) }));
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));

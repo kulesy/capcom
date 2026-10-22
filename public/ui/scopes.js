@@ -1,5 +1,7 @@
 // What each view of the session list holds, as rules that need no page, so node can test them. A view is Home (null), which
-// holds everything outside the projects, or a project id, which holds that project's groups. Pinned rows show in every view.
+// holds everything outside the projects, or a project id, which holds that project's groups. Pinned rows show in every view. A session
+// nested under another counts with the view its parent is in.
+import { withKids } from './tree.js';
 
 export const HOME_VIEW = null;
 export const EVERY_VIEW = Symbol('every view');
@@ -15,15 +17,15 @@ export const groupsIn = (ix, view) => ix.groups.filter(g => groupView(ix, g) ===
 
 // The view whose list has this session: Home, a project, EVERY_VIEW for a pinned one, or NO_VIEW when the list does not have it.
 export function holder(ix, id) {
-  if (ix.pinned.some(r => r.id === id)) return EVERY_VIEW;
-  const group = ix.groups.find(g => g.sessions.some(r => r.id === id));
+  if (withKids(ix.pinned).some(r => r.id === id)) return EVERY_VIEW;
+  const group = ix.groups.find(g => withKids(g.sessions).some(r => r.id === id));
   if (group) return groupView(ix, group);
   const runs = ix.routines.flatMap(g => [g.latest, ...g.earlier]);
-  return [...runs, ...ix.started, ...ix.ungrouped, ...ix.other].some(r => r.id === id) ? HOME_VIEW : NO_VIEW;
+  return withKids([...runs, ...ix.started, ...ix.ungrouped, ...ix.other]).some(r => r.id === id) ? HOME_VIEW : NO_VIEW;
 }
 
 // Pinned rows are left out: they show in every view, so they say nothing about this one.
-const rowsIn = (ix, view) => (view === HOME_VIEW
+const rowsIn = (ix, view) => withKids(view === HOME_VIEW
   ? [...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...groupsIn(ix, HOME_VIEW).flatMap(g => g.sessions), ...ix.started, ...ix.ungrouped, ...ix.other]
   : groupsIn(ix, view).flatMap(g => g.sessions));
 
@@ -33,7 +35,7 @@ export function lampOf(ix, view) {
   return states.includes('waiting') ? 'waiting' : states.includes('working') ? 'working' : null;
 }
 
-export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + g.sessions.length, 0);
+export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0);
 
 // Every view, Home first and then each project in the order the list gives them. Home has no count, because it holds everything
 // outside the projects.

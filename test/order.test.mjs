@@ -48,3 +48,13 @@ test('titles that differ only in case go newest first', () => {
   assert.deepEqual([...same].sort(byTitle).map(r => r.id), ['new', 'mid', 'old']);
   assert.deepEqual([...same].sort(byRecent).map(r => r.id), ['new', 'mid', 'old']);
 });
+
+test('a session that holds others goes by the newest of itself and its children, and a title is not affected by its children', () => {
+  const rows = [
+    { id: 'a', title: 'a', lastActivityAt: 5 },
+    { id: 'b', title: 'b', lastActivityAt: 1, children: [{ id: 'b1', lastActivityAt: 9 }, { id: 'b2', lastActivityAt: 2 }] },
+    { id: 'c', title: 'c', lastActivityAt: 7, children: [{ id: 'c1', lastActivityAt: 3 }] },
+  ];
+  assert.deepEqual([...rows].sort(byRecent).map(r => r.id), ['b', 'c', 'a']);
+  assert.deepEqual([...rows].reverse().sort(byTitle).map(r => r.id), ['a', 'b', 'c']);
+});

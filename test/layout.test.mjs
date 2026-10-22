@@ -1,4 +1,4 @@
-// Run with `npm test`. Capcom's own layout file: what it keeps, what it refuses to write over, and the changes it makes.
+// Run with `npm test`. Capcom's own layout file: what it keeps, what it refuses to write over, and the changes it makes, nesting included.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -25,8 +25,8 @@ const rewritten = f => fs.statSync(f.file).mtimeMs !== 1000;
 
 test('a layout file from before projects, unarchiving and archiving loads as it was, and a missing file is an empty layout', () => {
   const { layout } = folder(OLD);
-  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [], archived: {}, titles: {} });
-  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {} });
+  assert.deepEqual(layout.read(), { ...OLD, projects: [], unarchived: [], archived: {}, titles: {}, parents: {} });
+  assert.deepEqual(folder().layout.read(), { seededAt: null, projects: [], groups: [], pinned: [], assignments: {}, unarchived: [], archived: {}, titles: {}, parents: {} });
 });
 
 test('archiving records when, takes the session out of the unarchived list, and keeps everything else in the file, including keys this version does not know', () => {
@@ -37,7 +37,7 @@ test('archiving records when, takes the session out of the unarchived list, and 
   assert.deepEqual(Object.keys(archived), ['s1']);
   assert.equal(new Date(archived.s1).toISOString(), archived.s1);
   assert.ok(Date.parse(archived.s1) >= before && Date.parse(archived.s1) <= Date.now(), archived.s1);
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, archived, unarchived: ['s2'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, parents: {}, archived, unarchived: ['s2'] });
   assert.deepEqual(f.layout.read().archived, archived);
 });
 
@@ -57,7 +57,7 @@ test('unarchiving takes a session out of the archived list, adds it to the unarc
   f.layout.unarchive('s1');
   f.layout.unarchive('s1');
   f.layout.unarchive('s3');
-  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
+  assert.deepEqual(f.onDisk(), { ...OLD, later: { kept: true }, projects: [], titles: {}, parents: {}, archived: { s2: FIRST }, unarchived: ['s1', 's3'] });
 });
 
 test('unarchiving writes nothing when the session is unarchived already, and a session in both lists leaves the archived one', () => {
@@ -79,12 +79,95 @@ test('archiving and unarchiving leave a session in its group or pin, so it comes
   assert.deepEqual(f.onDisk().archived, {});
 });
 
+test('the parents in a layout file load as they are, a null included, and an entry that is neither null nor a session id is dropped', () => {
+  const { layout } = folder({ ...OLD, parents: { s1: 's2', s3: null, s4: 5, s5: '', s6: ['s1'], s7: {}, s8: false } });
+  assert.deepEqual(layout.read().parents, { s1: 's2', s3: null });
+});
+
+test('nesting a session under another writes the link, takes the session out of its pin and group, and keeps everything else in the file, including keys this version does not know', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true }, pinned: ['s1', 'p1'], assignments: { s1: 'cg-a', s2: 'cg-b' } });
+  f.layout.nest('s1', 's2');
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true }, pinned: ['p1'], assignments: { s2: 'cg-b' }, parents: { s1: 's2' } });
+  f.layout.nest('s1', 's3');
+  assert.deepEqual(f.onDisk().parents, { s1: 's3' }, 'nesting it again moves it');
+});
+
+test('nesting under nothing, or under the session itself, is refused with a 400 and writes nothing', () => {
+  const f = folder(WITH_PROJECTS);
+  const before = fs.readFileSync(f.file, 'utf8');
+  for (const parent of [undefined, null, '', 5, {}, ['s2'], 's1']) assert.throws(() => f.layout.nest('s1', parent), { status: 400, message: 'Nest it under another session.' }, JSON.stringify(parent));
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+});
+
+test('taking a session out of its parent writes a null, which stands over a link Desktop makes, and leaves it in the group or Pinned it is given', () => {
+  const f = folder({ ...WITH_PROJECTS, pinned: ['p1'], assignments: { s2: 'cg-b' }, parents: { s1: 's2', s4: 's2', s5: 's2', s6: 's2' } });
+  f.layout.unnest('s1', { group: 'cg-a' });
+  f.layout.unnest('s4', { pinned: true });
+  f.layout.unnest('s5');
+  f.layout.unnest('s6', { group: 'cg-a', pinned: true });
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, pinned: ['p1', 's4', 's6'], assignments: { s2: 'cg-b', s1: 'cg-a' }, parents: { s1: null, s4: null, s5: null, s6: null } });
+  f.layout.unnest('s1');
+  assert.deepEqual(f.onDisk().assignments, { s2: 'cg-b' }, 'a session in no group is taken out of the one it had');
+});
+
+test('taking a session out into a group that is not there is refused with a 400 and writes nothing', () => {
+  const f = folder({ ...WITH_PROJECTS, parents: { s1: 's2' } });
+  const before = fs.readFileSync(f.file, 'utf8');
+  assert.throws(() => f.layout.unnest('s1', { group: 'cg-none' }), { status: 400, message: 'Unknown group.' });
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+});
+
+test('moving or pinning a session leaves its parent alone, unless the caller says it is linked, and then writes a null so it leaves the family', () => {
+  const f = folder({ ...WITH_PROJECTS, parents: { s1: 's2' } });
+  f.layout.move('s1', 'cg-b');
+  f.layout.pin('s3', true);
+  f.layout.pin('s1', true);
+  assert.deepEqual(f.onDisk().parents, { s1: 's2' });
+  f.layout.move('s1', 'cg-b', { unlink: true });
+  assert.deepEqual(f.onDisk().parents, { s1: null });
+  f.layout.pin('s4', true, { unlink: true });
+  f.layout.move('s5', null, { unlink: true });
+  assert.deepEqual(f.onDisk().parents, { s1: null, s4: null, s5: null });
+  assert.deepEqual(f.onDisk().pinned, ['p1', 's3', 's4'], 'moving s1 took it out of Pinned');
+});
+
+test('a change writes the links it is given for other sessions in the same write, and its own link wins over one given for the same session', () => {
+  const relink = { s7: 's2', s8: 's2', s1: 's9' };
+  const fresh = () => folder({ ...WITH_PROJECTS, parents: { s9: 's8' } });
+  const other = { s9: 's8', s7: 's2', s8: 's2' };
+  const parentsAfter = edit => {
+    const f = fresh();
+    edit(f.layout);
+    return f.onDisk().parents;
+  };
+  assert.deepEqual(parentsAfter(l => l.move('s1', 'cg-b', { unlink: true, relink })), { ...other, s1: null });
+  assert.deepEqual(parentsAfter(l => l.pin('s1', true, { unlink: true, relink })), { ...other, s1: null });
+  assert.deepEqual(parentsAfter(l => l.nest('s1', 's2', { relink })), { ...other, s1: 's2' });
+  assert.deepEqual(parentsAfter(l => l.unnest('s1', { group: 'cg-a', relink })), { ...other, s1: null });
+  assert.deepEqual(parentsAfter(l => l.archive('s1', { relink })), { ...other, s1: 's9' }, 'archiving takes the links as they are given');
+  assert.deepEqual(parentsAfter(l => l.move('s1', 'cg-b', { relink: { s7: 's2' } })), { s9: 's8', s7: 's2' }, 'with no unlink the session gets no entry');
+});
+
+test('the links go in the one write that makes the change, and none are written when the change is refused or has nothing to do', () => {
+  const f = folder({ ...WITH_PROJECTS, parents: { s9: 's8' } });
+  const before = fs.readFileSync(f.file, 'utf8');
+  const relink = { s7: 's2' };
+  assert.throws(() => f.layout.move('s1', 'cg-none', { unlink: true, relink }), { status: 400, message: 'Unknown group.' });
+  assert.throws(() => f.layout.pin('s1', 'yes', { unlink: true, relink }), { status: 400, message: 'Pinned or not?' });
+  assert.throws(() => f.layout.nest('s1', 's1', { relink }), { status: 400, message: 'Nest it under another session.' });
+  assert.throws(() => f.layout.unnest('s1', { group: 'cg-none', relink }), { status: 400, message: 'Unknown group.' });
+  f.layout.archive('s6', { relink });
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before, 's6 is archived already, so there is nothing to write');
+});
+
 test('a layout file that cannot be read is reported, and no change is written over it', () => {
   const edits = [
     l => l.move('s1', null),
     l => l.pin('s1', true),
     l => l.archive('s1'),
     l => l.unarchive('s1'),
+    l => l.nest('s1', 's2'),
+    l => l.unnest('s1'),
     l => l.rename('s1', 'New title'),
     l => l.addProject('Work'),
     l => l.renameProject('cp-a', 'Home'),
@@ -92,7 +175,7 @@ test('a layout file that cannot be read is reported, and no change is written ov
     l => l.addGroup('Notes'),
     l => l.moveGroup('cg-a', null),
   ];
-  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), JSON.stringify({ ...OLD, archived: [] }), JSON.stringify({ ...OLD, archived: 'yesterday' }), JSON.stringify({ ...OLD, archived: null }), JSON.stringify({ ...OLD, titles: [] }), JSON.stringify({ ...OLD, titles: 'Plan' }), JSON.stringify({ ...OLD, titles: null }), '[]']) {
+  for (const text of ['{ not json', JSON.stringify({ ...OLD, groups: 'Reviewing' }), JSON.stringify({ ...OLD, projects: {} }), JSON.stringify({ ...OLD, unarchived: {} }), JSON.stringify({ ...OLD, archived: [] }), JSON.stringify({ ...OLD, archived: 'yesterday' }), JSON.stringify({ ...OLD, archived: null }), JSON.stringify({ ...OLD, titles: [] }), JSON.stringify({ ...OLD, titles: 'Plan' }), JSON.stringify({ ...OLD, titles: null }), JSON.stringify({ ...OLD, parents: [] }), JSON.stringify({ ...OLD, parents: 'p1' }), JSON.stringify({ ...OLD, parents: null }), '[]']) {
     const f = folder(text);
     assert.match(f.layout.read().problem, /^layout\.json cannot be read: /, text);
     for (const edit of edits) assert.throws(() => edit(f.layout), { status: 500, message: /layout\.json cannot be read/ }, `${edit} on ${text}`);
@@ -100,8 +183,8 @@ test('a layout file that cannot be read is reported, and no change is written ov
   }
 });
 
-test('the first copy from Desktop keeps what was already in the file, the projects, the unarchived list and the archived sessions included', () => {
-  const f = folder({ seededAt: null, projects: [{ id: 'cp-x', name: 'Mine' }], groups: [{ id: 'cg-mine', name: 'Mine', project: 'cp-x' }], pinned: [], assignments: { s9: 'cg-mine' }, unarchived: ['s9'], archived: { s1: FIRST } });
+test('the first copy from Desktop keeps what was already in the file, the projects, the unarchived list, the archived sessions and the parents included', () => {
+  const f = folder({ seededAt: null, projects: [{ id: 'cp-x', name: 'Mine' }], groups: [{ id: 'cg-mine', name: 'Mine', project: 'cp-x' }], pinned: [], assignments: { s9: 'cg-mine' }, unarchived: ['s9'], archived: { s1: FIRST }, parents: { s9: 's1', s8: null } });
   const desk = {
     problem: null,
     sessions: [{ id: 's1', localId: 'local_1' }, { id: 's9', localId: 'local_9' }],
@@ -115,7 +198,9 @@ test('the first copy from Desktop keeps what was already in the file, the projec
   assert.deepEqual(made.assignments, { s1: 'cg-d', s9: 'cg-mine' });
   assert.deepEqual(made.unarchived, ['s9']);
   assert.deepEqual(made.archived, { s1: FIRST });
+  assert.deepEqual(made.parents, { s9: 's1', s8: null });
   assert.deepEqual(f.onDisk().archived, { s1: FIRST });
+  assert.deepEqual(f.onDisk().parents, { s9: 's1', s8: null });
   assert.equal(f.layout.seed(desk), null, 'it copies once');
 });
 
@@ -126,6 +211,7 @@ const WITH_PROJECTS = {
   unarchived: ['s5'],
   archived: { s6: FIRST },
   titles: { s7: 'Named here' },
+  parents: {},
 };
 const ID = /^c[pg]-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -255,4 +341,20 @@ test('every other edit keeps the projects and the project of each group', () => 
   const after = f.onDisk();
   assert.deepEqual(after.projects, WITH_PROJECTS.projects);
   assert.deepEqual(after.groups, WITH_PROJECTS.groups);
+});
+
+test('every other edit keeps the parents, the nulls included', () => {
+  const parents = { s1: 's2', s8: null };
+  const f = folder({ ...WITH_PROJECTS, parents });
+  f.layout.move('s2', 'cg-b');
+  f.layout.pin('s2', true);
+  f.layout.archive('s4');
+  f.layout.unarchive('s3');
+  f.layout.rename('s1', 'Plan');
+  f.layout.addProject('Work');
+  f.layout.renameProject('cp-a', 'Home');
+  f.layout.addGroup('Notes');
+  f.layout.moveGroup('cg-c', 'cp-a');
+  f.layout.removeProject('cp-b');
+  assert.deepEqual(f.onDisk().parents, parents);
 });

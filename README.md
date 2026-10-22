@@ -1,8 +1,9 @@
 # Capcom
 
 A browser chat client for every Claude Code session on this Mac: the ones started in Claude Desktop,
-the routine runs, and the ones started in a terminal. The list uses Capcom's own projects, groups and pins.
-The groups and pins start as a copy of Desktop's. It listens on http://localhost:4310.
+the routine runs, and the ones started in a terminal. The list uses Capcom's own projects, groups and pins,
+and nests one session under another. The groups and pins start as a copy of Desktop's. It listens on
+http://localhost:4310.
 
 The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
 
@@ -10,9 +11,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 
 - **Sessions** come from two places, both read only. Claude Code saves every session as a JSON lines
   file under `~/.claude/projects`. Claude Desktop keeps its titles, groups and pins under
-  `~/Library/Application Support/Claude`. Capcom reads the titles and records each time, and the groups and
-  pins once (see "Groups and pins"). Those Desktop files are internal and undocumented, so when a Desktop
-  update moves them the list carries on from the session files alone and says so at the top.
+  `~/Library/Application Support/Claude`. Capcom reads the titles, the records and the links between sessions
+  each time, and the groups and pins once (see "Groups and pins" and "Nested sessions"). Those Desktop files
+  are internal and undocumented, so when a Desktop update moves them the list carries on from the session
+  files alone and says so at the top.
 - **Chatting** runs the real CLI headless, one process per open chat:
   `claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio`,
   with `--resume <id>` for an existing session. It uses your normal login, skills, hooks and MCP
@@ -109,6 +111,28 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   routine's run that was moved into a group or pinned can go back to Routines from there. There is no
   screen yet to rename, delete or reorder groups. Edit `layout.json` for those: Capcom reads it on every
   refresh, and shows the error at the top of the list if it cannot.
+- **Nested sessions** show under a parent session in the list. Drop a row on the middle of another row to
+  nest it there. A row takes a nest only in the middle half of its height, so a row dropped on the top or
+  bottom quarter lands in the section the row is in, as it did before. While you drag, the row that would
+  take the nest lights up and says "Nest here" where its time is. Nesting goes one level deep: a session
+  that holds others takes them along when you nest it, and a drop on a nested row nests under that row's
+  parent. A routine's run and an archived session cannot be a parent. A nested session shows in its parent's
+  place, with the parent's group or pin, and counts in that section and project. The arrow on a parent's row
+  folds its nested sessions, every family starts open, and the browser remembers which are folded. A family
+  sorts by its newest session, so a busy nested session keeps its parent near the top of a list that goes
+  newest first. Drop a nested session on a section, or move or pin it from its menu, and it leaves its
+  parent and goes there. Move out of in its menu takes it out, and it stays in its parent's group or in
+  Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal
+  and other. Nest under in any session's menu opens a second menu of the other top level sessions in the
+  same section, so a phone nests without a drag. Archiving a parent archives only the parent, and its nested
+  sessions move up to its place as rows of their own and nest under it again when it comes back. Taking a
+  nested session out, moving it, pinning it or archiving it leaves the rest of the family under the parent,
+  even when Desktop links them through that session. Claude Desktop records which sessions it linked to a
+  parent. Capcom reads those links on every refresh, so it shows the families Desktop shows with no drag,
+  and shows a link Desktop records later on the next refresh. Capcom's own choice wins over Desktop's in
+  both directions, as it does for the archive flag. A session you nest stays nested whatever Desktop
+  records, and one you take out stays out although Desktop links it. `layout.json` keeps those choices under
+  `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows Desktop.
 - **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
   group belongs to at most one project, and one that belongs to none stays at the top level, which Home
   shows. Project and group headers fold, and the browser remembers which are folded. The + at the top of
@@ -179,8 +203,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   finds them by it. With `desktopHandoff` set to `true`, a session renamed here before it is handed to
   Desktop takes its Capcom title with it.
 - **Keyboard in the list.** The up and down arrows move through the project and section headers and the
-  sessions, Home and End jump to either end, and left and right fold a project, a section or a routine's
-  runs. Enter opens the focused session, the menu key or Shift+F10 opens its menu, and on a Mac Cmd+A
+  sessions, Home and End jump to either end, and left and right fold a project, a section, a routine's
+  runs or the sessions nested under a row. Right on a row whose nested sessions show moves to the first of
+  them, and left on a nested session or an earlier run moves back to the row above it. Enter opens the
+  focused session, the menu key or Shift+F10 opens its menu, and on a Mac Cmd+A
   archives it. With no chat open, up or down steps into the list. Tab reaches the dots on a header, and
   Enter or Space on them opens the menu. In a menu the up and down arrows, Home and End move between items,
   Esc closes it, and Tab leaves it. In a row's menu the right arrow on Move to opens its list of places,

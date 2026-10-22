@@ -1,7 +1,9 @@
 // How sessions are put in order, with no DOM in it so the server and the page share one answer.
 export const UNTITLED = 'Untitled session';
 
-export const byRecent = (a, b) => b.lastActivityAt - a.lastActivityAt;
+// A family goes by its newest member, so a busy child is not cut off from the list under an old parent.
+const latest = row => Math.max(row.lastActivityAt, ...(row.children ?? []).map(c => c.lastActivityAt));
+export const byRecent = (a, b) => latest(b) - latest(a);
 
 // Not \p{Emoji}, which also matches every digit, # and *. Those count only as a keycap, and the rest of a flag or ZWJ sequence follows its first symbol.
 const EMOJI_FIRST = /^\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]️?⃣)/u;

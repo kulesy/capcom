@@ -1,6 +1,6 @@
-// Drags a session row onto a section with pointer events, so a mouse and a finger share the code. A mouse drags after a few
-// pixels, so a click still opens the session. A finger drags after a long press, so a swipe still scrolls the list. A right click,
-// or a long press let go without moving, asks for the row's menu instead.
+// Drags a session row onto a section or onto another row with pointer events, so a mouse and a finger share the code. A mouse drags
+// after a few pixels, so a click still opens the session. A finger drags after a long press, so a swipe still scrolls the list. A
+// right click, or a long press let go without moving, asks for the row's menu instead.
 const MOUSE_SLOP = 5;
 const HOLD_MS = 350;
 const HOLD_SLOP = 8;
@@ -11,6 +11,17 @@ const SCROLL_STEP = 16;
 export function pointIn(el, e) {
   const r = el.getBoundingClientRect();
   return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom ? { x: e.clientX, y: e.clientY } : null;
+}
+
+// The drop target under a point. One marked `data-drop-middle` counts only in the middle half of its height, and above and below that
+// the point belongs to the target around it, so a row that takes a nest leaves its edges to the section it is in.
+function targetAt(x, y) {
+  for (let el = document.elementFromPoint(x, y)?.closest('[data-drop]'); el; el = el.parentElement?.closest('[data-drop]')) {
+    if (!el.hasAttribute('data-drop-middle')) return el.dataset.drop;
+    const { top, height } = el.getBoundingClientRect();
+    if (Math.abs(y - top - height / 2) <= height / 4) return el.dataset.drop;
+  }
+  return null;
 }
 
 // `box` is the scrolling list. Rows are `a.row[data-id]` and drop targets carry `data-drop`. `onOver` gets the target under
@@ -89,7 +100,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
 
   function follow() {
     drag.copy.style.transform = `translate(${drag.x - drag.grabX}px, ${drag.y - drag.grabY}px)`;
-    const over = document.elementFromPoint(drag.x, drag.y)?.closest('[data-drop]')?.dataset.drop ?? null;
+    const over = targetAt(drag.x, drag.y);
     if (over !== drag.over) {
       drag.over = over;
       onOver(over);

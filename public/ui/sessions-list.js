@@ -1,6 +1,7 @@
 // The list of sessions on the left, for the view the projects sidebar picks. Home has the routines, the groups outside projects and the
 // sessions started here or in a terminal, and a project has its groups. Pinned sessions show in every view. A row can be dragged
-// onto a section to move it there. Everything else is done from menus, so a phone can do it all.
+// onto a section to move it there, or onto another row to nest it under that one. Everything else is done from menus, so a phone can
+// do it all.
 import { ask } from './ask.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
@@ -9,20 +10,25 @@ import { folderName, STATE_LABEL, when } from './format.js';
 import { useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
-import { byRecent, byTitle, UNTITLED } from './order.js';
+import { UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { archiveHint, keyHint, shortcut } from './shortcuts.js';
 import { say } from './toast.js';
-import { archiveTarget, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nextStop, sessionTargets, TITLE_MAX, withoutRow } from './tree.js';
+import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, TITLE_MAX, withKids } from './tree.js';
 
-function RowLink({ r, title = r.title, current, lifted, marked }) {
+// The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
+const NEST = 'nest:';
+
+// `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says in the place of its time.
+function RowLink({ r, title = r.title, current, lifted, marked, drop, over }) {
   const at = when(r.lastActivityAt);
   const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join(' · ');
-  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} aria-current=${current === r.id ? 'page' : null}>
+  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null}
+    data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}>
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
     <span class="row-title">${title || UNTITLED}</span>
-    ${title === at ? null : html`<time class="row-time">${at}</time>`}
+    ${over ? html`<span class="row-time">Nest here</span>` : title === at ? null : html`<time class="row-time">${at}</time>`}
     ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
 }
 
@@ -72,58 +78,55 @@ function Section({ id, name, count, collapsed, toggle, drop, over, menu, tree, c
     ${open && children ? html`<ul class="rows">${children}</ul>` : null}</section>`;
 }
 
+// The button at the end of a row that folds the rows nested under it in and out. The list it controls is drawn only while it is open.
+const FoldButton = ({ label, open, controls, onClick }) => html`<button class="fold" type="button" aria-expanded=${open} aria-controls=${open ? controls : null} aria-label=${label} data-tip=${label} onClick=${onClick}>${chevron()}</button>`;
+
 // The latest run of a routine, with the earlier ones folded away until asked for.
 // A routine's row opens its latest run. The arrow at its end folds the earlier runs out underneath.
-function Routine({ g, current, lifted, marked, open, onToggle, tree }) {
+function Routine({ g, rowProps, open, onToggle, tree }) {
   const earlier = g.earlier.length;
   const runs = `${earlier} earlier run${earlier > 1 ? 's' : ''}`;
   const renaming = tree.renaming === g.latest.id;
-  return html`<li class=${earlier ? 'routine has-runs' : 'routine'}>
-    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} current=${current} lifted=${g.latest.id === lifted} marked=${g.latest.id === marked} /><${RowMore} r=${g.latest} tree=${tree} />`}
-    ${earlier && !renaming ? html`<button class="runs-toggle" type="button" data-routine=${g.name} aria-expanded=${open} aria-label=${runs} data-tip=${runs} onClick=${() => onToggle(g.name)}>${chevron()}</button>` : null}
-    ${earlier && open ? html`<ul class="earlier-runs">${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`)}</ul>` : null}
+  const list = `runs-${g.latest.id}`;
+  return html`<li class=${earlier ? 'has-fold' : null}>
+    ${renaming ? tree.sessionForm(g.latest) : html`<${RowLink} r=${g.latest} ...${rowProps(g.latest)} /><${RowMore} r=${g.latest} tree=${tree} />`}
+    ${earlier && !renaming ? html`<${FoldButton} label=${runs} open=${open} controls=${list} onClick=${() => onToggle(g.name)} />` : null}
+    ${earlier && open ? html`<ul class="sub-rows earlier-runs" id=${list}>${g.earlier.map(r => html`<${Row} key=${r.id} r=${r} title=${r.renamed ? r.title : when(r.lastActivityAt)} ...${rowProps(r)} tree=${tree} />`)}</ul>` : null}
   </li>`;
 }
 
-export const everyRow = ix => [...ix.pinned, ...ix.groups.flatMap(g => g.sessions), ...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...ix.started, ...ix.ungrouped, ...ix.other];
-
-export const findRow = (ix, id) => (ix ? everyRow(ix).find(r => r.id === id) || null : null);
-
-const LOOSE = Object.values(LOOSE_HOME);
-
-// Where a dropped row shows until the server's list arrives and replaces this guess. It returns `ix` itself when the drop changes nothing.
-export function placeRow(ix, id, section) {
-  const row = findRow(ix, id);
-  if (!row) return ix;
-  const group = ix.groups.some(g => g.id === section) ? section : null;
-  const inPlace = section === 'pinned' ? row.pinned : group ? row.group === group && !row.pinned : !row.group && !row.pinned;
-  if (inPlace) return ix;
-  const moved = { ...row, pinned: section === 'pinned', group };
-  const lands = LOOSE.includes(section) ? looseHome(row) : section;
-  const rest = withoutRow(ix, id);
-  const into = (section, list) => (section === lands ? [...list, moved].sort(group ? byTitle : byRecent) : list);
-  return {
-    ...rest,
-    pinned: into('pinned', rest.pinned),
-    groups: rest.groups.map(g => ({ ...g, sessions: into(g.id, g.sessions) })),
-    started: into('started', rest.started),
-    ungrouped: into('ungrouped', rest.ungrouped),
-    other: into('other', rest.other),
-  };
+// A session with others nested under it. Its row opens it, and the arrow at its end folds the nested ones in and out underneath.
+// While one of them is carried (`holds`), their list takes a drop as a nest under this session, so letting go anywhere in it leaves
+// the carried session where it is, instead of falling through to the section and taking it out.
+function Family({ r, rowProps, holds, open, onToggle, tree }) {
+  const count = r.children.length;
+  const nested = `${count} nested session${count > 1 ? 's' : ''}`;
+  const renaming = tree.renaming === r.id;
+  const list = `family-${r.id}`;
+  return html`<li class="has-fold">
+    ${renaming ? tree.sessionForm(r) : html`<${RowLink} r=${r} ...${rowProps(r)} /><${RowMore} r=${r} tree=${tree} />`}
+    ${renaming ? null : html`<${FoldButton} label=${nested} open=${open} controls=${list} onClick=${() => onToggle(r.id)} />`}
+    ${open ? html`<ul class="sub-rows" id=${list} aria-label=${`Nested under ${r.title || UNTITLED}`} data-drop=${holds ? NEST + r.id : null}>${r.children.map(c => html`<${Row} key=${c.id} r=${c} ...${rowProps(c)} tree=${tree} />`)}</ul>` : null}
+  </li>`;
 }
 
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
 // A group always shows, empty or not, and so does the project in view, so one that was just made can be found and filled.
-function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRoutine, drag, tree, newKey }) {
+// Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
+function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, drag, tree, newKey }) {
   const carried = drag && findRow(ix, drag.id);
-  const over = drag?.over;
+  const together = new Set(carried ? [carried.id, ...(carried.children ?? []).map(c => c.id)] : []);
+  const nesting = drag?.over?.startsWith(NEST) ? drag.over.slice(NEST.length) : null;
+  const over = nesting ? null : drag?.over;
   const lands = over && carried && LOOSE.includes(over) ? looseHome(carried) ?? over : over;
-  const lifted = drag?.id;
   const marked = tree.shown?.session;
-  const rows = list => list.map(r => html`<${Row} key=${r.id} r=${r} current=${current} lifted=${r.id === lifted} marked=${r.id === marked} tree=${tree} />`);
+  const rowProps = r => ({ current, lifted: together.has(r.id), marked: r.id === marked, drop: !!carried && !together.has(r.id) && !r.routine, over: r.id === nesting });
+  const rows = list => list.map(r => (r.children
+    ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${carried?.parent === r.id} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
+    : html`<${Row} key=${r.id} r=${r} ...${rowProps(r)} tree=${tree} />`));
   const section = (id, name, list, body, { drop = true, always = false, menu = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
-    return html`<${Section} key=${id} id=${id} name=${name} count=${list.length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
+    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
   };
   const home = view === HOME_VIEW;
   const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g) });
@@ -134,12 +137,12 @@ function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRo
     const editing = tree.form?.project === p.id ? tree.form.kind : null;
     return html`<section class="project" key=${p.id}>
       ${editing === 'rename' ? tree.renameForm(p)
-        : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + g.sessions.length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
+        : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + withKids(g.sessions).length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
       ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<${Empty} paths=${icons.folderPlus} title="No groups yet" action=${html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => tree.newGroup(p)}>New group</button>`}>Make one with New group, or move one here from a group's menu in Home.<//>`}</div>` : null}
     </section>`;
   };
   const parts = [
-    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} current=${current} lifted=${lifted} marked=${marked} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
+    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
     ...ix.projects.filter(p => p.id === view).map(project),
     ...(home ? groupsIn(ix, HOME_VIEW).map(group) : []),
@@ -150,14 +153,13 @@ function Sections({ ix, view, current, collapsed, toggle, openRoutines, toggleRo
   return parts.length ? parts : html`<${Empty} paths=${icons.messageSquarePlus} title="No sessions found">Press <kbd>${newKey}</kbd> to start one.<//>`;
 }
 
-// The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a project, a section or a
-// routine's runs. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
+// The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a project, a section or the
+// sessions nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
 const STOPS = '.group-head, a.row[data-id]';
 
-// A header's menu button and a routine's fold button belong to the header or row beside them, so the arrows carry on from there.
+// A header's menu button and a row's menu and fold buttons belong to the header or row beside them, so the arrows carry on from there.
 function stopBeside(el) {
-  if (el?.matches?.('.more')) return el.closest('.bar')?.querySelector('.group-head') ?? el.parentElement.querySelector(':scope > a.row');
-  if (el?.matches?.('.runs-toggle')) return el.closest('.routine')?.querySelector('a.row');
+  if (el?.matches?.('.more, .fold')) return el.closest('.bar')?.querySelector('.group-head') ?? el.parentElement.querySelector(':scope > a.row');
   return el;
 }
 
@@ -171,9 +173,16 @@ function walk(e, box) {
   const here = stops[at];
   if (!here || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
   const opening = e.key === 'ArrowRight';
-  const fold = here.matches('.group-head') ? here : here.closest('.routine')?.querySelector('.runs-toggle');
+  const item = here.parentElement;
+  const fold = here.matches('.group-head') ? here : item.querySelector(':scope > .fold');
+  // A nested row goes left to the row it is nested under, and a row with its fold open goes right to the first one nested under it.
+  const owner = item.parentElement.closest('.sub-rows')?.parentElement.querySelector(':scope > a.row');
   if (fold && (fold.getAttribute('aria-expanded') === 'true') !== opening) { e.preventDefault(); fold.click(); }
-  else if (!opening) {
+  else if (!opening && owner) go(owner);
+  else if (opening) {
+    const first = item.querySelector(':scope > .sub-rows a.row');
+    if (first) go(first);
+  } else {
     const section = here.closest('.group, .project');
     const parent = (here.matches('.group-head') ? section?.parentElement?.closest('.project') : section)?.querySelector('.group-head');
     if (parent) go(parent);
@@ -190,13 +199,15 @@ const isRunning = r => r.state === 'working' || r.state === 'waiting';
 const STOP_DETAIL = "Archiving stops Claude's turn and denies any approval it is waiting for. Undo brings the session back, but not the turn.";
 
 // `projects` is the projects sidebar's state, which the app owns because the search changes it as well.
-// `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string.
+// `place(id, section)` moves a dropped row and resolves with the reason when the server refuses, or an empty string. `nest(id, parent)`
+// does the same for a row nested under another, or taken out of its parent when `parent` is null.
 // `edit(path, body)` sends a change to projects or groups and resolves with { problem, made }, where `made` is the project or
 // group the server made, changed or removed. `archive(id, archived, { stop })` archives or unarchives a session and resolves with
 // { problem, stopped, running }: the reason when the server refuses, whether it stopped a chat that was running, and whether it
 // refused because one was running and `stop` was false.
-export function SessionList({ ix, projects, error, current, place, edit, archive, onFind, passkeys, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, edit, archive, onFind, passkeys, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
+  const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
   const mod = useModifier();
   const [openRoutines, setOpenRoutines] = useState(new Set());
@@ -210,18 +221,22 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
   const opened = useRef(0);
   const latestPlace = useRef(place);
   latestPlace.current = place;
+  const latestNest = useRef(null);
   const latestMenu = useRef(null);
   const latestKey = useRef(null);
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
   const expand = id => setCollapsed(all => ({ ...all, [id]: false }));
   const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
+  // Only a folded family is kept, so the browser does not collect an entry for every session that was ever folded.
+  const fold = (id, on) => setFolded(all => ({ ...Object.fromEntries(Object.entries(all).filter(([key]) => key !== id)), ...(on && { [id]: true }) }));
+  const toggleFold = id => fold(id, !folded[id]);
 
   useEffect(() => dragRows(box.current, {
     onStart: id => setDrag({ id, over: null }),
     onOver: over => setDrag(d => d && { ...d, over }),
-    onEnd: async (id, section) => {
+    onEnd: async (id, to) => {
       setDrag(null);
-      if (section) problemNote(await latestPlace.current(id, section));
+      if (to) problemNote(to.startsWith(NEST) ? await latestNest.current(id, to.slice(NEST.length)) : await latestPlace.current(id, to));
     },
     onMenu: (id, row, point) => latestMenu.current(id, row, point),
   }), []);
@@ -339,6 +354,19 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     say(problem || (section === 'pinned' ? `Pinned “${title}”.` : `Moved “${title}” to ${where}.`), { problem: !!problem });
   }
 
+  // A family opens when a session joins it, so the row is there to be seen where it went. This is the one way a drop and a menu nest.
+  latestNest.current = (id, parent) => {
+    const root = parent && rootOf(ix, parent);
+    if (root) fold(root.id, false);
+    return nest(id, parent);
+  };
+
+  // Nests a session the way a drop does, or takes it out of its parent when `parent` is null, and says where it went or why it did not.
+  async function nestSession(id, title, parent, parentTitle) {
+    const { problem } = await leaving(id, async () => ({ problem: await latestNest.current(id, parent) }));
+    say(problem || (parent ? `Nested “${title}” under “${parentTitle}”.` : `Moved “${title}” out of “${parentTitle}”.`), { problem: !!problem });
+  }
+
   // Gives a session a title of its own. One no different from the one it has closes the form without asking the server. The form
   // keeps what was sent, so a reload that draws the row somewhere else draws the form there with it, ready to try again.
   async function renameRow(r, text) {
@@ -374,6 +402,8 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     const title = r.title || UNTITLED;
     const running = isRunning(r);
     const targets = sessionTargets(ix, r);
+    const parent = findRow(ix, r.parent);
+    const under = nestTargets(ix, r);
     const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
     const entries = targets.map(t => (t.group
       ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
@@ -393,6 +423,8 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
       label: `Actions for ${title}`,
       items: [
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
+        ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
+        ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(t => ({ label: t.title || UNTITLED, run: () => nestSession(id, title, t.id, t.title || UNTITLED) })) }] : []),
         ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places }] : []),
         { separator: true },
         { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },
@@ -546,7 +578,7 @@ export function SessionList({ ix, projects, error, current, place, edit, archive
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt}>
       ${ix
-        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} newKey=${keyHint(mod, 'N')} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} newKey=${keyHint(mod, 'N')} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <footer class="list-foot">

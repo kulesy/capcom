@@ -6,12 +6,12 @@ import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useSta
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
-import { findRow, newSession, placeRow, SessionList } from './ui/sessions-list.js';
+import { newSession, SessionList } from './ui/sessions-list.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { ToastHost } from './ui/toast.js';
 import { installTooltips } from './ui/tooltip.js';
-import { withoutRow } from './ui/tree.js';
+import { findRow, nestRow, placeRow, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
 // #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
@@ -74,6 +74,30 @@ function App() {
     } catch (e) {
       if (shown.current === mark) setIx(before);
       return `${pin ? 'Not pinned' : 'Not moved'}: ${e.message}`;
+    } finally {
+      writing.current--;
+      await loadIndex();
+    }
+  }, []);
+
+  // Nesting shows at once as a drop does, and the server's list then replaces the guess. A `parent` of null takes the row out of its
+  // parent. It resolves with the reason when the server refuses, or an empty string, and a nesting that changes nothing sends nothing.
+  const nest = useCallback(async (id, parent) => {
+    const before = now.current.ix;
+    const refused = parent ? 'Not nested' : 'Not moved out';
+    if (!findRow(before, id) || (parent && !findRow(before, parent))) return `${refused}: that session is no longer in the list.`;
+    const guess = parent ? nestRow(before, id, parent) : unnestRow(before, id);
+    if (guess === before) return '';
+    const mark = ++latest.current;
+    setIx(guess);
+    shown.current = mark;
+    writing.current++;
+    try {
+      await api('api/layout/nest', { id, parent });
+      return '';
+    } catch (e) {
+      if (shown.current === mark) setIx(before);
+      return `${refused}: ${e.message}`;
     } finally {
       writing.current--;
       await loadIndex();
@@ -177,7 +201,7 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>

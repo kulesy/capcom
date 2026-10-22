@@ -12,9 +12,10 @@ import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
 import { HOME_VIEW, viewsNamed } from './scopes.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
-import { everyRow, newSession } from './sessions-list.js';
+import { newSession } from './sessions-list.js';
 import { keyHint } from './shortcuts.js';
 import { say } from './toast.js';
+import { everyRow } from './tree.js';
 
 const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['projects', 'Projects'], ['routines', 'Routines'], ['archived', 'Archived']];
 const RECENT = 8;
