@@ -29,9 +29,11 @@ function Layer({ open, box, onClose, alert = false, sheet = null, part, label, l
   useLayoutEffect(() => {
     if (!open) return;
     const content = box.current;
+    // On top before it takes the focus, or the trap of the layer under it, such as the sheet under the search, takes the focus back.
+    const leave = enter(me);
     if (initial?.current) initial.current.focus({ preventScroll: true });
     else if (!content.contains(document.activeElement)) (tabbables(content)[0] ?? content).focus({ preventScroll: true });
-    return enter(me);
+    return leave;
   }, [open]);
 
   // The page is locked for as long as the layer is in it, exit animation included. The focus trap and the keys end when `open` does.
