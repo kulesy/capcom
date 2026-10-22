@@ -8,24 +8,27 @@ import path from 'node:path';
 import { cfg, ROOT } from './lib/config.mjs';
 import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
+import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { makeLayout } from './lib/layout.mjs';
+import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { createOutside, STALE_MS } from './lib/outside.mjs';
-import { chatFor, getChat, startChat, sweep, activeStates } from './lib/runner.mjs';
+import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
-import { byRecent, byTitle, UNTITLED } from './public/ui/order.js';
+import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
 
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
 const chips = makeChips(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
+const marks = makeMarks(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 // The levels `claude --help` lists for --effort. Models are checked for shape only, because the CLI knows the current names.
@@ -54,6 +57,21 @@ function dropFastOnRefusal(chat) {
 const viewers = new Map();
 const outside = createOutside();
 const listOutside = createOutside({ keep: 256 });
+
+// A mark that cannot be written costs the list one dot, so it is logged. Marks are written as Claude's output is read and as a stream
+// closes, where a throw would stop the server.
+function writeMark(change) {
+  try {
+    change();
+  } catch (e) {
+    console.error(`Could not write marks.json: ${e.message}`);
+  }
+}
+onTurn(({ id, kind, at }) => writeMark(() => {
+  if (kind === 'start') marks.started(id, at);
+  else if (kind === 'end') marks.ended(id, at, !!viewers.get(id)?.size);
+  else marks.failed(id, at);
+}));
 
 // ---- the session index ---------------------------------------------------------------------------
 
@@ -89,12 +107,16 @@ function buildIndex({ archived = false } = {}) {
   const started = new Map(readStarted().map(s => [s.id, s]));
   const now = Date.now();
   const stateOf = (id, mtime) => live[id] || (now - mtime < 120_000 ? 'active' : 'idle');
+  // The turns Capcom ran are in no record of Desktop's, so the last time one began or ended lifts a row's place when it is later.
+  // Desktop's own place is its record's sort key and not the transcript's file time, which any write moves.
+  const edges = marks.read().edges;
+  const edgeOf = id => edges.get(id) ?? 0;
 
   const rows = new Map();
   for (const r of desk.sessions) {
     const t = files.get(r.id);
     if (!t) continue;
-    rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), state: stateOf(r.id, t.mtime) });
+    rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), sortAt: Math.max(r.sortKey, edgeOf(r.id)), state: stateOf(r.id, t.mtime) });
   }
   const cutoff = now - cfg.otherDays * 86400_000;
   for (const t of files.values()) {
@@ -104,11 +126,11 @@ function buildIndex({ archived = false } = {}) {
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
     const routine = head.routine || started.get(t.id)?.routine || null;
     rows.set(t.id, { id: t.id, title: (routine && started.get(t.id)?.title) || head.title || started.get(t.id)?.title || UNTITLED, cwd: head.cwd || started.get(t.id)?.cwd || '', branch: head.branch,
-      archived: false, lastActivityAt: t.mtime, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
+      archived: false, lastActivityAt: t.mtime, sortAt: Math.max(t.mtime, edgeOf(t.id)), createdAt: started.get(t.id)?.at ?? 0, routine, source: started.has(t.id) ? 'capcom' : 'cli', state: stateOf(t.id, t.mtime) });
   }
   // A session started moments ago may not have written its file yet; after that, no file means it is gone.
   for (const s of started.values()) {
-    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
+    if (!rows.has(s.id) && now - s.at < 10 * 60_000) rows.set(s.id, { id: s.id, title: s.title || 'New session', cwd: s.cwd, branch: '', archived: false, lastActivityAt: s.at, sortAt: Math.max(s.at, edgeOf(s.id)), createdAt: s.at, routine: s.routine || null, source: 'capcom', state: stateOf(s.id, s.at) });
   }
 
   // Projects, groups and pins are Capcom's own and cover every session, whichever app started it. A group that is gone leaves its
@@ -133,27 +155,38 @@ function buildIndex({ archived = false } = {}) {
   const families = familiesOf(rows, id => linkOf(own, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
-    const { holder, parent } = families.get(r.id);
-    Object.assign(r, { parent }, places.get(holder));
+    const { holder, parent, via } = families.get(r.id);
+    Object.assign(r, { parent, via }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
+
+  // Each list sorts as the Desktop section it comes from does, and Started here, Ungrouped and Terminal and other all sort as Desktop's
+  // loose list does. A list Desktop has no section for goes newest first.
+  const sorts = { pinned: desk.sorts.pinned ?? DEFAULT_SORT, routines: desk.sorts.routines ?? DEFAULT_SORT, sessions: desk.sorts.sessions ?? DEFAULT_SORT };
+  const groupSort = id => desk.sorts.groups.get(id) ?? DEFAULT_SORT;
+  const sortOf = r => (r.pinned ? sorts.pinned : r.group ? groupSort(r.group) : r.routine ? sorts.routines : sorts.sessions);
   const kids = new Map();
   for (const r of visible.filter(r => r.parent)) kids.set(r.parent, [...(kids.get(r.parent) ?? []), r]);
   for (const [id, list] of kids) {
     const parent = rows.get(id);
-    parent.children = list.sort(parent.group && !parent.pinned ? byTitle : byRecent);
+    parent.children = sortFamily(parent, list, sortOf(parent));
   }
 
-  // Every list shows its newest session first, except a group, which goes by title. A child is listed under its parent only.
+  // A child is listed under its parent only.
   const top = visible.filter(r => !r.parent);
-  const pinned = top.filter(r => r.pinned).sort(byRecent);
-  const groups = own.groups.map(g => ({ id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sessions: top.filter(r => r.group === g.id && !r.pinned).sort(byTitle) }));
+  const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
+  const groups = own.groups.map(g => {
+    const sort = groupSort(g.id);
+    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sort, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
+  });
+  // A routine's runs go newest first, and the routines go by their latest run.
+  const byLatest = comparator(sorts.routines);
   const routines = new Map();
-  for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(byRecent)) {
+  for (const r of top.filter(r => r.routine && !r.group && !r.pinned).sort(comparator(DEFAULT_SORT))) {
     if (!routines.has(r.routine)) routines.set(r.routine, { name: r.routine, latest: r, earlier: [] });
     else if (routines.get(r.routine).earlier.length < 12 || unarchived.has(r.id)) routines.get(r.routine).earlier.push(r);
   }
-  const loose = top.filter(r => !r.group && !r.routine && !r.pinned).sort(byRecent);
+  const loose = sortRows(top.filter(r => !r.group && !r.routine && !r.pinned), sorts.sessions);
   // A list stops at its newest 60 but keeps every session brought back from the archive, so an old one is not lost between the two.
   // A family counts as one and stays whole when any of its members was brought back.
   const newest = list => list.filter((r, i) => i < 60 || [r, ...(r.children ?? [])].some(m => unarchived.has(m.id)));
@@ -163,10 +196,11 @@ function buildIndex({ archived = false } = {}) {
     projects: own.projects.map(({ id, name }) => ({ id, name })),
     pinned,
     groups,
-    routines: [...routines.values()].sort((a, b) => byRecent(a.latest, b.latest)),
+    routines: [...routines.values()].sort((a, b) => byLatest(a.latest, b.latest)),
     started: newest(loose.filter(r => r.source === 'capcom')),
     ungrouped: newest(loose.filter(r => r.source === 'desktop')),
     other: newest(loose.filter(r => r.source === 'cli')),
+    sorts,
     rows,
   };
 }
@@ -399,6 +433,22 @@ const turnOf = (id, now) => {
   return t && now - t.mtime < STALE_MS ? listOutside.read(t) : null;
 };
 
+// The mark a row shows, from Desktop's record of it read beside Capcom's own marks. A turn Capcom ran after Desktop's last one makes
+// Desktop's verdict and error stale, and a page of Capcom with the chat open has read it, which Desktop cannot hear.
+function dotFor(r, elsewhere, { desk, mine, now }) {
+  const edge = mine.edges.get(r.id) ?? 0;
+  const seenAt = mine.seen.get(r.id);
+  const deskUnread = desk.unread.has(r.localId) && !(seenAt >= r.sortAt);
+  const ownUnread = mine.unread.has(r.id) && !(seenAt >= mine.unread.get(r.id));
+  const errorAt = Math.max(r.error && !(edge > r.errorAt) ? r.errorAt : 0, mine.errors.get(r.id) ?? 0);
+  return dotOf({
+    archived: r.archived, routine: r.routine, updatedAt: r.sortAt,
+    approval: r.state === 'waiting', responding: r.state === 'working', elsewhere,
+    verdict: edge > r.sortKey ? null : r.verdict ?? null,
+    error: errorAt > 0, errorAt, unread: !viewers.get(r.id)?.size && (deskUnread || ownUnread), ackedAt: desk.acked.get(r.localId),
+  }, now);
+}
+
 const modelKey = set => set.model || set.shownModel || null;
 
 // A chat that Capcom runs is asked for its own count. Without a process, or when the CLI cannot answer, the last reply in the
@@ -439,6 +489,8 @@ function events(req, res, id) {
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
   chat?.listeners.add(forward);
+  // A page opening the chat reads it, which clears its unread mark here. Desktop's own mark is not Capcom's to clear.
+  writeMark(() => marks.opened(id, Date.now()));
   // Sessions running in Desktop or a terminal only show up as a growing file, so the file is watched too.
   let size = transcriptFor(id)?.size ?? -1;
   const watch = setInterval(() => {
@@ -456,6 +508,7 @@ function events(req, res, id) {
     clearInterval(beat);
     viewers.get(id)?.delete(forward);
     getChat(id)?.listeners.delete(forward);
+    writeMark(() => marks.closed(id, Date.now()));
   });
 }
 
@@ -653,17 +706,26 @@ async function api(req, res, u) {
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
     const { rows, ...index } = buildIndex({ archived: withArchived });
-    // The turns go onto the rows here and not in buildIndex, which findRow runs for every request.
+    // The turns and the marks go onto the rows here and not in buildIndex, which findRow runs for every request.
     const now = Date.now();
+    const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };
     for (const r of rows.values()) {
       if (r.archived && !withArchived) continue;
       const turn = turnOf(r.id, now);
-      if (!turn) continue;
-      r.turnStartedAt = turn.startedAt;
-      r.turnMs = turn.turnMs;
-      // Another app's long tool call can leave its file still past the 2 minutes that count as idle. Active, never working, because the
-      // page lets a working row's archive stop the turn, which Capcom cannot do there.
-      if (r.state === 'idle') r.state = 'active';
+      if (turn) {
+        r.turnStartedAt = turn.startedAt;
+        r.turnMs = turn.turnMs;
+        // Another app's long tool call can leave its file still past the 2 minutes that count as idle. Active, never working, because the
+        // page lets a working row's archive stop the turn, which Capcom cannot do there.
+        if (r.state === 'idle') r.state = 'active';
+      }
+      // Active also means any write in the last 2 minutes, so only a turn found open in the transcript counts as running in another app.
+      r.dot = dotFor(r, r.state === 'active' && !!turn, shared);
+      // What the mark was worked out from is not for the page.
+      delete r.verdict;
+      delete r.error;
+      delete r.errorAt;
+      delete r.sortKey;
     }
     return send(res, 200, index);
   }

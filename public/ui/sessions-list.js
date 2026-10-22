@@ -6,7 +6,7 @@ import { ask } from './ask.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { NameForm } from './forms.js';
-import { duration, folderName, STATE_LABEL, when } from './format.js';
+import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -21,20 +21,20 @@ import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, nei
 const NEST = 'nest:';
 
 // `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end.
-// A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock.
+// A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock. The mark is the server's `dot`.
 // Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
 // The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
 function RowLink({ r, title = r.title, current, lifted, marked, drop, over }) {
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
-  const where = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   const at = title === last ? '' : last;
   const detail = [where, at].filter(Boolean).join(' · ');
   return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null}
     data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
     data-tip=${detail || null} data-tip-side="right" data-tip-delay="700">
-    <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
+    ${r.dot ? html`<span class="row-dot" data-dot=${r.dot} aria-hidden="true">${r.dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
     <span class="row-title">${title || UNTITLED}</span>
     ${over ? html`<span class="row-nest">Nest here</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : null}
     ${detail ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;

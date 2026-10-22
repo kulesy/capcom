@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writePassword } from '../lib/auth.mjs';
+import { batch, logOf, set } from './leveldb-fixture.mjs';
 
 export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const PASSWORD = 'a long password for the tests';
@@ -50,35 +51,68 @@ const freePort = () => new Promise(resolve => {
 // Sent 'begin a session' it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
 // context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
-// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached }, with `ago` and
-// `archivedAgo` (when Desktop archived it) in minutes.
+// A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
+// edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
+// `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
+// lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
+// happened. `fields` is merged over the record last, so a key set to undefined is left out of it.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are, and so is a session's `remoteMcpServersConfig`, a null included. A record has no such key without it.
 // `parent` is the id of the session Desktop links this one to, as a side chat: the record's `spawnedFrom` names it with `sideSession` true. `spawnedFrom` and
 // `lineageDetached` are written as they are, for the records Desktop does not count as a link.
-function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false }) {
+// `sections` is how Desktop sorts its lists: an array for the scope that holds the groups, or an object of scope keys to arrays. `localStorage` is Desktop's
+// Local Storage, with the ids of the sessions it marks `unread` and the minutes ago it `acked` each id, and writes a key only for what it is given. `marks` is
+// Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`.
+function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
   const transcripts = path.join(home, '.claude', 'projects', '-test-folder');
   fs.mkdirSync(records, { recursive: true });
   fs.mkdirSync(transcripts, { recursive: true });
-  fs.writeFileSync(path.join(desktop, 'claude_desktop_config.json'), JSON.stringify({ preferences: { epitaxyPrefs: { 'dframe-group-scopes': { scope: { groups: [] } } } } }));
   const now = Date.now();
+  const back = minutes => now - minutes * 60_000;
+  const sectionScopes = Array.isArray(sections) ? { scope: sections } : sections;
+  fs.writeFileSync(path.join(desktop, 'claude_desktop_config.json'), JSON.stringify({
+    preferences: { epitaxyPrefs: {
+      'dframe-group-scopes': { scope: { groups: [] } },
+      ...(sectionScopes && { 'dframe-code-sections': Object.fromEntries(Object.entries(sectionScopes).map(([key, list]) => [key, { sections: list }])) }),
+    } },
+  }));
+  if (localStorage) {
+    const store = path.join(desktop, 'Local Storage', 'leveldb');
+    fs.mkdirSync(store, { recursive: true });
+    const { unread, acked } = localStorage;
+    const kept = (key, value) => set(key, JSON.stringify({ state: value, version: 0 }), 'https://claude.ai');
+    fs.writeFileSync(path.join(store, '000003.log'), logOf([batch(1,
+      ...(unread ? [kept('epitaxy-unread-v1', { unreadIds: unread.map(id => `local_${id}`), explicitUnreadIds: [] })] : []),
+      ...(acked ? [kept('epitaxy-awaiting-ack-v1', { ackedAt: Object.fromEntries(Object.entries(acked).map(([id, minutes]) => [`local_${id}`, back(minutes)])) })] : []),
+    )]));
+  }
+  if (marks) {
+    const times = list => Object.fromEntries(Object.entries(list ?? {}).map(([id, minutes]) => [id, back(minutes)]));
+    fs.writeFileSync(path.join(state, 'marks.json'), JSON.stringify({ edges: times(marks.edges), seen: times(marks.seen), unread: times(marks.unread), errors: times(marks.errors) }));
+  }
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached }) => {
-    const at = now - ago * 60_000;
+  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }) => {
+    const at = back(ago);
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
-      fs.writeFileSync(record, JSON.stringify({ sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at, ...(routine && { scheduledTaskId: routine }), ...(remoteMcpServersConfig !== undefined && { remoteMcpServersConfig }), ...(spawnedFrom && { spawnedFrom }), ...(lineageDetached !== undefined && { lineageDetached }) }));
+      fs.writeFileSync(record, JSON.stringify({
+        sessionId: `local_${id}`, cliSessionId: id, title, cwd: home, isArchived: archived, lastActivityAt: at,
+        ...(routine && { scheduledTaskId: routine }), ...(remoteMcpServersConfig !== undefined && { remoteMcpServersConfig }), ...(spawnedFrom && { spawnedFrom }), ...(lineageDetached !== undefined && { lineageDetached }),
+        ...(edgeAgo !== undefined && { lastTurnEdgeAt: back(edgeAgo) }), ...(createdAgo !== undefined && { createdAt: back(createdAgo) }), ...(forkedFrom && { forkedFromSessionId: `local_${forkedFrom}` }),
+        ...(verdict && { postTurnSummary: { status_category: verdict } }), ...(errorAgo !== undefined && { error: 'The turn failed.', errorAt: back(errorAgo) }),
+        ...fields,
+      }));
       if (archivedAgo !== undefined) {
-        const changed = (now - archivedAgo * 60_000) / 1000;
+        const changed = back(archivedAgo) / 1000;
         fs.utimesSync(record, changed, changed);
       }
     }
     if (source === 'capcom') started.push({ id, cwd: home, at, title });
     const transcript = path.join(transcripts, `${id}.jsonl`);
     fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
-    fs.utimesSync(transcript, at / 1000, at / 1000);
+    fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);
   });
   if (started.length) fs.writeFileSync(path.join(state, 'started.json'), JSON.stringify(started));
   fs.writeFileSync(path.join(state, 'layout.json'), JSON.stringify({

@@ -14,7 +14,7 @@ async function listing(s, token) {
   return { sessions, archived };
 }
 
-test('a group lists its sessions by title with the emoji ones first, and every other list stays newest first', async () => {
+test('every list goes newest first when Desktop holds no sort for it, whatever the titles say', async () => {
   const s = await start({
     groups: [{ id: 'cg-work', name: 'Work' }],
     sessions: [
@@ -32,9 +32,7 @@ test('a group lists its sessions by title with the emoji ones first, and every o
   });
   const { token } = await signIn(s);
   const { sessions } = await listing(s, token);
-  const work = titles(sessions.groups[0].sessions);
-  assert.ok(['🛢️ oil', '🟨 yellow check'].every(t => work.slice(0, 2).includes(t)), work.join(' | '));
-  assert.deepEqual(work.slice(2), ['2 items', '10 items', 'Alpha plan', 'zeta report']);
+  assert.deepEqual(titles(sessions.groups[0].sessions), ['zeta report', '🟨 yellow check', 'Alpha plan', '10 items', '2 items', '🛢️ oil']);
   assert.deepEqual(titles(sessions.pinned), ['Zulu pinned', 'Alpha pinned']);
   assert.deepEqual(titles(sessions.ungrouped), ['Zulu loose', 'Alpha loose']);
 });

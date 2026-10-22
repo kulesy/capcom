@@ -55,14 +55,23 @@ test('a rename shows in the list for a Desktop session, a terminal session and o
   assert.deepEqual(mac(s), was, "Desktop's records, the transcripts and started.json are never written");
 });
 
-test('a session in a group goes by its new title, A to Z, and stays in the group', async () => {
-  const { s, token } = await ready();
+test('a session in a group that goes by title takes its place by its new title, A to Z, and stays in the group', async () => {
+  const { s, token } = await ready({ sections: [{ id: 'cg-work', kind: 'manual', sortBy: 'alpha', ascending: false }] });
   const order = async () => titles((await index(s, token)).groups[0].sessions);
   assert.deepEqual(await order(), ['Bravo', 'Charlie', 'Delta']);
   await post(s, token, { id: 'delta', title: 'Alpha' });
   assert.deepEqual(await order(), ['Alpha', 'Bravo', 'Charlie']);
   await post(s, token, { id: 'bravo', title: 'zulu' });
   assert.deepEqual(await order(), ['Alpha', 'Charlie', 'zulu']);
+  assert.deepEqual(onDisk(s).assignments, { bravo: 'cg-work', charlie: 'cg-work', delta: 'cg-work' });
+});
+
+test('a session in a group that goes by recency keeps its place under a new title, and stays in the group', async () => {
+  const { s, token } = await ready();
+  const order = async () => titles((await index(s, token)).groups[0].sessions);
+  assert.deepEqual(await order(), ['Bravo', 'Charlie', 'Delta']);
+  await post(s, token, { id: 'delta', title: 'Alpha' });
+  assert.deepEqual(await order(), ['Bravo', 'Charlie', 'Alpha']);
   assert.deepEqual(onDisk(s).assignments, { bravo: 'cg-work', charlie: 'cg-work', delta: 'cg-work' });
 });
 

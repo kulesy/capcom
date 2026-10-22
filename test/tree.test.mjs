@@ -110,12 +110,17 @@ test('the targets are plain data and the list they were made from is not changed
 });
 
 const row = (id, extra = {}) => ({ id, title: id, ...extra });
+// The sort the server sends for each list: Desktop's, or newest first for a list it holds none for.
+const RECENT = { by: 'recency', ascending: false };
+const TITLES = { by: 'alpha', ascending: false };
+const SORTS = { pinned: RECENT, routines: RECENT, sessions: RECENT };
 const LIST = {
   station: 'mac',
   problem: null,
   projects: [{ id: 'cp-a', name: 'Capcom' }],
+  sorts: SORTS,
   pinned: [row('p1', { pinned: true }), row('p2', { pinned: true })],
-  groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', sessions: [row('g1'), row('g2')] }, { id: 'cg-b', name: 'Home', project: null, sessions: [] }],
+  groups: [{ id: 'cg-a', name: 'Work', project: 'cp-a', sort: RECENT, sessions: [row('g1'), row('g2')] }, { id: 'cg-b', name: 'Home', project: null, sort: RECENT, sessions: [] }],
   routines: [
     { name: 'nightly', latest: row('r3'), earlier: [row('r2'), row('r1')] },
     { name: 'weekly', latest: row('w1'), earlier: [] },
@@ -138,7 +143,7 @@ test('a session is taken out of the one list it is in, and the other lists are l
 
 test('the list keeps everything else it had, and the list it was given is not changed', () => {
   const { pinned, groups, routines, started, ungrouped, other, ...rest } = withoutRow(LIST, 'u1');
-  assert.deepEqual(rest, { station: 'mac', problem: null, projects: [{ id: 'cp-a', name: 'Capcom' }] });
+  assert.deepEqual(rest, { station: 'mac', problem: null, projects: [{ id: 'cp-a', name: 'Capcom' }], sorts: SORTS });
   assert.deepEqual(groups.map(({ sessions, ...group }) => group), LIST.groups.map(({ sessions, ...group }) => group));
   assert.deepEqual(idsOf(LIST), [['p1', 'p2'], ['g1', 'g2'], [], ['s1', 's2'], ['u1', 'u2'], ['o1']]);
 });
@@ -156,21 +161,24 @@ test('a routine with one run is gone once that run is, and a session that is not
   assert.deepEqual(withoutRow(LIST, 'nobody'), LIST);
 });
 
-const person = (id, extra = {}) => ({ id, title: id, source: 'desktop', routine: null, group: null, pinned: false, lastActivityAt: 0, ...extra });
-const kid = (id, parent, extra = {}) => person(id, { parent, ...extra });
-// Work holds g1 with two children, Pinned holds p1 with one, and the loose list holds two sessions with none.
+const person = (id, extra = {}) => ({ id, title: id, source: 'desktop', routine: null, group: null, pinned: false, sortAt: 0, ...extra });
+// A child nests under its parent unless `via` names another session of the family.
+const kid = (id, parent, extra = {}) => person(id, { parent, via: parent, ...extra });
+// Work holds g1 with two children, Pinned holds p1 with one, and the loose list holds two sessions with none. Work goes by title, and
+// the other lists newest first.
 const FAM = {
   station: 'mac',
   problem: null,
   projects: [],
-  pinned: [person('p1', { pinned: true, lastActivityAt: 50, children: [kid('pk', 'p1', { pinned: true, lastActivityAt: 40 })] })],
+  sorts: SORTS,
+  pinned: [person('p1', { pinned: true, sortAt: 50, children: [kid('pk', 'p1', { pinned: true, sortAt: 40 })] })],
   groups: [
-    { id: 'cg-a', name: 'Work', project: null, sessions: [person('g1', { group: 'cg-a', children: [kid('k1', 'g1', { group: 'cg-a' }), kid('k2', 'g1', { group: 'cg-a' })] }), person('g2', { group: 'cg-a' })] },
-    { id: 'cg-b', name: 'Home', project: null, sessions: [] },
+    { id: 'cg-a', name: 'Work', project: null, sort: TITLES, sessions: [person('g1', { group: 'cg-a', children: [kid('k1', 'g1', { group: 'cg-a' }), kid('k2', 'g1', { group: 'cg-a' })] }), person('g2', { group: 'cg-a' })] },
+    { id: 'cg-b', name: 'Home', project: null, sort: RECENT, sessions: [] },
   ],
   routines: [{ name: 'nightly', latest: person('r1', { routine: 'nightly' }), earlier: [] }],
   started: [],
-  ungrouped: [person('u1', { lastActivityAt: 30 }), person('u2', { lastActivityAt: 20 })],
+  ungrouped: [person('u1', { sortAt: 30 }), person('u2', { sortAt: 20 })],
   other: [],
 };
 
@@ -192,7 +200,7 @@ test('a nested session is found like any other, and its root is the session it s
 test('a session taken out hands the sessions nested under it to its list, in the order that list keeps', () => {
   const out = withoutRow(FAM, 'g1');
   assert.deepEqual(work(out), ['g2', 'k1', 'k2']);
-  assert.deepEqual(out.groups[0].sessions.map(r => r.parent ?? null), [null, null, null]);
+  assert.deepEqual(out.groups[0].sessions.map(r => [r.parent ?? null, r.via ?? null]), [[null, null], [null, null], [null, null]]);
   assert.deepEqual(shapeOf(withoutRow(FAM, 'p1')).pinned, ['pk']);
   assert.deepEqual(work(withoutRow(FAM, 'g1', { withChildren: true })), ['g2'], 'with `withChildren` they go with it');
 });
@@ -265,12 +273,12 @@ test('a session taken out of its parent shows in the list its parent is in, and 
 // Ungrouped holds a parent with a child from each app that starts sessions, and a routine run. Started here holds one session already.
 const LOOSE_FAM = {
   ...FAM,
-  started: [person('s1', { source: 'capcom', lastActivityAt: 100 })],
-  ungrouped: [person('lp', { lastActivityAt: 90, children: [
-    kid('ld', 'lp', { lastActivityAt: 80 }),
-    kid('lc', 'lp', { source: 'capcom', lastActivityAt: 70 }),
-    kid('lt', 'lp', { source: 'cli', lastActivityAt: 60 }),
-    kid('lr', 'lp', { routine: 'nightly', lastActivityAt: 50 }),
+  started: [person('s1', { source: 'capcom', sortAt: 100 })],
+  ungrouped: [person('lp', { sortAt: 90, children: [
+    kid('ld', 'lp', { sortAt: 80 }),
+    kid('lc', 'lp', { source: 'capcom', sortAt: 70 }),
+    kid('lt', 'lp', { source: 'cli', sortAt: 60 }),
+    kid('lr', 'lp', { routine: 'nightly', sortAt: 50 }),
   ] })],
 };
 const loose = ix => ({ started: ix.started.map(describe), ungrouped: ix.ungrouped.map(describe), other: ix.other.map(describe) });
@@ -323,6 +331,96 @@ test('a session can be nested under the other top level sessions in the list it 
   assert.deepEqual(targets(FAM, 'r1'), [], 'a routine run has no list to nest in');
   const mixed = { ...FAM, groups: [{ ...FAM.groups[0], sessions: [...FAM.groups[0].sessions, person('run', { group: 'cg-a', routine: 'nightly' })] }, FAM.groups[1]] };
   assert.deepEqual(targets(mixed, 'g2'), ['g1']);
+});
+
+// The same lists with Work going newest first, and a time on every row, so each edit has an order to follow.
+const NEWEST = {
+  ...FAM,
+  groups: [
+    { ...FAM.groups[0], sort: RECENT, sessions: [
+      person('g1', { group: 'cg-a', sortAt: 10, children: [kid('k1', 'g1', { group: 'cg-a', sortAt: 80 }), kid('k2', 'g1', { group: 'cg-a', sortAt: 20 })] }),
+      person('g2', { group: 'cg-a', sortAt: 50 }),
+    ] },
+    FAM.groups[1],
+  ],
+  ungrouped: [person('u1', { sortAt: 60 }), person('u2', { sortAt: 20 })],
+};
+
+test('a row lands in a list where that list\'s own sort puts it, newest first or by title', () => {
+  assert.deepEqual(work(NEWEST), ['g1[k1,k2]', 'g2']);
+  assert.deepEqual(work(placeRow(NEWEST, 'u1', 'cg-a')), ['g1[k1,k2]', 'u1', 'g2'], 'u1 is newer than g2');
+  assert.deepEqual(work(placeRow({ ...NEWEST, groups: [{ ...NEWEST.groups[0], sort: TITLES }, NEWEST.groups[1]] }, 'u1', 'cg-a')), ['g1[k1,k2]', 'g2', 'u1'], 'by title it comes last');
+  assert.deepEqual(shapeOf(placeRow(NEWEST, 'g1', 'ungrouped')).ungrouped, ['g1[k1,k2]', 'u1', 'u2'], 'a family sits where its newest member does');
+});
+
+test('the sessions a parent frees, and those nested under another, follow the sort of the list they are in', () => {
+  assert.deepEqual(work(withoutRow(NEWEST, 'g1')), ['k1', 'g2', 'k2']);
+  assert.deepEqual(work(withoutRow(FAM, 'g1')), ['g2', 'k1', 'k2'], 'by title they sort among the rest by name');
+  assert.deepEqual(work(nestRow(NEWEST, 'u1', 'g2')), ['g1[k1,k2]', 'g2[u1]']);
+  assert.deepEqual(work(nestRow(NEWEST, 'u1', 'g1')), ['g1[k1,u1,k2]', 'g2']);
+  assert.deepEqual(work(unnestRow(NEWEST, 'k2')), ['g1[k1]', 'g2', 'k2']);
+});
+
+test('a family is placed again when its newest member leaves, and stays where it was when an older one does', () => {
+  assert.deepEqual(work(NEWEST), ['g1[k1,k2]', 'g2']);
+  assert.deepEqual(work(withoutRow(NEWEST, 'k1')), ['g2', 'g1[k2]'], 'k2 is older than g2, so the family goes below it');
+  assert.deepEqual(work(unnestRow(NEWEST, 'k1')), ['k1', 'g2', 'g1[k2]'], 'k1 shows where its own time puts it');
+  assert.deepEqual(work(withoutRow(NEWEST, 'k2')), ['g1[k1]', 'g2']);
+  assert.deepEqual(work(withoutRow(NEWEST, 'g2')), ['g1[k1,k2]']);
+});
+
+// Work holds h, with a and c under it, b under a and d under b. The server sends them depth first, and each names the session it nests under.
+const DEEP = {
+  ...FAM,
+  groups: [
+    { ...FAM.groups[0], sort: RECENT, sessions: [person('h', { group: 'cg-a', sortAt: 5, children: [
+      kid('a', 'h', { group: 'cg-a', sortAt: 40 }),
+      kid('b', 'h', { group: 'cg-a', via: 'a', sortAt: 30 }),
+      kid('d', 'h', { group: 'cg-a', via: 'b', sortAt: 10 }),
+      kid('c', 'h', { group: 'cg-a', sortAt: 20 }),
+    ] })] },
+    FAM.groups[1],
+  ],
+};
+const viasOf = (ix, id) => Object.fromEntries(findRow(ix, id).children.map(c => [c.id, c.via]));
+
+test('a family goes depth first as the server sends it, and a session that joins it nests under the head', () => {
+  assert.deepEqual(work(DEEP), ['h[a,b,d,c]']);
+  const joined = nestRow(DEEP, 'u1', 'd');
+  assert.deepEqual(work(joined), ['h[a,b,d,u1,c]'], 'u1 sorts between a and c among the head\'s children, with a\'s own children after a');
+  assert.deepEqual(viasOf(joined, 'h'), { a: 'h', b: 'a', d: 'b', u1: 'h', c: 'h' });
+});
+
+test('when a session leaves a family the rest link straight to its head, in the list\'s order', () => {
+  const archived = withoutRow(DEEP, 'a');
+  assert.deepEqual(work(archived), ['h[b,c,d]']);
+  assert.deepEqual(viasOf(archived, 'h'), { b: 'h', c: 'h', d: 'h' });
+
+  const freed = unnestRow(DEEP, 'b');
+  assert.deepEqual(work(freed), ['h[a,c,d]', 'b']);
+  assert.deepEqual(viasOf(freed, 'h'), { a: 'h', c: 'h', d: 'h' });
+
+  const dropped = placeRow(DEEP, 'd', 'cg-b');
+  assert.deepEqual(shapeOf(dropped).groups, { 'cg-a': ['h[a,b,c]'], 'cg-b': ['d'] });
+  assert.deepEqual(viasOf(dropped, 'h'), { a: 'h', b: 'h', c: 'h' });
+});
+
+test('a session placed elsewhere nests under nothing and one nested elsewhere under its new parent, and the rest of its family stays with the head', () => {
+  const moved = placeRow(DEEP, 'a', 'cg-b');
+  assert.deepEqual([findRow(moved, 'a').parent, findRow(moved, 'a').via], [null, null]);
+  const nested = nestRow(DEEP, 'a', 'h');
+  assert.equal(nested, DEEP, 'a is under h already');
+  const other = nestRow({ ...DEEP, groups: [DEEP.groups[0], { ...DEEP.groups[1], sessions: [person('z', { group: 'cg-b' })] }] }, 'a', 'z');
+  assert.deepEqual(shapeOf(other).groups['cg-b'], ['z[a]']);
+  assert.equal(findRow(other, 'a').via, 'z');
+  assert.deepEqual(viasOf(other, 'h'), { b: 'h', d: 'h', c: 'h' });
+});
+
+test('an edit leaves the lists it was given as they were', () => {
+  const before = JSON.stringify([NEWEST, DEEP]);
+  for (const edit of [ix => placeRow(ix, 'u1', 'cg-a'), ix => withoutRow(ix, 'g1'), ix => nestRow(ix, 'u1', 'g2'), ix => unnestRow(ix, 'k2')]) edit(NEWEST);
+  for (const edit of [ix => withoutRow(ix, 'a'), ix => unnestRow(ix, 'b'), ix => placeRow(ix, 'd', 'cg-b'), ix => nestRow(ix, 'u1', 'd')]) edit(DEEP);
+  assert.equal(JSON.stringify([NEWEST, DEEP]), before);
 });
 
 test('none of these changes the list it was given', () => {

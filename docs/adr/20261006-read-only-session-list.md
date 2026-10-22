@@ -38,7 +38,9 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 
 **Amended 2026-10-21.** Capcom also keeps its own session titles in `layout.json`, and shows one in place of the title in Desktop's record or the transcript. Both are still read, read only. See [Capcom keeps its own session layout](20261015-own-session-layout-seeded-from-desktop.md).
 
-**Amended 2026-10-22.** Capcom also reads the links Desktop records between sessions (`spawnedFrom` and `lineageDetached` in a session's record) on every refresh, and shows a linked session under its parent. Both fields are read, read only, and Capcom's own choice of parent beats Desktop's link. See [Nest sessions under a parent](20261022-nest-sessions-under-a-parent.md).
+**Amended 2026-10-22.** Capcom also reads the links Desktop records between sessions (`spawnedFrom`, `forkedFromSessionId` and `lineageDetached` in a session's record) on every refresh, and shows a linked session under its parent. Capcom reads all three fields, read only, and its own choice of parent beats Desktop's link. See [Nest sessions under a parent](20261022-nest-sessions-under-a-parent.md).
+
+**Amended 2026-10-22.** Capcom orders and marks the rows as Desktop does, so it reads more of Desktop's state, all of it read only. From each record it reads `createdAt`, `lastTurnEdgeAt`, `postTurnSummary.status_category`, `error` and `errorAt`. From the config it reads each section's sort (`dframe-code-sections`). From Desktop's Local Storage, a LevelDB folder that Desktop holds open, it reads two keys: the rows Desktop marks unread (`epitaxy-unread-v1`) and the times the owner acknowledged a row (`epitaxy-awaiting-ack-v1`). `lib/leveldb.mjs` reads them with positioned reads of the folder's files, and writes, locks and holds open nothing there. A folder Capcom cannot read leaves the list with no unread marks. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
 
 ### Consequences
 

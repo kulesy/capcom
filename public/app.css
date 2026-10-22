@@ -79,6 +79,8 @@
   --warning: oklch(0.82 0.15 78);
   --warning-foreground: oklch(0.36 0.08 70);
   --warning-muted: oklch(0.96 0.04 85);
+  --ready: oklch(0.577 0.149 260);
+  --running: color-mix(in oklab, var(--sidebar-foreground) 15%, var(--sidebar));
   /* Removed lines in a diff. Light takes red-700, because --destructive on the muted code background is under 4.5:1. */
   --diff-del: oklch(0.505 0.213 27.518);
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -122,6 +124,7 @@
     --success-foreground: oklch(0.78 0.13 150);
     --warning-foreground: oklch(0.86 0.12 82);
     --warning-muted: oklch(0.27 0.04 80);
+    --ready: oklch(0.65 0.15 260);
     --diff-del: oklch(0.704 0.191 22.216);
     --widget-card: oklch(0.205 0 0);
   }
@@ -1156,7 +1159,25 @@ body[data-scroll-locked] {
 
 :is(.row, .scope, .group-head):focus-visible { box-shadow: inset 0 0 0 2px var(--sidebar-ring); }
 
-.row .lamp { position: absolute; top: 50%; right: 1.75rem; translate: 0 -50%; }
+.row-dot {
+  position: absolute;
+  top: 50%;
+  right: 2rem;
+  translate: 50% -50%;
+  width: 0.5rem;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+}
+
+.row-dot[data-dot="awaiting"] { background: var(--warning); }
+
+.row-dot[data-dot="running"] { background: var(--running); }
+
+.row-dot[data-dot="ready"] { background: var(--ready); }
+
+.row-dot[data-dot="error"] { width: 0.75rem; color: var(--warning-foreground); }
+
+.row-dot > svg { display: block; width: 100%; height: 100%; }
 
 .row-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1214,7 +1235,7 @@ body[data-scroll-locked] {
 @media (pointer: fine) {
   .row { grid-template-areas: "title nest"; padding-block: 0; font-size: 0.8125rem; }
 
-  .row .lamp { width: 0.375rem; }
+  .row-dot { width: 0.4rem; }
 
   .row-meta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
@@ -1230,7 +1251,7 @@ body[data-scroll-locked] {
 
   .has-fold > .row { padding-right: 2.875rem; }
 
-  .row .lamp { right: 0.5625rem; }
+  .row-dot { right: 0.75rem; }
 
   .rows .more { right: 0.125rem; }
 
@@ -1239,7 +1260,7 @@ body[data-scroll-locked] {
   .rows .fold[aria-expanded="false"],
   li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > :is(.more, .fold) { opacity: 1; }
 
-  body:not(.dragging) li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > .row .lamp { opacity: 0; }
+  body:not(.dragging) li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > .row .row-dot { opacity: 0; }
 }
 
 .rows .row {
@@ -1485,6 +1506,12 @@ body.dragging .rows .more { opacity: 0; }
   }
 
   .group-head:hover ~ .more, .row:hover ~ :is(.more, .fold), .scope:hover ~ .more { color: var(--sidebar-accent-foreground); }
+}
+
+@media (pointer: fine) {
+  .row { color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent); }
+
+  .row:is([aria-current="page"], [aria-selected="true"], [data-menu], [data-over], :active, :hover) { color: var(--sidebar-foreground); }
 }
 
 .chat {

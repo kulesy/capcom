@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, chatFor, startChat, sweep } from '../lib/runner.mjs';
+import { activeStates, chatFor, onTurn, startChat, sweep } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -812,4 +812,109 @@ test('a context count leaves the idle clock alone, so a chat nobody is using is 
   assert.ok(idleMinutes() > 30, 'a count of either detail is no use of the chat');
   sweep(30);
   await until(() => !chat.status().running);
+});
+
+// A CLI that names its session when sent 'start <id>', ends the turn when sent 'finish', ends it with an error when sent 'fail', and exits
+// when sent 'crash'. Sent anything else it says nothing, so the turn stays open.
+const turningCli = dir => {
+  const cli = path.join(dir, 'turning-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    "  const [word, id] = m.message.content.split(' ');",
+    "  if (word === 'start') out({ type: 'system', subtype: 'init', session_id: id, model: 'stub' });",
+    "  if (word === 'finish') out({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    "  if (word === 'fail') out({ type: 'result', subtype: 'success', is_error: true, result: 'It failed.' });",
+    "  if (word === 'crash') process.exit(3);",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  return cli;
+};
+
+const heardTurns = t => {
+  const heard = [];
+  onTurn(e => heard.push(e));
+  t.after(() => onTurn(null));
+  return heard;
+};
+const kinds = heard => heard.map(({ id, kind }) => [id, kind]);
+
+test('a turn is reported when it starts and when it ends, under the session the CLI named, and never under the temporary id a new chat has', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const heard = heardTurns(t);
+  const before = Date.now();
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start sess-turn-1', images: [], claude: turningCli(dir), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  assert.deepEqual(kinds(heard), [['sess-turn-1', 'start']], 'the first turn is reported once its session has a name');
+  assert.ok(heard[0].at >= before && heard[0].at <= Date.now(), 'at the time the turn began');
+
+  chat.send('finish', []);
+  await until(() => chat.state === 'idle');
+  assert.deepEqual(kinds(heard), [['sess-turn-1', 'start'], ['sess-turn-1', 'end']]);
+  assert.ok(heard[1].at >= heard[0].at);
+
+  chat.send('finish', []);
+  await until(() => heard.length === 4);
+  assert.deepEqual(kinds(heard).slice(2), [['sess-turn-1', 'start'], ['sess-turn-1', 'end']], 'a later turn is reported the same way');
+  assert.ok(heard.every(e => !e.id.startsWith('new-')));
+});
+
+test('a turn that ends in an error is reported as ended and as failed, and a turn the owner stopped is reported as ended only', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const heard = heardTurns(t);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start sess-turn-2', images: [], claude: turningCli(dir), chrome: false, chips: null });
+  t.after(() => chat.stop());
+
+  chat.send('fail', []);
+  await until(() => heard.length === 3);
+  assert.deepEqual(kinds(heard), [['sess-turn-2', 'start'], ['sess-turn-2', 'end'], ['sess-turn-2', 'failed']]);
+
+  heard.length = 0;
+  chat.send('hold', []);
+  await until(() => heard.length === 1);
+  chat.interrupt();
+  chat.send('fail', []);
+  await until(() => chat.state === 'idle');
+  assert.deepEqual(kinds(heard), [['sess-turn-2', 'start'], ['sess-turn-2', 'end']], 'a stopped turn is no failure');
+});
+
+test('a CLI that dies in the middle of a turn ends it as a failure', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const heard = heardTurns(t);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start sess-turn-3', images: [], claude: turningCli(dir), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  heard.length = 0;
+  chat.send('crash', []);
+  await until(() => heard.some(e => e.kind === 'end'));
+  assert.deepEqual(new Set(heard.map(e => e.kind)), new Set(['failed', 'end']));
+  assert.ok(heard.every(e => e.id === 'sess-turn-3'));
+});
+
+test('the hook is no listener on the chat, so a chat nobody watches is still stopped by the idle sweep', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const heard = heardTurns(t);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start sess-turn-4', images: [], claude: turningCli(dir), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  chat.send('finish', []);
+  await until(() => chat.state === 'idle');
+  assert.ok(heard.length > 0, 'the hook is in use');
+  assert.equal(chat.listeners.size, 0);
+  chat.lastActive = Date.now() - 31 * 60_000;
+  sweep(30);
+  await until(() => !chat.status().running);
+});
+
+test('with no hook installed a turn runs the same', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  onTurn(null);
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'start sess-turn-5', images: [], claude: turningCli(dir), chrome: false, chips: null });
+  t.after(() => chat.stop());
+  chat.send('finish', []);
+  await until(() => chat.state === 'idle');
+  assert.equal(chat.status().running, true);
 });

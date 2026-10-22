@@ -1,5 +1,5 @@
 // The rules of the sidebar tree that need no page, so node can test them.
-import { byRecent, byTitle } from './order.js';
+import { sortFamily, sortRows } from './order.js';
 
 // The stop the arrows go to. `at` is the focused stop, or -1 when none is, and then up and down land on `start`.
 // It returns -1 when the key is not for the walk or there is no stop that way.
@@ -67,20 +67,20 @@ export function rootOf(ix, id) {
   return findRow(ix, row?.parent) ?? row;
 }
 
-// Every list that holds nested rows, handed to `edit` with the order it keeps and its name. A routine run holds none.
+// Every list that holds nested rows, handed to `edit` with the sort the server sent for it and its name. A routine run holds none.
 const mapLists = (ix, edit) => ({
   ...ix,
-  pinned: edit(ix.pinned, byRecent, 'pinned'),
-  groups: ix.groups.map(g => ({ ...g, sessions: edit(g.sessions, byTitle, g.id) })),
-  started: edit(ix.started, byRecent, 'started'),
-  ungrouped: edit(ix.ungrouped, byRecent, 'ungrouped'),
-  other: edit(ix.other, byRecent, 'other'),
+  pinned: edit(ix.pinned, ix.sorts.pinned, 'pinned'),
+  groups: ix.groups.map(g => ({ ...g, sessions: edit(g.sessions, g.sort, g.id) })),
+  started: edit(ix.started, ix.sorts.sessions, 'started'),
+  ungrouped: edit(ix.ungrouped, ix.sorts.sessions, 'ungrouped'),
+  other: edit(ix.other, ix.sorts.sessions, 'other'),
 });
 
 const setChildren = ({ children, ...bare }, list) => (list.length ? { ...bare, children: list } : bare);
 
 // A row's children go in the order of the list the row is in.
-const reorder = (row, order) => (row.children ? { ...row, children: [...row.children].sort(order) } : row);
+const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(row, row.children, sort) } : row);
 
 // The list with a session taken out of every place it shows. A routine whose latest run it was shows its next run instead,
 // and a routine with no run left is gone. The sessions nested under it move up into its place, unless it keeps them
@@ -88,13 +88,16 @@ const reorder = (row, order) => (row.children ? { ...row, children: [...row.chil
 // stay there, and under one in neither each goes to the loose list of its own app, which a routine run has none of.
 export function withoutRow(ix, id, { withChildren = false } = {}) {
   const gone = findRow(ix, id);
-  const freed = withChildren ? [] : (gone?.children ?? []).map(c => ({ ...c, parent: null }));
+  const freed = withChildren ? [] : (gone?.children ?? []).map(c => ({ ...c, parent: null, via: null }));
   const homeOf = c => (gone.pinned ? 'pinned' : gone.group ?? looseHome(c));
-  const leaves = r => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, r.children.filter(c => c.id !== id)) : r);
-  const leave = (list, order, name) => {
-    const rest = list.filter(r => r.id !== id).map(leaves);
+  // The rest of a family link straight to the head when a member leaves, as the server relinks them, and so go in the list's order.
+  // A family is placed by its best member, so a list with a family that lost one is placed again.
+  const leaves = (r, sort) => ((r.children ?? []).some(c => c.id === id) ? setChildren(r, sortFamily(r, r.children.filter(c => c.id !== id).map(c => ({ ...c, via: r.id })), sort)) : r);
+  const leave = (list, sort, name) => {
+    const kept = list.filter(r => r.id !== id);
+    const rest = kept.map(r => leaves(r, sort));
     const arrive = freed.filter(c => homeOf(c) === name);
-    return arrive.length ? [...rest, ...arrive].sort(order) : rest;
+    return arrive.length || rest.some((r, i) => r !== kept[i]) ? sortRows([...rest, ...arrive], sort) : rest;
   };
   return {
     ...mapLists(ix, leave),
@@ -115,9 +118,9 @@ export function placeRow(ix, id, section) {
   const inPlace = !row.parent && (section === 'pinned' ? row.pinned : group ? row.group === group && !row.pinned : !row.group && !row.pinned);
   if (inPlace) return ix;
   const at = { pinned: section === 'pinned', group };
-  const moved = { ...row, ...at, parent: null, ...(row.children && { children: row.children.map(c => ({ ...c, ...at })) }) };
+  const moved = { ...row, ...at, parent: null, via: null, ...(row.children && { children: row.children.map(c => ({ ...c, ...at })) }) };
   const lands = LOOSE.includes(section) ? looseHome(row) : section;
-  return mapLists(withoutRow(ix, id, { withChildren: true }), (list, order, name) => (name === lands ? [...list, reorder(moved, order)].sort(order) : list));
+  return mapLists(withoutRow(ix, id, { withChildren: true }), (list, sort, name) => (name === lands ? sortRows([...list, reorder(moved, sort)], sort) : list));
 }
 
 // Where a nested row shows until the server's list arrives and replaces this guess. It returns `ix` itself when nesting changes
@@ -128,9 +131,9 @@ export function nestRow(ix, id, parent) {
   const root = rootOf(ix, parent);
   if (!row || !root || root.id === id || row.parent === root.id) return ix;
   const at = { group: root.group, pinned: root.pinned };
-  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id }));
-  const adopt = (list, order) => (list.some(r => r.id === root.id)
-    ? list.map(r => (r.id === root.id ? reorder({ ...r, children: [...(r.children ?? []), ...family] }, order) : r)).sort(order)
+  const family = [row, ...(row.children ?? [])].map(({ children, ...r }) => ({ ...r, ...at, parent: root.id, ...(r.id === id && { via: root.id }) }));
+  const adopt = (list, sort) => (list.some(r => r.id === root.id)
+    ? sortRows(list.map(r => (r.id === root.id ? reorder({ ...r, children: [...(r.children ?? []), ...family] }, sort) : r)), sort)
     : list);
   return mapLists(withoutRow(ix, id, { withChildren: true }), adopt);
 }

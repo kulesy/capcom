@@ -108,22 +108,27 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
   Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
   started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
-  project's groups, with no header for the project, because the sidebar already names it. A group lists
-  its sessions by title, A to Z, with the titles that start with an emoji first, and numbers in number
-  order. Every other section lists its newest session first. A group shows when it is empty, so one that
-  was just made can be found and filled, and a project with no groups says so beside a New group button.
+  project's groups, with no header for the project, because the sidebar already names it. Each section
+  sorts as you set it in Claude Desktop: by last turn, by when the session was made or by title, either
+  way round. A group made in Capcom, which Desktop has no sort for, lists its newest session first. A
+  group shows when it is empty, so one that was just made can be found and filled, and a project with no groups says so beside a New group button.
   The other sections show only when they hold a session. A session's row is one line on a mouse, as in
-  Claude Desktop: the title, and a dot at the right end that shows the session's state. A row whose turn
-  is running also shows how long that turn has run, left of the dot and of any fold arrow, for a chat
+  Claude Desktop: the title, and a mark at the right end that says what the session needs from you. The
+  mark is amber when the session needs your input, blue when it has something you have not read, grey
+  while a turn runs, and a small warning triangle when the last turn failed. A row that needs nothing
+  shows none. Capcom reads Desktop's unread marks, read only, so a session you read only in Capcom stays
+  unread in Desktop. On a mouse a row's text is grey, and darkens on the open chat's row and under the
+  pointer. A row whose turn
+  is running also shows how long that turn has run, left of the mark and of any fold arrow, for a chat
   Capcom runs and for one Desktop or a terminal runs. The open chat's row keeps time with its status line.
   Other rows pick up a turn's start and end on the list's next load, up to 15 seconds later. The dots
-  button takes the dot's place only on a mouse in a window at least 48rem wide, while the pointer is over
+  button takes the mark's place only on a mouse in a window at least 48rem wide, while the pointer is over
   the row or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier
   runs sits to its left, and shows only then or while they are folded. Below that width, or with no hover,
-  the dot, the arrow and the dots all show. A tooltip with the folder, branch, state and when the session
+  the mark, the arrow and the dots all show. A tooltip with the folder, branch, state and when the session
   last ran opens on the right of the row 700ms after the pointer reaches it, at once if another tooltip
   closed in the last 300ms, and at once on keyboard focus. A touch screen has no tooltips, so its rows
-  have a second line with those details, and the dot and the buttons always show.
+  have a second line with those details, and the mark and the buttons always show.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
@@ -141,13 +146,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   turns into the last of them, as Claude Desktop draws them. Drop a row on the middle of another row to
   nest it there. A row takes a nest only in the middle half of its height, so a row dropped on the top or
   bottom quarter lands in the section the row is in, as it did before. While you drag, the row that would
-  take the nest lights up and says "Nest here" left of its dot. Nesting goes one level deep: a session
+  take the nest lights up and says "Nest here" left of its mark. Nesting goes one level deep: a session
   that holds others takes them along when you nest it, and a drop on a nested row nests under that row's
   parent. A routine's run and an archived session cannot be a parent. A nested session shows in its parent's
   place, with the parent's group or pin, and counts in that section and project. The arrow on a parent's row
-  folds its nested sessions, every family starts open, and the browser remembers which are folded. A family
-  sorts by its newest session, so a busy nested session keeps its parent near the top of a list that goes
-  newest first. Drop a nested session on a section, the indent beside its family included, or move or
+  folds its nested sessions, every family starts open, and the browser remembers which are folded. In a list
+  sorted by last turn a family sorts by its most recent session, so a busy nested session keeps its
+  parent near the top. Drop a nested session on a section, the indent beside its family included, or move or
   pin it from its menu, and it leaves its parent and goes there. Move out of in its menu takes it out,
   and it stays in its parent's group or in
   Pinned. A parent in neither sends it to the list for where it started: Started here, Ungrouped or Terminal
@@ -156,7 +161,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   sessions move up to its place as rows of their own and nest under it again when it comes back. Taking a
   nested session out, moving it, pinning it or archiving it leaves the rest of the family under the parent,
   even when Desktop links them through that session. Claude Desktop records which sessions it linked to a
-  parent. Capcom reads those links on every refresh, so it shows the families Desktop shows with no drag,
+  parent: side chats, forks and suggested tasks. Capcom reads those links on every refresh, so it shows the families Desktop shows with no drag,
   and shows a link Desktop records later on the next refresh. Capcom's own choice wins over Desktop's in
   both directions, as it does for the archive flag. A session you nest stays nested whatever Desktop
   records, and one you take out stays out although Desktop links it. `layout.json` keeps those choices under

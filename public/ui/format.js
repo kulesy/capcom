@@ -29,6 +29,9 @@ export function when(ms) {
 
 export const STATE_LABEL = { working: 'working', waiting: 'needs you', active: 'active', idle: '' };
 
+// What a row's mark says in words where the row already says its state. A running mark keeps the state label.
+export const DOT_LABEL = { awaiting: 'Needs input', error: 'Failed', ready: 'Unread' };
+
 export function modelLabel(m = '') {
   const long = /\[1m\]$/i.test(m) ? ' (1M)' : '';
   const named = m.match(/(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?!\d))?/i);

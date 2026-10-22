@@ -53,20 +53,22 @@ test('sessions Desktop links as side chats show under their parent in the parent
   assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
 });
 
-test('Desktop links a side chat it has not detached, and a record that is anything else, or names no parent Capcom can find, is no link', async () => {
+test('Desktop links a side chat, a fork and a suggested task it has not detached, and a record that is anything else, or names no parent Capcom can find, is no link', async () => {
   const { s, token } = await ready({
     sessions: [
       { id: 'boss', title: 'Boss', ago: 1 },
       { id: 'real', title: 'Side chat', parent: 'boss', ago: 2 },
       { id: 'kept', title: 'Never detached', parent: 'boss', lineageDetached: false, ago: 3 },
-      { id: 'plain', title: 'Not a side chat', spawnedFrom: { sessionId: 'local_boss', sideSession: false }, ago: 4 },
+      { id: 'plain', title: 'Suggested task', spawnedFrom: { sessionId: 'local_boss', sideSession: false }, ago: 4 },
       { id: 'older', title: 'Older record', spawnedFrom: { sessionId: 'local_boss' }, ago: 5 },
-      { id: 'cut', title: 'Taken out in Desktop', parent: 'boss', lineageDetached: true, ago: 6 },
-      { id: 'lost', title: 'Parent has no record', parent: 'nobody', ago: 7 },
-      { id: 'odd', title: 'Odd record', spawnedFrom: { sessionId: 5, sideSession: true }, ago: 8 },
+      { id: 'forked', title: 'Forked here', forkedFrom: 'boss', ago: 6 },
+      { id: 'cut', title: 'Taken out in Desktop', parent: 'boss', lineageDetached: true, ago: 7 },
+      { id: 'mine', title: 'Forked by the user', spawnedFrom: { sessionId: 'local_boss', userFork: true }, ago: 8 },
+      { id: 'lost', title: 'Parent has no record', parent: 'nobody', ago: 9 },
+      { id: 'odd', title: 'Odd record', spawnedFrom: { sessionId: 5, sideSession: true }, ago: 10 },
     ],
   });
-  assert.deepEqual(shape((await index(s, token)).ungrouped), ['Boss [Side chat, Never detached]', 'Not a side chat', 'Older record', 'Taken out in Desktop', 'Parent has no record', 'Odd record']);
+  assert.deepEqual(shape((await index(s, token)).ungrouped), ['Boss [Side chat, Never detached, Suggested task, Older record, Forked here]', 'Taken out in Desktop', 'Forked by the user', 'Parent has no record', 'Odd record']);
 });
 
 test('Capcom\'s own choice beats Desktop\'s link in both directions: a null takes a session out, and a parent nests one that Desktop does not link', async () => {
@@ -74,12 +76,12 @@ test('Capcom\'s own choice beats Desktop\'s link in both directions: a null take
   assert.deepEqual(places(await index(s, token)).groups, { 'cg-work': ['Boss [Kid two, Peer]'], 'cg-home': ['Kid'] });
 });
 
-test('links that lead back to each other show their sessions at the top level, and a chain of links shows one level deep', async () => {
+test('links that lead back to each other show their sessions at the top level, and a chain of links shows one level deep with each session after the one it nests under', async () => {
   const { s, token } = await ready({
     sessions: [{ id: 'a', title: 'A', ago: 1 }, { id: 'b', title: 'B', ago: 2 }, { id: 'c', title: 'C', ago: 3 }, { id: 'x', title: 'X', ago: 4 }, { id: 'y', title: 'Y', ago: 5 }, { id: 'z', title: 'Z', ago: 6 }],
     layout: { parents: { a: 'b', b: 'a', x: 'y', y: 'z' } },
   });
-  assert.deepEqual(shape((await index(s, token)).ungrouped), ['A', 'B', 'C', 'Z [X, Y]']);
+  assert.deepEqual(shape((await index(s, token)).ungrouped), ['A', 'B', 'C', 'Z [Y, X]']);
 });
 
 test('the nest route refuses what cannot be nested with a short sentence, and a refusal writes nothing', async () => {
@@ -153,7 +155,7 @@ test('taking a session out of its parent keeps it in the section its family is i
   const out = await call(s, token, 'nest', { id: 'kid', parent: null });
   assert.deepEqual(out.body(), { id: 'kid', group: 'cg-work', pinned: false, parent: null });
   assert.deepEqual(onDisk(s).parents, { kid: null });
-  assert.deepEqual(places(await index(s, token)).groups, { 'cg-work': ['Boss [Kid two]', 'Kid', 'Peer'], 'cg-home': [] });
+  assert.deepEqual(places(await index(s, token)).groups, { 'cg-work': ['Kid', 'Boss [Kid two]', 'Peer'], 'cg-home': [] });
 
   await call(s, token, 'nest', { id: 'pk', parent: null });
   assert.deepEqual(onDisk(s).pinned, ['pin', 'pk']);
@@ -163,7 +165,7 @@ test('taking a session out of its parent keeps it in the section its family is i
   const back = await call(s, token, 'nest', { id: 'loner', parent: null });
   assert.deepEqual(back.body(), { id: 'loner', group: 'cg-work', pinned: false, parent: null });
   assert.deepEqual(onDisk(s).parents, { kid: null, pk: null, loner: null });
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid two]', 'Kid', 'Loner', 'Peer']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Kid', 'Boss [Kid two]', 'Peer', 'Loner']);
 });
 
 test('taking out a session that has no link, or whose Desktop parent Capcom cannot find, writes nothing, so a link Desktop makes later is not hidden', async () => {
@@ -258,7 +260,7 @@ async function underPeer(way) {
   const byCapcom = way === WAYS[1];
   const made = await ready({ sessions: byCapcom ? HIDDEN.map(({ id, parent, ...rest }) => ({ id, ...rest, ...(id !== 'boss' && parent && { parent }) })) : HIDDEN });
   if (byCapcom) await call(made.s, made.token, 'nest', { id: 'boss', parent: 'peer' });
-  assert.deepEqual(places(await index(made.s, made.token)).groups['cg-work'], ['Other', 'Peer [Boss, Kid, Kid two, Pal]'], way);
+  assert.deepEqual(places(await index(made.s, made.token)).groups['cg-work'], ['Peer [Pal, Boss, Kid, Kid two]', 'Other'], way);
   return { ...made, linked: byCapcom ? { boss: 'peer' } : {} };
 }
 
@@ -267,7 +269,7 @@ for (const way of WAYS) {
     const { s, token, linked } = await underPeer(way);
     const res = await call(s, token, 'nest', { id: 'boss', parent: null });
     assert.deepEqual(res.body(), { id: 'boss', group: 'cg-work', pinned: false, parent: null });
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss', 'Other', 'Peer [Kid, Kid two, Pal]']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Kid two, Pal]', 'Boss', 'Other']);
     assert.deepEqual(onDisk(s).parents, { ...linked, kid: 'peer', kid2: 'peer', boss: null });
   });
 
@@ -275,7 +277,7 @@ for (const way of WAYS) {
     const { s, token, linked } = await underPeer(way);
     const res = await call(s, token, 'nest', { id: 'boss', parent: 'other' });
     assert.equal(res.body().parent, 'other');
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Other [Boss]', 'Peer [Kid, Kid two, Pal]']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Kid two, Pal]', 'Other [Boss]']);
     assert.deepEqual(onDisk(s).parents, { ...linked, kid: 'peer', kid2: 'peer', boss: 'other' });
   });
 
@@ -284,7 +286,7 @@ for (const way of WAYS) {
       const { s, token, linked } = await underPeer(way);
       assert.equal((await call(s, token, route, json)).status, 200);
       const now = places(await index(s, token));
-      assert.deepEqual(now.groups['cg-work'], ['Other', 'Peer [Kid, Kid two, Pal]'], route);
+      assert.deepEqual(now.groups['cg-work'], ['Peer [Kid, Kid two, Pal]', 'Other'], route);
       assert.deepEqual(route === 'move' ? now.groups['cg-home'] : now.pinned, ['Boss'], route);
       assert.deepEqual(onDisk(s).parents, { ...linked, kid: 'peer', kid2: 'peer', boss: null }, route);
     }
@@ -293,21 +295,21 @@ for (const way of WAYS) {
   test(`${way}: archiving Peer gives every session under it a place of its own, and they nest under it again when it returns`, async () => {
     const { s, token, linked } = await underPeer(way);
     assert.equal((await call(s, token, 'archive', { id: 'peer', archived: true })).status, 200);
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss', 'Kid', 'Kid two', 'Other', 'Pal']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Kid', 'Kid two', 'Pal', 'Boss', 'Other']);
     assert.deepEqual(onDisk(s).parents, { ...linked, kid: 'peer', kid2: 'peer' });
     await call(s, token, 'archive', { id: 'peer', archived: false });
-    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Other', 'Peer [Boss, Kid, Kid two, Pal]']);
+    assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Kid two, Pal, Boss]', 'Other'], 'Kid and Kid two now link to Peer, so they sit beside Boss and not under it');
   });
 }
 
 test('an archived session in a family gets no link of its own when another leaves, and shows under the session it is linked to when it comes back', async () => {
   const { s, token } = await ready({ sessions: HIDDEN.map(r => (r.id === 'kid2' ? { ...r, archived: true } : r)) });
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Other', 'Peer [Boss, Kid, Pal]']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Pal, Boss, Kid]', 'Other']);
   assert.equal((await call(s, token, 'nest', { id: 'boss', parent: null })).status, 200);
   assert.deepEqual(onDisk(s).parents, { kid: 'peer', boss: null });
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss', 'Other', 'Peer [Kid, Pal]']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Pal]', 'Boss', 'Other']);
   await call(s, token, 'archive', { id: 'kid2', archived: false });
-  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Boss [Kid two]', 'Other', 'Peer [Kid, Pal]']);
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Peer [Kid, Pal]', 'Boss [Kid two]', 'Other']);
 });
 
 test('a refusal to nest, move, pin or archive a session writes nothing, links for the rest of its family included', async () => {
@@ -370,8 +372,9 @@ test('nesting a session under the parent it shows under already answers with tha
   assert.equal(fs.readFileSync(s.layout, 'utf8'), nested);
 });
 
-test('a family sorts by its newest member in a list that goes newest first, and a group goes by title whatever its children did', async () => {
+test('a family sits where its newest member does in a list that goes by recency, and where its head does in a list that goes by title', async () => {
   const { s, token } = await ready({
+    sections: [{ id: 'cg-work', kind: 'manual', sortBy: 'alpha', ascending: false }],
     sessions: [
       { id: 'old', title: 'Old parent', ago: 50 },
       { id: 'fresh', title: 'Fresh child', parent: 'old', ago: 1 },
@@ -379,11 +382,15 @@ test('a family sorts by its newest member in a list that goes newest first, and 
       { id: 'g1', title: 'Zulu parent', group: 'cg-work', ago: 50 },
       { id: 'g2', title: 'Fresh in a group', parent: 'g1', ago: 1 },
       { id: 'g3', title: 'Alpha', group: 'cg-work', ago: 20 },
+      { id: 'h1', title: 'Old in home', group: 'cg-home', ago: 40 },
+      { id: 'h2', title: 'Fresh in home', parent: 'h1', ago: 2 },
+      { id: 'h3', title: 'Home middle', group: 'cg-home', ago: 15 },
     ],
   });
   const ix = await index(s, token);
   assert.deepEqual(shape(ix.ungrouped), ['Old parent [Fresh child]', 'Middle']);
-  assert.deepEqual(shape(ix.groups[0].sessions), ['Alpha', 'Zulu parent [Fresh in a group]']);
+  assert.deepEqual(shape(ix.groups[0].sessions), ['Alpha', 'Zulu parent [Fresh in a group]'], 'a group that goes by title');
+  assert.deepEqual(shape(ix.groups[1].sessions), ['Old in home [Fresh in home]', 'Home middle'], 'a group Desktop has no sort for goes newest first');
 });
 
 // A list stops at its newest 60. A family counts as one of them, and it stays whole when any member was brought back from the archive.
