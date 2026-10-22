@@ -6,6 +6,7 @@ import { NameForm } from './forms.js';
 import { STATE_LABEL } from './format.js';
 import { useLocal, useModifier, useWide } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { contextOpener, layerId, Menu, opener as menuOpener } from './menu.js';
 import { countOf, EVERY_VIEW, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn } from './scopes.js';
 import { keyHint } from './shortcuts.js';
 import { nextStop } from './tree.js';
@@ -54,7 +55,7 @@ export function useProjects(ix, current, hash, toList) {
   };
 
   // The search picks a view. The chat on screen counts as looked for, so its row cannot switch the view back, and `landing` has the
-  // list put the focus on the view's header once it shows the view. Only a pick moves the focus; revealing a chat never does.
+  // list put the focus on the view's first group once it shows the view. Only a pick moves the focus; revealing a chat never does.
   const show = id => {
     revealed.current = current;
     choose(id);
@@ -102,26 +103,45 @@ export function ProjectsToggle({ projects }) {
   </button>`;
 }
 
-function Scope({ home, name, count, lamp, current, onPick }) {
-  return html`<li><button class=${home ? 'scope home' : 'scope'} type="button" aria-current=${current ? 'true' : null} onClick=${onPick}>
-    <span class="lamp" data-state=${lamp || 'idle'} aria-hidden="true"></span>
-    <span class="scope-name">${name}</span>
-    ${count === undefined ? null : html`<span class="badge scope-count">${count}</span>`}
-    ${lamp ? html`<span class="sr">, ${STATE_LABEL[lamp]}</span>` : null}
-  </button></li>`;
+const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
+
+// A project's row also has its actions, `{ label, menu, open(anchor, point, entry) }`: the dots at its end, a right click, the menu key and
+// a long press all open its menu. `menu` is the open menu while it is the row's. A menu asked for from the dots hangs from them, so Esc
+// gives the focus back to the dots, and any other hangs from the row.
+function Scope({ home, id, name, count, lamp, current, onPick, actions }) {
+  const trigger = actions && menuOpener((button, entry) => actions.open(button, null, entry));
+  const asking = actions && contextOpener((area, point, from) => actions.open(from?.closest?.('.more') ?? area.querySelector('.scope'), point));
+  return html`<li class=${actions ? 'has-more' : null} ...${asking}>
+    <button class=${home ? 'scope home' : 'scope'} type="button" data-key=${id} aria-current=${current ? 'true' : null} data-menu=${actions?.menu ? 'true' : null} onClick=${onPick}>
+      <span class="lamp" data-state=${lamp || 'idle'} aria-hidden="true"></span>
+      <span class="scope-name">${name}</span>
+      ${count === undefined ? null : html`<span class="badge scope-count">${count}</span>`}
+      ${lamp ? html`<span class="sr">, ${STATE_LABEL[lamp]}</span>` : null}
+    </button>
+    ${actions ? html`<button class="more" type="button" aria-label=${actions.label} data-tip=${actions.label} aria-haspopup="menu" aria-expanded=${!!actions.menu}
+      aria-controls=${actions.menu ? layerId(actions.menu.id) : null} data-state=${actions.menu ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
+  </li>`;
 }
 
 const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
 // `creating` is whether the New project form is open, and the list owns it. `onCreate(name)` resolves with the reason the server
-// refused, or an empty string. A panel that closes with the form open cancels it.
-export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreate }) {
+// refused, or an empty string. `tree` is the list's handle on what a project's row shares with it: the menu and the rename form. A panel
+// that closes with a form or the menu open ends it.
+export function ProjectsPanel({ ix, projects, tree, creating, onNew, onCancel, onCreate }) {
   const { view, wide, open, box, opener, pick, close } = projects;
+  const { renamingProject: renaming } = tree;
+  const held = !!tree.shown?.rail;
   const [reason, setReason] = useState('');
   const toggle = useRef(null);
   const mod = useModifier();
 
-  useEffect(() => { if (!open && creating) onCancel(); }, [open, creating]);
+  useEffect(() => {
+    if (open) return;
+    if (creating) onCancel();
+    if (renaming) tree.cancelRename();
+    if (held) tree.shut();
+  }, [open, creating, renaming, held]);
 
   const choosing = (e, id) => {
     if (wide) e.currentTarget.focus();
@@ -134,16 +154,23 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
     return !problem;
   };
 
-  // The arrows move between the buttons, and start at the view in use when none has the focus.
+  // The arrows move between the buttons, and start at the view in use when none has the focus. A project's dots count as its row. A
+  // key from the menu, or one the dots took to open it, is not for the walk.
   const key = e => {
-    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.target.closest('input, textarea, form')) return;
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.target.closest('input, textarea, form, .menu')) return;
     const stops = [...e.currentTarget.querySelectorAll('.scope, .new-project')];
     const start = Math.max(stops.indexOf(e.currentTarget.querySelector('[aria-current="true"]')), 0);
-    const to = nextStop(stops.length, stops.indexOf(document.activeElement), e.key, start);
+    const here = document.activeElement;
+    const to = nextStop(stops.length, stops.indexOf(here.matches('.more') ? here.parentElement.querySelector('.scope') : here), e.key, start);
     if (to >= 0) { e.preventDefault(); stops[to].focus(); }
   };
 
   const lamp = id => (ix ? lampOf(ix, id) : null);
+  const actions = p => ({
+    label: `Actions for ${p.name}`,
+    menu: held && tree.shown.key === p.id ? tree.shown : null,
+    open: (anchor, point, entry) => tree.pop(p.id, tree.projectMenu(p), anchor, { point, entry, rail: true }),
+  });
   const panel = html`<nav class="rail" id=${PANEL} ref=${box} aria-labelledby="projectsTitle" onKeyDown=${key}>
     <div class="rail-head">
       ${wide ? null : html`<button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" ref=${toggle} aria-label="Projects" data-tip="Projects" data-tip-key=${keyHint(mod, 'B')} aria-expanded="true" onClick=${close}>${sidebar()}</button>`}
@@ -152,18 +179,25 @@ export function ProjectsPanel({ ix, projects, creating, onNew, onCancel, onCreat
     <ul class="scopes">
       <${Scope} key="home" home=${true} name="Home" lamp=${lamp(HOME_VIEW)} current=${view === HOME_VIEW} onPick=${e => choosing(e, HOME_VIEW)} />
       <li class="scope-rule" aria-hidden="true"></li>
-      ${(ix?.projects || []).map(p => html`<${Scope} key=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} />`)}
+      ${(ix?.projects || []).map(p => (renaming === p.id
+        ? html`<li key=${p.id}>${tree.renameForm(p)}</li>`
+        : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} />`))}
       <li>${creating
         ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
         : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>
     </ul>
     <div role="status">${creating && reason ? html`<p class="problem">${reason}</p>` : null}</div>
+    <${Menu} menu=${held ? tree.shown : null} onClose=${tree.shut} />
   </nav>`;
   if (wide) return open ? panel : null;
 
-  // Esc leaves a half typed project name first, as it does in the column, and then the sheet. The focus goes back to the button that
-  // opened the sheet when that is on screen, and otherwise to where it was when the sheet opened, as over a chat.
-  const dismiss = why => (why === 'escape' && creating ? onCancel() : close());
+  // Esc leaves a half typed name first, as it does in the column, and then the sheet. The focus goes back to the button that opened
+  // the sheet when that is on screen, and otherwise to where it was when the sheet opened, as over a chat.
+  const dismiss = why => {
+    if (why !== 'escape' || !(creating || renaming)) close();
+    else if (creating) onCancel();
+    else tree.cancelRename();
+  };
   const opened = () => (opener.current?.getClientRects().length ? opener.current : null);
   return html`<${Dialog} open=${open} sheet="left" labelledBy="projectsTitle" initial=${toggle} restoreTo=${opened} onClose=${dismiss}>${panel}<//>`;
 }

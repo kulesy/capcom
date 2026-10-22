@@ -1,5 +1,6 @@
+import { pointIn } from './drag.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
-import { holdPointer, onPressOutside } from './layer.js';
+import { enter, holdPointer, onPressOutside, topmost } from './layer.js';
 import { isSecondary } from './layer-rules.js';
 import { graceArea, inside, keyedItem, nextMatch, place, roleOf, stepIn } from './menu-rules.js';
 import { usePresence } from './presence.js';
@@ -50,6 +51,13 @@ const RULES = {
 
 const rectOf = r => ({ x: r.x, y: r.y, width: r.width, height: r.height });
 
+// Whether something the menu is drawn in is animating, such as the sheet while it slides in. An animation that has ended but holds its
+// last frame, or one that follows a scroll, does not count, or the menu would follow it for as long as it is open.
+const animating = el => {
+  for (let up = el.parentElement; up; up = up.parentElement) if (up.getAnimations().some(a => a.playState === 'running' && a.timeline === document.timeline)) return true;
+  return false;
+};
+
 function Layer({ open, onGone, ...rest }) {
   const box = useRef(null);
   const present = usePresence(open, box, onGone);
@@ -80,7 +88,15 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     const v = window.visualViewport;
     const view = v ? { x: v.offsetLeft, y: v.offsetTop, width: v.width, height: v.height } : { width: innerWidth, height: innerHeight };
     const kind = trigger ? 'sub' : root.point ? 'point' : 'button';
-    return place({ anchor, size: size.current, view, pad: 8, dpr: window.devicePixelRatio || 1, ...RULES[kind] });
+    const at = place({ anchor, size: size.current, view, pad: 8, dpr: window.devicePixelRatio || 1, ...RULES[kind] });
+    // A transformed ancestor, such as the sheet while it slides in, is the containing block of a fixed menu, so its left and top count
+    // from that block's corner and not the window's. A probe beside the menu finds the corner.
+    const probe = document.createElement('div');
+    probe.style.cssText = `position:${getComputedStyle(box.current).position};left:0;top:0;width:0;height:0;margin:0;visibility:hidden`;
+    box.current.after(probe);
+    const corner = probe.getBoundingClientRect();
+    probe.remove();
+    return { ...at, x: at.x - corner.x, y: at.y - corner.y };
   };
 
   // A reload can take away the row or button a menu was opened from, and a menu with nothing to hang from has nowhere to sit.
@@ -91,6 +107,11 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
     setAt(lay());
   }, []);
 
+  const again = () => {
+    const next = lay();
+    setAt(now => (now && now.x === next.x && now.y === next.y && now.room === next.room && now.side === next.side ? now : next));
+  };
+
   // The + menu grows when the list arrives, and a menu taller than its room is cut to it, so a change of size places it again.
   useEffect(() => {
     const watch = new ResizeObserver(([e]) => {
@@ -100,11 +121,22 @@ function Panel({ root, box, items, path, open, label, labelledBy, trigger, entry
       const was = size.current;
       if (!was || (Math.abs(was.width - b.inlineSize) < 0.01 && Math.abs(was.height - b.blockSize) < 0.01)) return;
       size.current = { width: b.inlineSize, height: b.blockSize };
-      const next = lay();
-      setAt(now => (now && now.x === next.x && now.y === next.y && now.room === next.room && now.side === next.side ? now : next));
+      again();
     });
     watch.observe(box.current);
     return () => watch.disconnect();
+  }, []);
+
+  // A menu opened while the sheet slides in is kept inside the window from where the sheet is at that moment, and the slide then carries
+  // it too far, so it is placed again on each frame until the slide is over.
+  useEffect(() => {
+    let frame = 0;
+    const follow = () => {
+      again();
+      if (animating(box.current)) frame = requestAnimationFrame(follow);
+    };
+    if (animating(box.current)) frame = requestAnimationFrame(follow);
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // The menu takes the focus once it is in place. A key, or an arrow on the + button, lights the first or last item as well. A
@@ -270,10 +302,15 @@ function Tree({ menu, open, onClose, onGone }) {
   }
   const root = shared.current;
   const entry = useRef(menu.entry ? { which: menu.entry } : null).current;
+  const me = useRef({}).current;
 
   // The page under a menu takes no press until the menu has faded out, so the first press outside only closes it and a second lands on
   // the page just the same.
   useLayoutEffect(() => holdPointer(), []);
+
+  // A menu is a layer on the stack until it has faded out, so in a sheet Esc and the first press outside close only the menu, and a press
+  // while it fades closes nothing.
+  useLayoutEffect(() => enter(me), []);
 
   // A list that reloads can scroll without the button moving, so only a scroll that moves the anchor closes the menu.
   useEffect(() => {
@@ -282,7 +319,7 @@ function Tree({ menu, open, onClose, onGone }) {
     const start = anchor.getBoundingClientRect();
     const moved = () => { const now = anchor.getBoundingClientRect(); return Math.abs(now.top - start.top) > 1 || Math.abs(now.left - start.left) > 1; };
     const within = el => !!el.closest?.(`.menu[data-menu-id="${root.id}"]`);
-    const escape = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); root.shut(true); } };
+    const escape = e => { if (e.key === 'Escape' && topmost(me)) { e.preventDefault(); e.stopPropagation(); root.shut(true); } };
     const scrolled = e => { if (!within(e.target) && moved()) close.current(); };
     const away = () => close.current();
     const noNativeMenu = e => e.preventDefault();
@@ -330,6 +367,66 @@ export function opener(open) {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       e.preventDefault();
       open(e.currentTarget, e.key === 'ArrowDown' ? 'first' : 'last');
+    },
+  };
+}
+
+// A finger held still for this long asks for the menu, within this far of where it came down. These are drag.js's numbers, which ask
+// the same of a session row.
+const HOLD_MS = 350;
+const HOLD_SLOP = 8;
+
+let touching = false;
+let endPress = null;
+let quiet = 0;
+
+const swallow = e => { e.preventDefault(); e.stopPropagation(); };
+const swallowing = on => {
+  for (const type of ['click', 'mousedown']) window[on ? 'addEventListener' : 'removeEventListener'](type, swallow, true);
+};
+
+// The handlers of an area that opens a menu as Radix's context menu trigger does: on a right click, at the pointer, on the menu key,
+// with no point, and on a finger held still for HOLD_MS, at the finger. `open(area, point, from)` opens the menu, and `from` is the
+// element the event came from, such as a menu button inside the area. The click that follows a long press is swallowed, so it picks
+// nothing. A menu button inside the area keeps its own touches.
+export function contextOpener(open) {
+  return {
+    onContextMenu(e) {
+      e.preventDefault();
+      if (!touching) open(e.currentTarget, keyboard ? null : pointIn(e.currentTarget, e), e.target);
+    },
+    onPointerDown(e) {
+      if (e.pointerType === 'mouse' || !e.isPrimary || e.button !== 0) return;
+      const area = e.currentTarget;
+      const from = e.target;
+      const start = { x: e.clientX, y: e.clientY };
+      let now = start;
+      let fired = false;
+      endPress?.();
+      clearTimeout(quiet);
+      swallowing(false);
+      touching = true;
+      const timer = from.closest('[aria-haspopup="menu"]') ? 0 : setTimeout(() => {
+        fired = true;
+        swallowing(true);
+        open(area, now, from);
+      }, HOLD_MS);
+      const stop = new AbortController();
+      const end = () => {
+        clearTimeout(timer);
+        stop.abort();
+        touching = false;
+        endPress = null;
+        if (fired) quiet = setTimeout(() => swallowing(false), 250);
+      };
+      endPress = end;
+      document.addEventListener('pointermove', m => {
+        if (!m.isPrimary) return;
+        now = { x: m.clientX, y: m.clientY };
+        if (Math.hypot(now.x - start.x, now.y - start.y) > HOLD_SLOP) clearTimeout(timer);
+      }, { signal: stop.signal });
+      document.addEventListener('pointerup', end, { signal: stop.signal });
+      document.addEventListener('pointercancel', end, { signal: stop.signal });
     },
   };
 }

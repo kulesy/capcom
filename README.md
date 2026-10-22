@@ -107,10 +107,11 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
   Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
   started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
-  project with its groups. A group lists its sessions by title, A to Z, with the titles that start with an
-  emoji first, and numbers in number order. Every other section lists its newest session first. A project
-  or a group shows when it is empty, so one that was just made can be found and filled. The other sections
-  show only when they hold a session.
+  project's groups, with no header for the project, because the sidebar already names it. A group lists
+  its sessions by title, A to Z, with the titles that start with an emoji first, and numbers in number
+  order. Every other section lists its newest session first. A group shows when it is empty, so one that
+  was just made can be found and filled, and a project with no groups says so beside a New group button.
+  The other sections show only when they hold a session.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
@@ -150,15 +151,18 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows Desktop.
 - **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
   group belongs to at most one project, and one that belongs to none stays at the top level, which Home
-  shows. Project and group headers fold, and the browser remembers which are folded. The + at the top of
-  the list starts a session, or makes a group in the view you are in: at the top level in Home, and in the
-  project in a project's view. The dots at the end of a project's header open its menu: New group here,
-  Rename and Delete project. Delete asks first, then moves the project's groups to Home and shows Home,
-  and no group or session is deleted. The dots on a group's header move it into a project, between
-  projects or back to Home, and show only when there is somewhere to move it. A note then says where the
-  group went, and the list stays on the view it was in. A right click or the menu key on a header opens
-  the same menu. Every step is a menu, so a phone can do all of them. A name runs to 80 characters at
-  most, and two projects may share one.
+  shows. Group headers fold, and the browser remembers which are folded. The + at the top of the list
+  starts a session, or makes a group in the view you are in: at the top level in Home, and in the project
+  in a project's view. A project's menu is on its row in the projects sidebar: New group here, Rename and
+  Delete project. The dots at the end of the row open it, and so do a right click, the menu key or
+  Shift+F10, and on a phone a long press. Rename puts a name field in the row's place. New group here
+  shows that project's list first, as picking it does, and opens the group form there. Delete asks first,
+  then moves the project's groups to Home, and shows Home if the project was on screen. No group or
+  session is deleted. The dots on
+  a group's header move it into a project, between projects or back to Home, and show only when there is
+  somewhere to move it. A note then says where the group went, and the list stays on the view it was in.
+  A right click or the menu key on a group's header opens the same menu. Every step is a menu, so a phone
+  can do all of them. A name runs to 80 characters at most, and two projects may share one.
 - **The projects sidebar** picks the view the list shows. Home is first, and each project follows it with
   the number of sessions in its groups. Pinned sessions show in every view. In a window 56rem wide or
   more, the sidebar is a column on the left, beside the list, and the chat narrows to make room. The
@@ -166,11 +170,12 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   it is open. Ctrl+B or Cmd+B opens and closes it too, as Cmd+B shows and hides Desktop's sidebar, and
   closes the search or a menu if one is open. The focus stays where it was, unless it was in the search or
   in the column as it closed, when it goes to the button. In a narrower window there is no room beside the
-  list, so the sidebar is a screen of its own, like the list and a chat, and it takes the list's place.
-  Its header has the same button, pressed, with the title Projects beside it. Pressing it, picking Home or
-  a project, and Esc go back to the list. So does opening a chat or another page, a change of view, and
-  the window growing to 56rem. Ctrl+B or Cmd+B opens and closes it there as the button does, and from a
-  chat it shows the list first. A phone always starts on the list. The browser remembers the view. Opening
+  list, so the sidebar is a sheet that slides in from the left over the page, a chat included. Its top has
+  the same button, pressed, with the title Projects beside it. Pressing it, Esc and a press outside the
+  sheet close it. So do picking Home or a project, which also shows that view's list, opening another
+  page, a change of view and the window growing to 56rem. With a project's menu open in the sheet, Esc or
+  a press outside closes the menu first. Ctrl+B or Cmd+B opens and closes the sheet as the button does.
+  A phone always starts with it shut. The browser remembers the view. Opening
   a chat shows the view that has its row, once for each chat, and a pinned chat leaves the view as it is.
   A lamp beside Home and each project is green when a chat in it is working and amber when one needs you.
   When the sidebar is not showing and a chat in another view needs you, the button has an amber dot. New
@@ -184,8 +189,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Enter open a result, and Esc closes it. Archived sessions stay out of the list and turn up here, under
   their own chip, most recently archived first, and after the live matches in any search. Home and the
   projects are results too, under All and under the Projects chip. Each has its lamp, and a project has
-  its number of sessions. Opening one closes the search and shows that view in the list, with the focus on
-  its header. In a window 56rem wide or more an open chat stays open. In a narrower window the list
+  its number of sessions. Opening one closes the search and shows that view in the list. The focus goes to
+  Home's first header, to a project's first group header, or to New group in a project with no groups. In
+  a window 56rem wide or more an open chat stays open. In a narrower window the list
   takes the chat's place. With no project, All leaves the Projects section out, and the chip lists Home
   alone.
 - **Archiving.** Right-click a session in the list, or press the menu key or Shift+F10 on it, for a menu
@@ -217,16 +223,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and the terminal keep the titles they have. A group lists its sessions by the new title, and the search
   finds them by it. With `desktopHandoff` set to `true`, a session renamed here before it is handed to
   Desktop takes its Capcom title with it.
-- **Keyboard in the list.** The up and down arrows move through the project and section headers and the
-  sessions, Home and End jump to either end, and left and right fold a project, a section, a routine's
-  runs or the sessions nested under a row. Right on a row whose nested sessions show moves to the first of
-  them, and left on a nested session or an earlier run moves back to the row above it. Enter opens the
+- **Keyboard in the list.** The up and down arrows move through the section headers and the sessions,
+  Home and End jump to either end, and left and right fold a section, a routine's runs or the sessions
+  nested under a row. Right on a row whose nested sessions show moves to the first of them, and left on a
+  nested session or an earlier run moves back to the row above it. Enter opens the
   focused session, the menu key or Shift+F10 opens its menu, and on a Mac Cmd+A
   archives it. With no chat open, up or down steps into the list. Tab reaches the dots on a header, and
   Enter or Space on them opens the menu. In a menu the up and down arrows, Home and End move between items,
   Esc closes it, and Tab leaves it. In a row's menu the right arrow on Move to opens its list of places,
   and the left arrow there goes back. In the projects sidebar the up and down arrows, Home and End move
-  between the views and the New project button.
+  between the views and the New project button. Tab reaches a project's dots, and the menu key or
+  Shift+F10 on a project opens its menu.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
   earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.

@@ -59,14 +59,14 @@ const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty
   ${action ? html`<div data-slot="empty-content">${action}</div>` : null}
 </div>`;
 
-// The header of a project or a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
+// The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click, at the pointer, or the menu key, under the button.
-function Head({ id, name, count, open, toggle, menu, tree, project }) {
+function Head({ id, name, count, open, toggle, menu, tree }) {
   const pop = (button, point, entry) => tree.pop(id, menu, button, { point, entry });
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
   return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
-    <button class=${project ? 'group-head project-head' : 'group-head'} type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
+    <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
   </div>`;
 }
@@ -111,7 +111,7 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
 }
 
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
-// A group always shows, empty or not, and so does the project in view, so one that was just made can be found and filled.
+// A group always shows, empty or not, so one that was just made can be found and filled.
 // Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
 function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, drag, tree, newKey }) {
   const carried = drag && findRow(ix, drag.id);
@@ -130,22 +130,15 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   };
   const home = view === HOME_VIEW;
   const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g) });
-  const project = p => {
-    const groups = ix.groups.filter(g => g.project === p.id);
-    const open = !collapsed[p.id] || !!drag;
-    const adding = tree.form?.kind === 'group' && tree.form.project === p.id;
-    const editing = tree.form?.project === p.id ? tree.form.kind : null;
-    return html`<section class="project" key=${p.id}>
-      ${editing === 'rename' ? tree.renameForm(p)
-        : html`<${Head} project=${true} id=${p.id} name=${p.name} count=${groups.reduce((n, g) => n + withKids(g.sessions).length, 0)} open=${open} toggle=${toggle} menu=${tree.projectMenu(p)} tree=${tree} />`}
-      ${open ? html`<div class="project-groups">${groups.map(group)}${adding ? tree.groupForm(p) : null}${groups.length || adding ? null : html`<${Empty} paths=${icons.folderPlus} title="No groups yet" action=${html`<button class="btn" data-variant="outline" data-size="sm" type="button" onClick=${() => tree.newGroup(p)}>New group</button>`}>Make one with New group, or move one here from a group's menu in Home.<//>`}</div>` : null}
-    </section>`;
-  };
+  const project = ix.projects.find(p => p.id === view);
+  const groups = groupsIn(ix, view);
+  const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const parts = [
     home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
-    ...ix.projects.filter(p => p.id === view).map(project),
-    ...(home ? groupsIn(ix, HOME_VIEW).map(group) : []),
+    ...groups.map(group),
+    adding && tree.groupForm(project),
+    project && !groups.length && !adding && html`<${Empty} paths=${icons.folderPlus} title="No groups yet" action=${html`<button class="btn new-group" data-variant="outline" data-size="sm" type="button" onClick=${() => tree.newGroup(project, ['.new-group'])}>New group</button>`}>Make one with New group, or move one here from a group's menu in Home.<//>`,
     home && section('started', LOOSE_NAMES.started, ix.started, rows(ix.started)),
     home && section('ungrouped', LOOSE_NAMES.ungrouped, ix.ungrouped, rows(ix.ungrouped)),
     home && section('other', LOOSE_NAMES.other, ix.other, rows(ix.other)),
@@ -153,8 +146,8 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   return parts.length ? parts : html`<${Empty} paths=${icons.messageSquarePlus} title="No sessions found">Press <kbd>${newKey}</kbd> to start one.<//>`;
 }
 
-// The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a project, a section or the
-// sessions nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
+// The arrows walk the list like a tree: up and down through headers and rows, left and right to fold a section or the sessions
+// nested under a row. Enter opens the focused row, as a link does. With nothing focused, up or down starts at the open session.
 const STOPS = '.group-head, a.row[data-id]';
 
 // A header's menu button and a row's menu and fold buttons belong to the header or row beside them, so the arrows carry on from there.
@@ -182,10 +175,9 @@ function walk(e, box) {
   else if (opening) {
     const first = item.querySelector(':scope > .sub-rows a.row');
     if (first) go(first);
-  } else {
-    const section = here.closest('.group, .project');
-    const parent = (here.matches('.group-head') ? section?.parentElement?.closest('.project') : section)?.querySelector('.group-head');
-    if (parent) go(parent);
+  } else if (!here.matches('.group-head')) {
+    const head = here.closest('.group')?.querySelector('.group-head');
+    if (head) go(head);
   }
 }
 
@@ -225,7 +217,6 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const latestMenu = useRef(null);
   const latestKey = useRef(null);
   const toggle = (id, open) => setCollapsed(all => ({ ...all, [id]: open }));
-  const expand = id => setCollapsed(all => ({ ...all, [id]: false }));
   const toggleRoutine = name => setOpenRoutines(all => { const next = new Set(all); if (!next.delete(name)) next.add(name); return next; });
   // Only a folded family is kept, so the browser does not collect an entry for every session that was ever folded.
   const fold = (id, on) => setFolded(all => ({ ...Object.fromEntries(Object.entries(all).filter(([key]) => key !== id)), ...(on && { [id]: true }) }));
@@ -255,29 +246,34 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   }, []);
 
   // Each view starts at the top of the list. A form left open in the view before closes, so a group is never made in a view that is
-  // off screen and a form does not come back with its view. New project is in the sidebar, so it stays. This comes before the effects
+  // off screen and a form does not come back with its view, except the group form that New group here opens along with the pick, which
+  // is scrolled back into sight. New project and a project's rename are in the sidebar, so they stay. This comes before the effects
   // that move the focus, so a header they focus scrolls into sight after the jump to the top.
   useLayoutEffect(() => {
     box.current.scrollTop = 0;
-    setForm(open => (open && open.kind !== 'project' ? null : open));
+    box.current.querySelector(':scope > .name-form')?.scrollIntoView({ block: 'nearest' });
+    setForm(open => (open && (open.kind === 'project' || open.kind === 'rename' || (open.kind === 'group' && open.project === view)) ? open : null));
   }, [view]);
 
   // Focus goes to the project or group a closed form made, or back to what it replaced or came from, as soon as the list has been
   // drawn without the form. The first selector that matches wins, so when the list could not be loaded again focus goes to the next
-  // one rather than to the page. It scrolls into view, so `focus()` must never be given preventScroll.
+  // one rather than to the page. The sidebar is searched only while it is open, because a sheet that is closing is still in the page and
+  // must not take the focus. It scrolls into view, so `focus()` must never be given preventScroll.
   useLayoutEffect(() => {
     if (back === null) return;
-    back.map(to => nav.current.querySelector(to) || projects.box.current?.querySelector(to)).find(Boolean)?.focus();
+    back.map(to => nav.current.querySelector(to) || (projects.open ? projects.box.current?.querySelector(to) : null)).find(Boolean)?.focus();
     setBack(null);
   }, [back]);
 
-  // A view picked in the search gets the focus on its header, or on the opener when it has none, once the list shows it. A focus
-  // still waiting for a row gives way to it.
+  // A view picked in the search gets the focus on its first group, or the New group button of a project with none, then on the first
+  // header, then on the opener, once the list shows it. A focus still waiting for a row gives way to it.
   useLayoutEffect(() => {
     if (!projects.landing) return;
     const { view: landed } = projects.landing;
-    const head = landed ? nav.current.querySelector(headOf(landed)) : box.current.querySelector('.group-head');
-    (head || projects.opener.current)?.focus();
+    const first = ix && landed && groupsIn(ix, landed)[0];
+    const to = (first && nav.current.querySelector(headOf(first.id))) || (landed && nav.current.querySelector('.new-group'))
+      || box.current.querySelector('.group-head') || projects.opener.current;
+    to?.focus();
     setAfter(null);
     projects.settle();
   }, [projects.landing]);
@@ -301,9 +297,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   }, [after, current]);
 
   // A rename form lasts only as long as its row is drawn. A reload can take the row away (archived elsewhere, folded among a
-  // routine's earlier runs, past the newest 60), and the form is then dropped rather than coming back unasked later.
+  // routine's earlier runs, past the newest 60), and the form is then dropped rather than coming back unasked later. A project's rename
+  // form goes when a reload no longer lists the project.
   useLayoutEffect(() => {
     if (form?.kind === 'session' && !box.current?.querySelector('.name-form')) setForm(null);
+    if (form?.kind === 'rename' && ix && !ix.projects.some(p => p.id === form.project)) setForm(null);
   });
 
   // Sends one change to the layout. It resolves with what the server made, changed or removed, or with null when it refused,
@@ -464,9 +462,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   const closeForm = (...focus) => { setForm(null); setBack(focus); };
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
+  const scopeOf = id => (id ? `.scope[data-key="${CSS.escape(id)}"]` : '.scope.home');
   // A button's menu closes when its button is pressed again. A key that asks for the first or last item (`entry`) opens it afresh.
-  const pop = (key, { label, items }, anchor, { entry = null, point = null } = {}) =>
-    setShown(open => (open?.key === key && !entry ? null : { id: ++opened.current, key, anchor, point, entry, label, items }));
+  // A `rail` menu is a project's, drawn by the sidebar.
+  const pop = (key, { label, items }, anchor, { entry = null, point = null, rail = false } = {}) =>
+    setShown(open => (open?.key === key && !entry ? null : { id: ++opened.current, key, anchor, point, entry, label, items, rail }));
 
   // A new session needs nothing from the list, so the + opens before the list has loaded, with only New session until it has.
   // An open + menu gains New group when the list arrives. The group goes in the view on screen, and New project is in the sidebar.
@@ -474,7 +474,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     label: 'New session or group',
     items: [
       { label: 'New session', icon: icons.messageSquarePlus, hint: keyHint(mod, 'N'), run: newSession },
-      ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => { if (view) expand(view); setForm({ kind: 'group', project: view }); } }] : []),
+      ...(ix ? [{ label: 'New group', icon: icons.folderPlus, run: () => setForm({ kind: 'group', project: view, back: ['.add'] }) }] : []),
     ],
   };
 
@@ -485,7 +485,6 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const beside = neighbour(groupsIn(ix, view).map(x => x.id), g.id);
     const to = ix.projects.find(p => p.id === project)?.name ?? 'Home';
     const moved = await change('api/layout/group/move', { id: g.id, project });
-    if (moved && project) expand(project);
     if (moved) say(`Moved “${g.name}” to ${to}.`);
     setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
   }
@@ -494,18 +493,20 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const { problem, made } = await edit('api/layout/project/add', { name });
     if (!made) return problem || 'Could not add the project.';
     projects.pick(made.id);
-    closeForm(headOf(made.id), '.add');
+    closeForm(scopeOf(made.id), '.new-group', '.add');
     return '';
   }
 
   async function addGroup(name, project) {
     const made = await change('api/layout/group/add', { name, project });
-    if (made) { closeForm(headOf(made.id), project ? headOf(project) : '.add'); if (project) expand(project); }
+    if (made) closeForm(headOf(made.id), '.add');
     return !!made;
   }
 
-  // Asks before a project goes, and says what happens to its groups. Cancel has the focus, so Enter does no harm. The project's header
-  // is gone once the view is Home, so the focus then goes to the + button, whichever of the two arrives first.
+  // Asks before a project goes, and says what happens to its groups. Cancel has the focus, so Enter does no harm. A view whose project is
+  // gone falls back to Home by itself, which closes the sheet and, unlike a pick, leaves a chat under it open. Afterwards the focus goes
+  // to the row of the view in use, or to the + button once the sheet has closed. Over a chat the + is hidden, so the sheet gives the
+  // focus back to where it was.
   function deleteProject(p) {
     const groups = ix.groups.filter(g => g.project === p.id).length;
     const detail = groups ? `Its ${groups === 1 ? 'group moves' : `${groups} groups move`} to Home. No group or session is deleted.` : 'It has no groups.';
@@ -513,9 +514,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       action: 'Delete project',
       title: p.name,
       detail,
-      back: () => nav.current.querySelector(headOf(p.id)) ?? nav.current.querySelector('.add'),
+      back: () => projects.box.current?.querySelector(scopeOf(p.id)) ?? nav.current.querySelector('.add'),
       run: async () => {
-        if (await change('api/layout/project/remove', { id: p.id })) { projects.pick(null); setBack(['.add']); }
+        if (!(await change('api/layout/project/remove', { id: p.id }))) return;
+        setBack([scopeOf(view === p.id ? HOME_VIEW : view), '.add']);
       },
     });
   }
@@ -525,8 +527,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     shown,
     pop,
     renaming: form?.kind === 'session' ? form.session : null,
+    shut: () => setShown(null),
+    renamingProject: form?.kind === 'rename' ? form.project : null,
+    cancelRename: () => closeForm(scopeOf(form.project)),
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
-    newGroup: p => { expand(p.id); setForm({ kind: 'group', project: p.id }); },
+    newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
     sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} action="Save" max=${TITLE_MAX} onCancel=${() => closeForm(rowOf(r.id))} onSubmit=${text => renameRow(r, text)} />`,
     groupMenu: g => {
       const to = moveTargets(ix.projects, g);
@@ -535,17 +540,17 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     projectMenu: p => ({
       label: `Actions for ${p.name}`,
       items: [
-        { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p) },
+        { label: 'New group here', icon: icons.folderPlus, run: () => tree.newGroup(p, [scopeOf(p.id), '.add']) },
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'rename', project: p.id }) },
         { separator: true },
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
       ],
     }),
-    groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} action="Create" onSubmit=${name => addGroup(name, p.id)} onCancel=${() => closeForm(headOf(p.id))} />`,
-    renameForm: p => html`<${NameForm} label="Rename project" value=${p.name} action="Save" onCancel=${() => closeForm(headOf(p.id))}
+    groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} action="Create" onSubmit=${name => addGroup(name, p.id)} onCancel=${() => closeForm(...form.back)} />`,
+    renameForm: p => html`<${NameForm} label="Rename project" value=${p.name} action="Save" onCancel=${() => closeForm(scopeOf(p.id))}
       onSubmit=${async name => {
         const done = await change('api/layout/project/rename', { id: p.id, name });
-        if (done) closeForm(headOf(p.id));
+        if (done) closeForm(scopeOf(p.id));
         return !!done;
       }} />`,
   };
@@ -562,7 +567,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   };
 
   return html`<${Fragment}>
-  <${ProjectsPanel} ix=${ix} projects=${projects} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
+  <${ProjectsPanel} ix=${ix} projects=${projects} tree=${tree} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
     onCancel=${() => closeForm('.new-project')} onCreate=${addProject} />
   <nav class="list" aria-label="Sessions" ref=${nav}>
     <header class="list-head">
@@ -585,7 +590,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
-    <${Menu} menu=${shown && (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown)} onClose=${() => setShown(null)} />
+    <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />
   </nav>
 <//>`;
 }
