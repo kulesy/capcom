@@ -19,6 +19,8 @@ const isBusy = s => s?.state === 'working' || s?.state === 'waiting';
 
 const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
+const CONTROLS = 'button, textarea, input, select, a';
+
 function Attachments({ images, preparing }) {
   return html`<ul class="attached" aria-label="Attached images">
     ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
@@ -89,15 +91,20 @@ export function Composer({ ctrl }) {
 
   // Sizing an untouched empty box would round its natural height down, so it waits for the first text.
   const typedOnce = useRef(false);
-  useLayoutEffect(() => {
-    if (!text && !typedOnce.current) return;
-    typedOnce.current = true;
+  const fit = () => {
     const el = area.current;
+    if (!el.value && !typedOnce.current) return;
+    typedOnce.current = true;
     el.style.height = 'auto';
     const max = window.innerHeight * 0.4;
     el.style.height = `${Math.min(el.scrollHeight, max)}px`;
     el.style.overflowY = el.scrollHeight > max ? 'auto' : 'hidden';
-  }, [text]);
+  };
+  useLayoutEffect(fit, [text]);
+  useLayoutEffect(() => {
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
 
   useLayoutEffect(() => {
     if (draft || keepFocus || (focusNext && matchMedia('(pointer: fine)').matches)) area.current.focus({ preventScroll: true });
@@ -177,14 +184,18 @@ export function Composer({ ctrl }) {
     }
   };
 
+  // Like shadcn's InputGroupAddon, a press on the box outside its controls keeps or puts the cursor in the text.
+  const onBoxMouseDown = e => { if (!e.target.closest(CONTROLS)) e.preventDefault(); };
+  const onBoxClick = e => { if (!e.target.closest(CONTROLS)) area.current.focus({ preventScroll: true }); };
+
   const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
-    <div class="composer-box input-group">
+    <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
       ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
-      <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
       <div class="composer-row">
-        <button class="btn attach" data-variant="outline" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" data-tip="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
+        <button class="btn attach" data-variant="ghost" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" data-tip="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
         <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
+        <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" placeholder=${draft ? 'What should Claude do?' : 'Reply'} aria-label="Message" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${onKeyDown}></textarea>
         <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>

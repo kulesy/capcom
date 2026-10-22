@@ -21,8 +21,9 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Closing the page leaves the work running, and a waiting approval is still there when you come back.
   "Always allow" applies the rule Claude suggests, which usually lands in the folder's
   `.claude/settings.local.json`.
-- **The prompt box** follows Desktop's. A + on the left of the box attaches images and the send button sits on
-  the right. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions), the model and the
+- **The prompt box** follows Desktop's. It is one row: a + on the left attaches images, the text sits in the middle
+  and the send button on the right. As you type more lines the text grows to 40% of the window's height and then
+  scrolls, with the + and send level with its last line. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions), the model and the
   effort sit under the box as plain text, and each opens its list when you click it. A model or effort change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart.
