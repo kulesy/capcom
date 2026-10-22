@@ -111,7 +111,15 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   its sessions by title, A to Z, with the titles that start with an emoji first, and numbers in number
   order. Every other section lists its newest session first. A group shows when it is empty, so one that
   was just made can be found and filled, and a project with no groups says so beside a New group button.
-  The other sections show only when they hold a session.
+  The other sections show only when they hold a session. A session's row is one line on a mouse, as in
+  Claude Desktop: the title, and a dot at the right end that shows the session's state. The dots button
+  takes the dot's place only on a mouse in a window at least 48rem wide, while the pointer is over the row
+  or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier runs sits
+  to its left, and shows only then or while they are folded. Below that width, or with no hover, the dot,
+  the arrow and the dots all show. A tooltip with the folder, branch, state and when the session last ran
+  opens on the right of the row 700ms after the pointer reaches it, at once if another tooltip closed in
+  the last 300ms, and at once on keyboard focus. A touch screen has no tooltips, so its rows have a second
+  line with those details, and the dot and the buttons always show.
 - **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
@@ -129,7 +137,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   turns into the last of them, as Claude Desktop draws them. Drop a row on the middle of another row to
   nest it there. A row takes a nest only in the middle half of its height, so a row dropped on the top or
   bottom quarter lands in the section the row is in, as it did before. While you drag, the row that would
-  take the nest lights up and says "Nest here" where its time is. Nesting goes one level deep: a session
+  take the nest lights up and says "Nest here" left of its dot. Nesting goes one level deep: a session
   that holds others takes them along when you nest it, and a drop on a nested row nests under that row's
   parent. A routine's run and an archived session cannot be a parent. A nested session shows in its parent's
   place, with the parent's group or pin, and counts in that section and project. The arrow on a parent's row

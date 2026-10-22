@@ -20,16 +20,21 @@ import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, nei
 // The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
 const NEST = 'nest:';
 
-// `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says in the place of its time.
+// `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end.
+// Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
+// The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
 function RowLink({ r, title = r.title, current, lifted, marked, drop, over }) {
-  const at = when(r.lastActivityAt);
-  const meta = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const last = when(r.lastActivityAt);
+  const where = [folderName(r.cwd, HOME), r.branch, STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const at = title === last ? '' : last;
+  const detail = [where, at].filter(Boolean).join(' · ');
   return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null}
-    data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}>
+    data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
+    data-tip=${detail || null} data-tip-side="right" data-tip-delay="700">
     <span class="lamp" data-state=${r.state} aria-hidden="true"></span>
     <span class="row-title">${title || UNTITLED}</span>
-    ${over ? html`<span class="row-time">Nest here</span>` : title === at ? null : html`<time class="row-time">${at}</time>`}
-    ${meta ? html`<span class="row-meta">${meta}</span>` : null}</a>`;
+    ${over ? html`<span class="row-nest">Nest here</span>` : null}
+    ${detail ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;
 }
 
 // The dots button at the end of a session's row, beside the link. It opens the row's menu under itself, for a pointer with no right

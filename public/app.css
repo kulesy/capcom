@@ -44,6 +44,9 @@
   --row-pad: 0.5rem;
   --row-gap: 0.25rem;
   --nest-indent: 1.1875rem;
+  --row-height: 3rem;
+  --chat-column: 46rem;
+  --list-width: 22rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -128,6 +131,12 @@
 html, body { height: 100%; }
 
 html { -webkit-text-size-adjust: 100%; }
+
+@media (pointer: fine) {
+  html { font-size: 93.75%; }
+
+  :root { --row-gap: 0.125rem; --row-height: 1.75rem; --chat-column: 47rem; --list-width: 25.5rem; }
+}
 
 body {
   margin: 0;
@@ -762,23 +771,15 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .more { top: calc(50% - 0.625rem); right: 1.75rem; }
 
-.fold { top: 0.625rem; right: 0.25rem; }
+.rows :is(.more, .fold) { top: calc((var(--row-height) - 1.25rem) / 2); }
 
-.rows .more { top: 0.625rem; right: 0.25rem; }
+.rows .more { right: 0.25rem; }
 
-.rows .has-fold > .more { right: 1.75rem; }
-
-.earlier-runs .more { top: 0.25rem; }
+.rows .fold { right: 2.5rem; }
 
 .more svg { flex: none; width: 1rem; height: 1rem; }
 
-.more::after, .fold::after { content: ""; position: absolute; inset: -0.5rem; }
-
 .more:focus-visible, .fold:focus-visible { box-shadow: 0 0 0 2px var(--sidebar-ring); }
-
-@media (min-width: 48rem) and (pointer: fine) {
-  .more::after, .fold::after { display: none; }
-}
 
 @media (min-width: 48rem) and (hover: hover) {
   .more { opacity: 0; }
@@ -1094,9 +1095,9 @@ body[data-scroll-locked] {
 
   .list-actions { gap: 0.5rem; }
 
-  .group-head, .scope, .earlier-runs .row { min-height: 2.75rem; }
+  .group-head, .scope { min-height: 2.75rem; }
 
-  .more::after, .fold::after { inset: -0.75rem; }
+  .more::after, .fold::after { content: ""; position: absolute; inset: -0.75rem; }
 }
 
 .rows, .sub-rows {
@@ -1111,15 +1112,15 @@ body[data-scroll-locked] {
 .rows > li, .sub-rows > li { position: relative; }
 
 .row {
+  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "lamp title time" "lamp meta meta";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title nest" "meta meta";
   align-content: center;
   align-items: center;
-  column-gap: 0.5rem;
   width: 100%;
-  height: 3rem;
-  padding: var(--row-pad);
+  height: var(--row-height);
+  padding: var(--row-pad) 2.75rem var(--row-pad) var(--row-pad);
   overflow: hidden;
   border-radius: var(--radius-md);
   color: inherit;
@@ -1137,35 +1138,28 @@ body[data-scroll-locked] {
 
 :is(.row, .scope, .group-head):focus-visible { box-shadow: inset 0 0 0 2px var(--sidebar-ring); }
 
-.row .lamp { grid-area: lamp; }
+.row .lamp { position: absolute; top: 50%; right: 1.75rem; translate: 0 -50%; }
 
 .row-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.row-time, .row-meta {
+.row-nest, .row-meta {
   color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
   font-size: 0.75rem;
 }
 
-.row-time { grid-area: time; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row-nest { grid-area: nest; margin-left: 0.5rem; white-space: nowrap; }
 
-.row-meta { grid-area: meta; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { grid-area: meta; display: flex; min-width: 0; }
 
-.row:is([aria-current="page"], [aria-selected="true"], [data-menu], [data-over]) :is(.row-time, .row-meta) {
+.row-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.row-time { flex: none; font-variant-numeric: tabular-nums; white-space: pre; }
+
+.row:is([aria-current="page"], [aria-selected="true"], [data-menu], [data-over]) :is(.row-nest, .row-meta) {
   color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent);
 }
 
-.rows .row { padding-right: 2rem; }
-
-.rows .has-fold > .row { padding-right: 3.5rem; }
-
-@media (min-width: 48rem) and (hover: hover) {
-  .rows .row { padding-right: 0.5rem; }
-
-  .rows .has-fold > .row { padding-right: 2rem; }
-
-  .rows .row:is(:hover, :focus-visible) .row-time,
-  .rows .row:has(~ .more:is(:hover, :focus-visible, [data-state="open"])) .row-time { visibility: hidden; }
-}
+.has-fold > .row { padding-right: 4.25rem; }
 
 .row:is([aria-current="page"], [aria-selected="true"], [data-menu]) ~ :is(.more, .fold) { color: var(--sidebar-accent-foreground); }
 
@@ -1194,9 +1188,38 @@ body[data-scroll-locked] {
 
 .has-fold:has(> .row[data-lifted]) > .sub-rows:not(.earlier-runs) > li::before { opacity: 0.4; }
 
-.earlier-runs .row { grid-template-areas: "lamp title time"; height: 1.75rem; padding-block: 0; }
-
 .earlier-runs .row-meta { display: none; }
+
+@media (pointer: fine) {
+  .row { grid-template-areas: "title nest"; padding-block: 0; font-size: 0.8125rem; }
+
+  .row .lamp { width: 0.375rem; }
+
+  .row-meta { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+  .group { padding-block: 0.3rem; }
+
+  .group-head { height: 1.75rem; padding-inline: 0.5rem 0.25rem; }
+
+  .bar > .more { right: 1.5rem; }
+}
+
+@media (pointer: fine) and (min-width: 48rem) and (hover: hover) {
+  .row { padding-right: 1.5rem; }
+
+  .has-fold > .row { padding-right: 2.875rem; }
+
+  .row .lamp { right: 0.5625rem; }
+
+  .rows .more { right: 0.125rem; }
+
+  .rows .fold { right: 1.5rem; opacity: 0; }
+
+  .rows .fold[aria-expanded="false"],
+  li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > :is(.more, .fold) { opacity: 1; }
+
+  body:not(.dragging) li:has(> :is(.row, .more, .fold):is(:hover, :focus-visible, [data-state="open"])) > .row .lamp { opacity: 0; }
+}
 
 .rows .row {
   -webkit-user-select: none;
@@ -1215,8 +1238,6 @@ body[data-scroll-locked] {
   background: var(--sidebar-accent);
   box-shadow: inset 0 0 0 2px var(--sidebar-ring);
 }
-
-.rows .row[data-over] .row-time { visibility: visible; }
 
 .row[data-lifted] { opacity: 0.4; }
 
@@ -1237,7 +1258,7 @@ body[data-scroll-locked] {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 3rem;
+  height: var(--row-height);
   border: 1px dashed var(--sidebar-border);
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
@@ -1414,6 +1435,10 @@ body.dragging .rows .more { opacity: 0; }
   .scope:has(~ .more:is(:hover, :focus-visible, [data-state="open"])) .scope-count { opacity: 0; }
 }
 
+@media (pointer: fine) and (min-width: 48rem) and (hover: hover) {
+  .scopes .more { right: 0.125rem; }
+}
+
 .scope-rule { height: 1px; margin-inline: 0.5rem; background: var(--sidebar-border); }
 
 .group-head, .row, .scope, .more, .fold, .chip, .option, .folder {
@@ -1428,7 +1453,7 @@ body.dragging .rows .more { opacity: 0; }
     color: var(--sidebar-accent-foreground);
   }
 
-  .row:hover :is(.row-time, .row-meta) { color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent); }
+  .row:hover :is(.row-nest, .row-meta) { color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent); }
 
   .more:hover, .fold:hover {
     background: var(--sidebar-accent);
@@ -1570,7 +1595,7 @@ body.dragging .rows .more { opacity: 0; }
 }
 
 .new-hint {
-  max-width: 46rem;
+  max-width: var(--chat-column);
   margin: 1rem auto;
   padding: 3rem 1.5rem;
   color: var(--muted-foreground);
@@ -1582,7 +1607,7 @@ body.dragging .rows .more { opacity: 0; }
 
 .earlier { display: flex; margin: 0 auto 1rem; }
 
-.items { list-style: none; margin: 0 auto; padding: 0; max-width: 46rem; }
+.items { list-style: none; margin: 0 auto; padding: 0; max-width: var(--chat-column); }
 
 .items > li + li { margin-top: 1.25rem; }
 
@@ -1590,7 +1615,7 @@ body.dragging .rows .more { opacity: 0; }
 
 .items > :is(.tool, .tool-group, .think) + :is(.tool, .tool-group, .think) { margin-top: 0.125rem; }
 
-.live, .working, .live-think, .widget-wait { max-width: 46rem; margin: 1.25rem auto 0; }
+.live, .working, .live-think, .widget-wait { max-width: var(--chat-column); margin: 1.25rem auto 0; }
 
 .msg { overflow-wrap: anywhere; font-size: 0.875rem; line-height: 1.625; }
 
@@ -1652,6 +1677,16 @@ button.thumb {
 .msg.claude > :last-child { margin-bottom: 0; }
 
 .msg.claude p, .msg.claude ul, .msg.claude ol, .msg.claude blockquote, .msg.claude pre, .msg.claude .table { margin: 0.75rem 0; }
+
+@media (pointer: fine) {
+  .msg { line-height: 1.4; }
+
+  .msg.claude { max-width: 43.5rem; }
+
+  .msg.claude.live { margin-left: max(0px, calc((100% - var(--chat-column)) / 2)); margin-right: auto; }
+
+  .msg.claude p, .msg.claude ul, .msg.claude ol, .msg.claude blockquote, .msg.claude pre, .msg.claude .table { margin: 1rem 0; }
+}
 
 .msg.claude h3, .msg.claude h4, .msg.claude h5, .msg.claude h6 { margin: 1.25rem 0 0.5rem; font-size: 0.875rem; font-weight: 600; line-height: 1.5; }
 
@@ -2008,7 +2043,7 @@ button.thumb {
   }
 }
 
-.dock > * { max-width: 46rem; margin-inline: auto; }
+.dock > * { max-width: var(--chat-column); margin-inline: auto; }
 
 .approvals { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
 
@@ -2769,6 +2804,10 @@ kbd.row-time { font-size: 0.75rem; }
 
 [data-slot="tooltip-content"][data-side="bottom"] { --tw-enter-translate-y: -0.5rem; }
 
+[data-slot="tooltip-content"][data-side="right"] { --tw-enter-translate-x: -0.5rem; }
+
+[data-slot="tooltip-content"][data-side="left"] { --tw-enter-translate-x: 0.5rem; }
+
 [data-slot="tooltip-content"][data-state="closed"] {
   --tw-exit-opacity: 0;
   --tw-exit-scale: 0.95;
@@ -2792,6 +2831,18 @@ kbd.row-time { font-size: 0.75rem; }
   top: 0;
   transform-origin: center 0;
   transform: rotate(180deg);
+}
+
+[data-slot="tooltip-content"][data-side="right"] > [data-part="tooltip-arrow"] {
+  left: 0;
+  transform-origin: 0 0;
+  transform: translateY(50%) rotate(90deg) translateX(-50%);
+}
+
+[data-slot="tooltip-content"][data-side="left"] > [data-part="tooltip-arrow"] {
+  right: 0;
+  transform-origin: 100% 0;
+  transform: translateY(50%) rotate(-90deg) translateX(50%);
 }
 
 [data-part="tooltip-content-arrow"] {
@@ -3038,7 +3089,7 @@ html.viewing, html.viewing body { overflow: hidden; }
 .passkey-fine { margin: 1.5rem 0 0; font-size: 0.8125rem; }
 
 @media (min-width: 56rem) {
-  .app { grid-template-columns: auto 22rem minmax(0, 1fr); }
+  .app { grid-template-columns: auto var(--list-width) minmax(0, 1fr); }
 
   .app[data-view] .list, .app[data-view] .chat { display: flex; }
 
