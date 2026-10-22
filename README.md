@@ -159,7 +159,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows Desktop.
 - **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
   group belongs to at most one project, and one that belongs to none stays at the top level, which Home
-  shows. Group headers fold, and the browser remembers which are folded. The + at the top of the list
+  shows. Group headers fold, and the browser remembers which are folded. A group's name is bold, and a
+  line separates each group from the one above. The + at the top of the list
   starts a session, or makes a group in the view you are in: at the top level in Home, and in the project
   in a project's view. A project's menu is on its row in the projects sidebar: New group here, Rename and
   Delete project. The dots at the end of the row open it, and so do a right click, the menu key or

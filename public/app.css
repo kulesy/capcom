@@ -726,6 +726,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .sections > .group { margin-inline: 0.25rem; padding-inline: 0.25rem; }
 
+.sections > .group ~ .group::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  inset-inline: 0.25rem;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.sections > .group:is([data-over], [data-over] + .group)::before { content: none; }
+
 .bar { position: relative; }
 
 .group-head {
@@ -744,7 +754,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   cursor: pointer;
 }
 
-.group-head .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .name { min-width: 0; overflow: hidden; color: var(--sidebar-foreground); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
 .group-head .chevron { margin-left: auto; }
 
@@ -1453,6 +1463,8 @@ body.dragging .rows .more { opacity: 0; }
     background: var(--sidebar-accent);
     color: var(--sidebar-accent-foreground);
   }
+
+  .group-head:hover .name { color: inherit; }
 
   .row:hover :is(.row-nest, .row-meta) { color: color-mix(in oklab, var(--sidebar-accent-foreground) 70%, transparent); }
 
