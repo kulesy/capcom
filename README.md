@@ -460,7 +460,9 @@ the unit tests, for the cron parser, the routine scheduler, the start timeout, t
 live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
 project and group routes, the arrow-key and move rules of the sidebar tree, which view of the list holds a
 session, what a view's lamp and count show and which views a search finds, the session list and what a
-message does to it, the sign-in and the passkey checks, with Node's own test runner. The password is kept only as a
+message does to it, the sign-in and the passkey checks, with Node's own test runner. The tests of the model menu
+in a page run it in Playwright's Chromium headless shell, the newest in Playwright's cache or the one that
+`CAPCOM_BROWSER` names, and skip when there is none. The password is kept only as a
 scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser out and removes every
 passkey. Until one is set, Capcom refuses every request.
 
