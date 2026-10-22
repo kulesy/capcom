@@ -44,7 +44,9 @@ const freePort = () => new Promise(resolve => {
 
 // Desktop's records and the CLI's transcripts for `sessions`, Capcom's layout over them, and a CLI that logs how it was started, what it was sent
 // and when its input closed. It answers an initialize request with CLI_COMMANDS and CLI_MODELS, and a change of model or setting with success, logging the settings.
-// It refuses a switch to the model `refused-by-the-fake`.
+// It refuses a switch to the model `refused-by-the-fake`, and a request for fast mode when it was started on the model `no-fast-by-the-fake`.
+// Started on `late-no-fast-by-the-fake` it refuses that request too, but holds the refusal until it is sent anything after 'begin a session'.
+// Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
 // Sent 'begin a session' it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
 // context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
@@ -97,9 +99,13 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
     "note({ started: process.argv.slice(2) });",
+    "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
+    "const held = [];",
+    "let begun = false;",
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
     "  try {",
     "    const m = JSON.parse(line);",
+    "    if (begun) held.splice(0).forEach(say);",
     "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }) });",
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
@@ -108,13 +114,23 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    }",
     "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
     "    if (m.type === 'control_request' && m.request.settings) note({ settings: m.request.settings });",
-    "    if (m.type === 'control_request' && ['set_model', 'apply_flag_settings'].includes(m.request.subtype)) say({ type: 'control_response', response: m.request.model === 'refused-by-the-fake' ? { subtype: 'error', request_id: m.request_id, error: 'The fake refused that model.' } : { subtype: 'success', request_id: m.request_id } });",
+    "    if (m.type === 'control_request' && ['set_model', 'apply_flag_settings'].includes(m.request.subtype)) {",
+    "      const noFast = m.request.settings?.fastMode === true && ['no-fast-by-the-fake', 'late-no-fast-by-the-fake'].includes(startedOn);",
+    "      const error = m.request.model === 'refused-by-the-fake' ? 'The fake refused that model.' : noFast ? 'The fake refused fast mode.' : '';",
+    "      const reply = { type: 'control_response', response: error ? { subtype: 'error', request_id: m.request_id, error } : { subtype: 'success', request_id: m.request_id } };",
+    "      if (noFast && startedOn === 'late-no-fast-by-the-fake') held.push(reply);",
+    "      else say(reply);",
+    "    }",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
+    "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
-    "    if (m.message.content === 'begin a session') say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' });",
+    "    if (m.message.content === 'begin a session') {",
+    "      say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' });",
+    "      begun = true;",
+    "    }",
     "  } catch {}",
     "}).on('close', () => { note({ closed: true }); process.exit(0); });",
     '',

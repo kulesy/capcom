@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listCommands, listModels } from '../lib/commands.mjs';
-import { activeStates, startChat, sweep } from '../lib/runner.mjs';
+import { activeStates, chatFor, startChat, sweep } from '../lib/runner.mjs';
 
 const wait = ms => new Promise(done => setTimeout(done, ms));
 
@@ -356,8 +356,11 @@ test('a reply to initialize that lists commands and no models leaves the chat wi
 });
 
 // A CLI that logs how it was started and each control request it is sent. It answers an initialize request with `models`, any other request
-// with success, or with an error when `refuse` is set, and starts its session when it is sent the first message.
-const recordingCli = (dir, { models = [], refuse = false } = {}) => {
+// with success, or with an error when `refuse` is set, and never answers apply_flag_settings when `silent` is set. It starts its session when it is
+// sent the first message. Each message it is sent is a turn, and `reports` says what the turns of a process report about fast mode, in order:
+// `init` is the fast_mode_state on the turn's system/init, a `result` ends the turn with a result that carries that fast_mode_state, and a `reason`
+// is the fast_mode_disabled_reason on both.
+const recordingCli = (dir, { models = [], refuse = false, silent = false, reports = [] } = {}) => {
   const log = path.join(dir, 'recorded.log');
   const cli = path.join(dir, 'recording-claude.mjs');
   fs.writeFileSync(cli, [
@@ -367,14 +370,19 @@ const recordingCli = (dir, { models = [], refuse = false } = {}) => {
     "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "note({ started: process.argv.slice(2) });",
+    `const reports = ${JSON.stringify(reports)};`,
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
     '  const m = JSON.parse(line);',
     "  if (m.type === 'control_request') {",
     '    note(m.request);',
+    `    if (${JSON.stringify(silent)} && m.request.subtype === 'apply_flag_settings') return;`,
     `    const reply = m.request.subtype === 'initialize' ? { subtype: 'success', response: { commands: [], models: ${JSON.stringify(models)} } } : ${JSON.stringify(refuse)} ? { subtype: 'error', error: 'Not on this model.' } : { subtype: 'success' };`,
     "    return out({ type: 'control_response', response: { request_id: m.request_id, ...reply } });",
     '  }',
-    "  if (m.type === 'user') out({ type: 'system', subtype: 'init', session_id: 'sess-recording', model: 'stub' });",
+    "  if (m.type !== 'user') return;",
+    "  const report = reports.shift() || {};",
+    "  out({ type: 'system', subtype: 'init', session_id: 'sess-recording', model: 'stub', fast_mode_state: report.init, fast_mode_disabled_reason: report.reason });",
+    "  if ('result' in report) out({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: report.result, fast_mode_disabled_reason: report.reason });",
     '});',
     '',
   ].join('\n'), { mode: 0o755 });
@@ -407,14 +415,290 @@ test('a chat started with fast mode off or unsaid asks for nothing about it', as
   }
 });
 
-test('a start in fast mode that Claude refuses costs only that, because the request is not waited for and a reply to it is ignored', async t => {
+// A chat with fast mode picked and no process yet, with a listener on it before its first message starts one, as a viewer of the page is.
+const fastChat = (t, id, options) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
-  const recorded = recordingCli(dir, { refuse: true });
-  const chat = await startChat({ cwd: dir, mode: 'manual', fast: true, text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  const recorded = recordingCli(dir, options);
+  const chat = chatFor(id, { cwd: dir, mode: 'manual', model: 'claude-opus-5-5', fast: true, claude: recorded.cli, chrome: false, chips: null });
+  // A failed assertion must not leave the CLI running, or the test run never ends.
   t.after(() => chat.stop());
-  await until(() => recorded.requests().some(r => r.subtype === 'apply_flag_settings'));
+  const heard = [];
+  chat.listeners.add(ev => heard.push(ev));
+  return { chat, recorded, heard, told: () => heard.filter(e => e.type === 'fast').map(e => e.data) };
+};
+
+test('a chat started in fast mode shows it off until Claude accepts it and on after, and a later report of on says nothing new', async t => {
+  const { chat, heard, told } = fastChat(t, 'fast-accepted', { reports: [{}, { init: 'on' }] });
+  assert.equal(chat.status().fast, true, 'with no process the status shows the pick');
+
+  chat.send('hello', []);
+  assert.equal(chat.status().fast, false, 'Claude has not answered yet');
+  await until(() => told().length === 2);
+  assert.equal(chat.status().fast, true, 'accepted');
+
+  chat.send('again', []);
+  await until(() => heard.filter(e => e.type === 'init').length === 2);
+  assert.deepEqual([chat.status().fast, chat.fast], [true, true]);
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }]);
+});
+
+test('a start in fast mode that Claude refuses turns fast mode off for the chat, tells the page and the hook once, and costs nothing else', async t => {
+  const { chat, recorded, heard, told } = fastChat(t, 'fast-refused', { refuse: true });
+  let refused = 0;
+  chat.onFastRefused = () => { refused++; };
+
+  chat.send('hello', []);
+  assert.deepEqual(told(), [{ fast: false }], 'off until Claude has answered');
+  await until(() => refused);
+  assert.deepEqual(told(), [{ fast: false }, { fast: false }], 'and told again once it has refused, as the page may be showing the pick');
+  assert.equal(chat.fast, false);
+  assert.equal(chat.status().fast, false);
+  await until(() => heard.some(e => e.type === 'init'));
+  assert.equal(refused, 1);
   assert.equal(chat.status().running, true, 'the chat carries on');
   assert.equal(chat.status().lastError, '');
+
+  chat.stop();
+  await until(() => !chat.status().running);
+  chat.send('again', []);
+  await until(() => heard.filter(e => e.type === 'init').length === 2);
+  assert.equal(recorded.requests().filter(r => r.subtype === 'apply_flag_settings').length, 1, 'the next process does not ask again');
+  assert.deepEqual([chat.status().fast, refused], [false, 1]);
+});
+
+test('a request for fast mode that Claude does not answer in time is no refusal, so the pick and the hook are left alone and the status stays off', async t => {
+  const { chat, heard, told } = fastChat(t, 'fast-unanswered', { silent: true });
+  let refused = 0;
+  chat.onFastRefused = () => { refused++; };
+
+  chat.send('hello', []);
+  await until(() => chat.replies.size === 1 && heard.some(e => e.type === 'init'));
+  // Waiting out the 15 seconds would slow the run, so the reply that the timeout makes is given by hand.
+  const [asked] = chat.replies.values();
+  asked.done({ subtype: 'error', error: 'Claude did not answer in time.', unanswered: true });
+  await wait(20);
+  assert.deepEqual([chat.status().fast, chat.fast, refused], [false, true, 0]);
+  assert.deepEqual(told(), [{ fast: false }]);
+});
+
+test('a stop before Claude has answered the request for fast mode is no refusal, and the status goes back to the pick', async t => {
+  const { chat, heard, told } = fastChat(t, 'fast-stopped', { silent: true });
+  let refused = 0;
+  chat.onFastRefused = () => { refused++; };
+
+  chat.send('hello', []);
+  await until(() => heard.some(e => e.type === 'init'));
+  chat.stop();
+  await until(() => !chat.status().running);
+  assert.deepEqual([chat.status().fast, chat.fast, refused], [true, true, 0]);
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }]);
+});
+
+test('a reply to the request that comes after its process was replaced says nothing about the pick', async t => {
+  const { chat, recorded, told } = fastChat(t, 'fast-replaced', { silent: true });
+  let refused = 0;
+  chat.onFastRefused = () => { refused++; };
+
+  chat.send('first', []);
+  await until(() => chat.replies.size === 1);
+  const [first] = chat.replies.keys();
+  chat.stop();
+  chat.send('second', []);
+  await until(() => recorded.requests().filter(r => r.subtype === 'apply_flag_settings').length === 2);
+  chat.handle({ type: 'control_response', response: { subtype: 'error', request_id: first, error: 'Too late.' } });
+  await wait(20);
+  assert.deepEqual([chat.fast, refused, told()], [true, 0, [{ fast: false }]]);
+});
+
+test('a reply to the request and then a report of off, read in the same chunk, end with the status off, since the report is the newer word', async t => {
+  const { chat, told } = fastChat(t, 'fast-reply-then-off', { silent: true });
+
+  chat.send('hello', []);
+  await until(() => chat.replies.size === 1);
+  const [asked] = chat.replies.keys();
+  // The lines of one chunk are handled one after the other, with nothing run in between.
+  chat.handle({ type: 'control_response', response: { subtype: 'success', request_id: asked } });
+  chat.handle({ type: 'system', subtype: 'init', session_id: 'sess-recording', model: 'stub', fast_mode_state: 'off' });
+  assert.deepEqual([chat.status().fast, chat.fast], [false, true]);
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }, { fast: false }]);
+});
+
+test('a report of off and then the reply to the request, read in the same chunk, end with the status on, since the acceptance is the newer word', async t => {
+  const { chat, told } = fastChat(t, 'fast-off-then-reply', { silent: true });
+
+  chat.send('hello', []);
+  await until(() => chat.replies.size === 1);
+  const [asked] = chat.replies.keys();
+  chat.handle({ type: 'system', subtype: 'init', session_id: 'sess-recording', model: 'stub', fast_mode_state: 'off' });
+  chat.handle({ type: 'control_response', response: { subtype: 'success', request_id: asked } });
+  assert.deepEqual([chat.status().fast, chat.fast], [true, true]);
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }]);
+});
+
+test('a new process starts with no report of its own, so the one an earlier process left is cleared', async t => {
+  const { chat, told } = fastChat(t, 'fast-leftover');
+  // What a replaced process leaves behind, since its exit is ignored.
+  chat.fast = false;
+  chat.fastSaid = true;
+
+  chat.send('hello', []);
+  assert.equal(chat.status().fast, false);
+  assert.deepEqual(told(), [{ fast: false }]);
+});
+
+test('a turn that reports fast mode off turns the status off and tells the page, cooldown counts as on, and a change of model goes back to the pick', async t => {
+  const { chat, told } = fastChat(t, 'fast-reports', { reports: [{ init: 'on' }, { init: 'off' }, { init: 'cooldown' }, { result: 'off' }] });
+
+  chat.send('first', []);
+  await until(() => told().length === 2);
+  assert.equal(chat.status().fast, true, 'accepted');
+
+  chat.send('second', []);
+  await until(() => told().length === 3);
+  assert.equal(chat.status().fast, false, 'the turn said off');
+
+  chat.send('third', []);
+  await until(() => told().length === 4);
+  assert.equal(chat.status().fast, true, 'cooldown is fast mode paused, and counts as on');
+
+  chat.send('fourth', []);
+  await until(() => told().length === 5);
+  assert.equal(chat.status().fast, false, 'a result reports it as the start of a turn does');
+
+  await chat.setModel('claude-sonnet-5-5');
+  assert.equal(chat.status().fast, true, 'what Claude said was about the model before');
+  assert.equal(chat.fast, true, 'the pick held through it all');
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }, { fast: false }, { fast: true }, { fast: false }, { fast: true }]);
+});
+
+test('a report of off with the reason pending, network_error or unknown settles nothing, so the status shows the pick, and off with another reason or none turns it off', async t => {
+  const cases = [['sdk_opt_in_required', false], ['pending', true], [undefined, false], ['network_error', true], ['policy', false], ['unknown', true]];
+  // A turn's system/init and its result each carry a report, so each is tried alone.
+  for (const [line, ends] of [['init', 'init'], ['result', 'turn-end']]) {
+    const { chat, heard, told } = fastChat(t, `fast-reasons-${line}`, { reports: cases.map(([reason]) => ({ [line]: 'off', reason })) });
+
+    for (const [n, [reason, shown]] of cases.entries()) {
+      chat.send(`turn ${n}`, []);
+      await until(() => heard.filter(e => e.type === ends).length === n + 1);
+      assert.equal(chat.status().fast, shown, `${line} with ${reason ?? 'no reason'}`);
+    }
+    assert.equal(chat.fast, true, 'the pick held through it all');
+    assert.deepEqual(told(), [false, true, false, true, false, true, false, true].map(fast => ({ fast })), line);
+  }
+});
+
+test('a reason beside a report of on or cooldown changes nothing, since only an off can be unsettled', async t => {
+  const { chat, heard } = fastChat(t, 'fast-reason-beside-on', { reports: [{ init: 'on', reason: 'pending' }, { init: 'off' }, { init: 'cooldown', reason: 'unknown' }] });
+  // With the pick off, only a report can show fast mode on.
+  chat.fast = false;
+
+  for (const [n, shown] of [true, false, true].entries()) {
+    chat.send(`turn ${n}`, []);
+    await until(() => heard.filter(e => e.type === 'init').length === n + 1);
+    assert.equal(chat.status().fast, shown, `turn ${n}`);
+  }
+});
+
+test('a switch of fast mode puts the status on the new pick, whatever the last turn reported', async t => {
+  const { chat, told } = fastChat(t, 'fast-switched', { reports: [{ init: 'on' }, { init: 'off' }] });
+
+  chat.send('first', []);
+  await until(() => told().length === 2);
+  chat.send('second', []);
+  await until(() => told().length === 3);
+  assert.equal(chat.status().fast, false, 'the turn said off');
+
+  await chat.setFast(true);
+  assert.deepEqual([chat.status().fast, chat.fast], [true, true]);
+  await chat.setFast(false);
+  assert.deepEqual([chat.status().fast, chat.fast], [false, false]);
+  assert.deepEqual(told().slice(3), [{ fast: true }, { fast: false }]);
+});
+
+test('a report of fast mode that is not on, off or cooldown is ignored, so the status stays as the last report left it', async t => {
+  const odd = [{ init: 'standby', result: 7 }, { init: null, result: true }, { init: {}, result: ['off'] }];
+  const { chat, heard, told } = fastChat(t, 'fast-odd-reports', { reports: [{ init: 'on' }, { init: 'off' }, ...odd] });
+
+  chat.send('first', []);
+  await until(() => told().length === 2);
+  chat.send('second', []);
+  await until(() => told().length === 3);
+  for (const [n, text] of ['third', 'fourth', 'fifth'].entries()) {
+    chat.send(text, []);
+    await until(() => heard.filter(e => e.type === 'turn-end').length === n + 1);
+  }
+  assert.deepEqual([chat.status().fast, chat.fast], [false, true]);
+  assert.deepEqual(told(), [{ fast: false }, { fast: true }, { fast: false }]);
+});
+
+test('once its process has exited the status shows the pick again, and the next process asks for it again', async t => {
+  const { chat, recorded, heard, told } = fastChat(t, 'fast-exited', { reports: [{ init: 'on' }, { init: 'off' }] });
+
+  chat.send('first', []);
+  await until(() => told().length === 2);
+  chat.send('second', []);
+  await until(() => told().length === 3);
+  assert.equal(chat.status().fast, false, 'the turn said off');
+
+  chat.stop();
+  await until(() => !chat.status().running);
+  assert.deepEqual([chat.status().fast, chat.fast], [true, true]);
+  assert.deepEqual(told().at(-1), { fast: true });
+
+  chat.send('third', []);
+  assert.equal(chat.status().fast, false, 'off again until the new process has accepted it');
+  await until(() => recorded.requests().filter(r => r.subtype === 'apply_flag_settings').length === 2);
+  assert.equal(heard.filter(e => e.type === 'exit').length, 1);
+});
+
+test('a reply that Capcom makes up for want of one is marked unanswered, whether Claude was too slow or stopped first, and one from Claude is not', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir, { silent: true });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const ask = { subtype: 'apply_flag_settings', settings: { fastMode: true } };
+
+  assert.deepEqual(await chat.request(ask, 50), { subtype: 'error', error: 'Claude did not answer in time.', unanswered: true });
+  const stopped = chat.request(ask);
+  chat.stop();
+  assert.deepEqual(await stopped, { subtype: 'error', error: 'Claude stopped before it answered.', unanswered: true });
+});
+
+test('the reply to a request reaches onReply as its line is read, and so does the one Capcom makes up for a timeout or a stop', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir, { silent: true });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+  const ask = { subtype: 'apply_flag_settings', settings: { fastMode: true } };
+  const got = [];
+  const onReply = reply => got.push(reply);
+
+  const answered = chat.request(ask, undefined, { onReply });
+  const [asked] = chat.replies.keys();
+  chat.handle({ type: 'control_response', response: { request_id: asked, subtype: 'success' } });
+  assert.deepEqual(got, [{ request_id: asked, subtype: 'success' }], 'before the promise has run');
+  assert.deepEqual(await answered, got[0]);
+
+  await chat.request(ask, 30, { onReply });
+  assert.deepEqual(got.at(-1), { subtype: 'error', error: 'Claude did not answer in time.', unanswered: true });
+
+  const stopped = chat.request(ask, undefined, { onReply });
+  chat.stop();
+  await stopped;
+  assert.deepEqual(got.at(-1), { subtype: 'error', error: 'Claude stopped before it answered.', unanswered: true });
+  assert.equal(got.length, 3);
+});
+
+test('a reply that Claude gives, a refusal included, is not marked unanswered', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const recorded = recordingCli(dir, { refuse: true });
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: 'hello', images: [], claude: recorded.cli, chrome: false, chips: null });
+  t.after(() => chat.stop());
+
+  const reply = await chat.request({ subtype: 'apply_flag_settings', settings: { fastMode: true } });
+  assert.equal(reply.subtype, 'error');
+  assert.equal(reply.error, 'Not on this model.');
+  assert.equal('unanswered' in reply, false);
 });
 
 test('turning fast mode on or off asks Claude with apply_flag_settings and tells the page, and the status says which', async t => {

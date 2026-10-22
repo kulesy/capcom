@@ -32,6 +32,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   lists. When the model takes fast mode, the menu also has an Enable fast mode switch. A change applies from
   Claude's next request, even mid-turn, and is remembered
   for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart. Fast mode is off until you switch it on for a session.
+  `Fast` shows off while a chat's process starts, until Claude accepts fast mode, and a chat with no process shows what you picked. A refusal turns it off for that session.
 - **Skills and commands.** Type / at the start of the prompt box and a list of the skills and slash commands that
   chat can run opens above it, filtered by name and alias as you type. The arrow keys move, Enter or Tab picks, a
   click or tap picks, and Esc closes the list without stopping a running chat. Picking writes `/name ` into the box

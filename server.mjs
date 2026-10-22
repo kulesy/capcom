@@ -40,6 +40,17 @@ const savePick = (id, pick) => {
   const all = readPicks();
   fs.writeFileSync(picksFile, JSON.stringify({ ...all, [id]: { ...all[id], ...pick } }));
 };
+// A refusal drops fast mode from the pick, or every process would ask again. It runs as Claude's output is read, where a throw would
+// stop the server, so a failed save is logged as in newSession.
+function dropFastOnRefusal(chat) {
+  chat.onFastRefused = () => {
+    try {
+      savePick(chat.id, { fast: false });
+    } catch (e) {
+      console.error(`Could not record that fast mode was refused for ${chat.id}: ${e.message}`);
+    }
+  };
+}
 const viewers = new Map();
 const outside = createOutside();
 const listOutside = createOutside({ keep: 256 });
@@ -215,12 +226,14 @@ function settingsFor(id, row) {
 async function newSession({ cwd, text, images = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
   const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
+  dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
     const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
     fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
-    if (model || effort || fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(fast && { fast }) });
+    // Fast mode is saved from the chat, as the CLI may have refused it already. The hook covers a refusal that comes later.
+    if (model || effort || chat.fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chat.fast && { fast: true }) });
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
@@ -352,6 +365,7 @@ function loginPage(message = '') {
 function ensureChat(id, row, { mode } = {}) {
   const s = settingsFor(id, row);
   const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips });
+  dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
 }

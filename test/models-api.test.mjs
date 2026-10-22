@@ -20,8 +20,18 @@ const ask = (s, token, json, headers) => request(s, 'POST', '/api/models', { hea
 const post = (s, token, url, json) => request(s, 'POST', url, { headers: as(token), json });
 const starts = s => cliCalls(s).filter(c => c.started);
 const picks = s => JSON.parse(fs.readFileSync(path.join(s.state, 'picks.json'), 'utf8'));
+// For polling, which can read the file while the server is writing it, and finds nothing in it yet.
+const picked = s => { try { return picks(s); } catch { return {}; } };
 const flags = s => cliCalls(s).filter(c => c.settings).map(c => c.settings);
 const calm = { id: 'calm', title: 'Calm one', ago: 5 };
+// What a viewer has heard about fast mode, and the status that a page that opens the chat now is given.
+const told = viewer => viewer.events.filter(e => e.type === 'fast').map(e => e.data);
+const statusOf = async (s, token, id) => {
+  const viewer = listen(s, token, id);
+  await until(() => viewer.events.some(e => e.type === 'status'));
+  viewer.close();
+  return viewer.events.find(e => e.type === 'status').data;
+};
 
 test('a folder is answered with the CLI\'s models by full id from the one probe that also gave its commands, so the next ask for either starts no CLI', async () => {
   const s = await start({ claude: true });
@@ -138,7 +148,7 @@ test('a change Claude refuses answers 400 with the chat\'s status, which still h
   assert.deepEqual(picks(s), { calm: { model: 'claude-haiku-5-5' } });
 });
 
-test('fast mode picked on a session with no process starts no CLI, shows in the status a page is given, and is asked for when the process starts', async () => {
+test('fast mode picked on a session with no process starts no CLI, shows in the status a page is given, and is asked for when the process starts, which shows it off to the page until Claude accepts it', async () => {
   const s = await start({ claude: true, sessions: [calm] });
   const { token } = await signIn(s);
   const res = await post(s, token, '/api/sessions/calm/fast', { fast: true });
@@ -153,11 +163,80 @@ test('fast mode picked on a session with no process starts no CLI, shows in the 
 
   await post(s, token, '/api/sessions/calm/send', { text: 'finish the turn' });
   await until(() => viewer.events.some(e => e.type === 'turn-end'));
+  await until(() => told(viewer).length === 2);
+  assert.deepEqual(told(viewer), [{ fast: false }, { fast: true }]);
+  assert.equal((await statusOf(s, token, 'calm')).fast, true);
   viewer.close();
   const calls = cliCalls(s);
   assert.deepEqual(flags(s), [{ fastMode: true }]);
   assert.ok(calls.findIndex(c => c.control === 'initialize') < calls.findIndex(c => c.settings), 'after initialize');
   assert.equal(JSON.stringify(starts(s)).includes('fastMode'), false, 'never in the CLI\'s arguments');
+  assert.deepEqual(picks(s), { calm: { fast: true } });
+});
+
+test('fast mode picked for a model that Claude refuses it on is turned off when the process starts, for the page, the status and the pick, and the model stays picked', async () => {
+  const s = await start({ claude: true, sessions: [calm] });
+  const { token } = await signIn(s);
+  assert.equal((await post(s, token, '/api/sessions/calm/model', { model: 'no-fast-by-the-fake' })).status, 200);
+  assert.equal((await post(s, token, '/api/sessions/calm/fast', { fast: true })).status, 200);
+  assert.deepEqual(picks(s), { calm: { model: 'no-fast-by-the-fake', fast: true } });
+
+  const viewer = listen(s, token, 'calm');
+  await until(() => viewer.events.some(e => e.type === 'status'));
+  await post(s, token, '/api/sessions/calm/send', { text: 'finish the turn' });
+  await until(() => told(viewer).length === 2 && picked(s).calm?.fast === false);
+  assert.deepEqual(told(viewer), [{ fast: false }, { fast: false }], 'off while it was asked, and off again once refused');
+  assert.equal((await statusOf(s, token, 'calm')).fast, false);
+  assert.deepEqual(picks(s), { calm: { model: 'no-fast-by-the-fake', fast: false } });
+  assert.ok(starts(s)[0].started.includes('no-fast-by-the-fake'), 'the process was started on that model');
+  assert.deepEqual(flags(s), [{ fastMode: true }]);
+  await until(() => viewer.events.some(e => e.type === 'turn-end'));
+  viewer.close();
+});
+
+test('a new session started in fast mode on a model that Claude refuses it on is remembered with its model and without fast mode, and its status says fast mode is off', async () => {
+  const s = await start({ claude: true });
+  const { token } = await signIn(s);
+  const made = await post(s, token, '/api/new', { cwd: s.home, text: 'begin a session', model: 'no-fast-by-the-fake', fast: true });
+  assert.equal(made.status, 200);
+  const { id } = made.body();
+  assert.deepEqual(flags(s), [{ fastMode: true }], 'it was asked');
+  assert.deepEqual(picks(s), { [id]: { model: 'no-fast-by-the-fake' } });
+  assert.equal((await statusOf(s, token, id)).fast, false);
+});
+
+test('a refusal that comes after a new session has been named still turns fast mode off in its pick', async () => {
+  const s = await start({ claude: true });
+  const { token } = await signIn(s);
+  const made = await post(s, token, '/api/new', { cwd: s.home, text: 'begin a session', model: 'late-no-fast-by-the-fake', fast: true });
+  assert.equal(made.status, 200);
+  const { id } = made.body();
+  assert.deepEqual(picks(s), { [id]: { model: 'late-no-fast-by-the-fake', fast: true } }, 'asked for and not refused yet');
+  assert.equal((await statusOf(s, token, id)).fast, false, 'off until Claude has answered');
+
+  // A change of effort reaches the chat without ensureChat, so the hook is the one that the new session was given.
+  assert.equal((await post(s, token, `/api/sessions/${id}/effort`, { effort: 'low' })).status, 200);
+  await until(() => picked(s)[id]?.fast === false);
+  assert.deepEqual(picks(s), { [id]: { model: 'late-no-fast-by-the-fake', effort: 'low', fast: false } });
+  assert.equal((await statusOf(s, token, id)).fast, false);
+});
+
+test('a turn that ends reporting fast mode off turns the status off and tells the page, and leaves the pick as it was', async () => {
+  const s = await start({ claude: true, sessions: [calm] });
+  const { token } = await signIn(s);
+  await post(s, token, '/api/sessions/calm/fast', { fast: true });
+  const viewer = listen(s, token, 'calm');
+  await until(() => viewer.events.some(e => e.type === 'status'));
+  await post(s, token, '/api/sessions/calm/send', { text: 'finish the turn' });
+  await until(() => told(viewer).length === 2);
+  assert.equal((await statusOf(s, token, 'calm')).fast, true, 'accepted');
+
+  await post(s, token, '/api/sessions/calm/send', { text: 'finish the turn with fast mode off' });
+  await until(() => told(viewer).length === 3);
+  assert.deepEqual(told(viewer), [{ fast: false }, { fast: true }, { fast: false }]);
+  assert.equal((await statusOf(s, token, 'calm')).fast, false);
+  assert.deepEqual(picks(s), { calm: { fast: true } });
+  viewer.close();
 });
 
 test('the model, effort and fast mode picked on a chat survive a server restart, so its status shows them and the CLI started for it is given all three', async () => {

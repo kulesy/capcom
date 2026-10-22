@@ -260,7 +260,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     store.set(s => ({ sending: [...s.sending, message], notice: '', jump: s.jump + 1 }));
     try {
       const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }) });
-      if (!closed) store.set({ status });
+      // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
+      if (!closed) store.set(s => ({ status: { ...status, fast: s.status ? s.status.fast : status.fast } }));
       if (unarchived) refreshIndex();
       return true;
     } catch (err) {

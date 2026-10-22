@@ -124,6 +124,31 @@ test('a fast event from Capcom, as when another page switches it, changes the st
   chat.close();
 });
 
+test('a send reply that reaches the page after a fast event leaves fast mode as the event set it, and the rest of the reply still applies', async () => {
+  let reply;
+  const held = new Promise(resolve => { reply = resolve; });
+  await withChanges(() => held, async () => {
+    const { chat, stream } = await openChat('chat-fast-send');
+    stream.emit('status', SETTINGS);
+    const sending = chat.send('hello', []);
+    stream.emit('fast', { fast: true });
+    reply({ status: 200, ok: true, json: async () => ({ ...SETTINGS, fast: false, effort: 'max' }) });
+    await sending;
+    assert.deepEqual([chat.store.get().status.fast, chat.store.get().status.effort], [true, 'max']);
+    chat.close();
+  });
+});
+
+test('a send reply is the whole status for a page that has none yet', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => ({ ...SETTINGS, fast: true }) }), async () => {
+    const { chat } = await openChat('chat-fast-send-first');
+    assert.equal(chat.store.get().status, null);
+    await chat.send('hello', []);
+    assert.equal(chat.store.get().status.fast, true);
+    chat.close();
+  });
+});
+
 test('a new chat holds fast mode as a pick and sends it to the new session only once it has been picked', async () => {
   globalThis.location = {};
   try {
