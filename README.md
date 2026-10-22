@@ -348,6 +348,11 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   viewer opens, and keeps the answer until Load earlier moves that offset. The answer names each picture by its ref
   and type and carries no image data. The server builds the list in one pass over the transcript, keeps it, and
   afterwards reads only the lines added since, so the first list for a 130 MB chat takes about 200 ms and later ones 1 ms.
+- **Looks.** Capcom looks like a shadcn/ui app and follows the system's light or dark setting. Ghost, in the
+  list's footer, switches this device to a second look inspired by the Ghost in Destiny: graphite and pale shell
+  greys, cut corners, status dots drawn as eyes, and a working spinner shaped like a shell that opens and turns
+  round its eye. Press it again to go back. [The decision record](docs/adr/20261022-ghost-look.md) says what
+  changes and why.
 
 ## Tools
 

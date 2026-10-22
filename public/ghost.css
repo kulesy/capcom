@@ -1,0 +1,385 @@
+.shell-spin, .brand-mark, .emblem { display: none; }
+
+:root[data-look="ghost"] {
+  --background: oklch(0.972 0.003 272);
+  --foreground: oklch(0.215 0.012 272);
+  --card: oklch(0.988 0.002 272);
+  --card-foreground: oklch(0.215 0.012 272);
+  --popover: oklch(0.988 0.002 272);
+  --popover-foreground: oklch(0.215 0.012 272);
+  --primary: oklch(0.25 0.014 272);
+  --primary-foreground: oklch(0.975 0.003 272);
+  --secondary: oklch(0.925 0.006 272);
+  --secondary-foreground: oklch(0.215 0.012 272);
+  --muted: oklch(0.925 0.006 272);
+  --muted-foreground: oklch(0.47 0.014 268);
+  --accent: oklch(0.925 0.006 272);
+  --accent-foreground: oklch(0.215 0.012 272);
+  --destructive: oklch(0.53 0.20 27);
+  --border: oklch(0.875 0.007 272);
+  --input: oklch(0.85 0.008 272);
+  --ring: oklch(0.58 0.105 232);
+  --sidebar: oklch(0.942 0.005 272);
+  --sidebar-foreground: oklch(0.215 0.012 272);
+  --sidebar-primary: oklch(0.56 0.11 230);
+  --sidebar-primary-foreground: oklch(0.975 0.003 272);
+  --sidebar-accent: oklch(0.905 0.007 272);
+  --sidebar-accent-foreground: oklch(0.215 0.012 272);
+  --sidebar-border: oklch(0.875 0.007 272);
+  --sidebar-ring: oklch(0.58 0.105 232);
+  --success: oklch(0.56 0.11 230);
+  --success-foreground: oklch(0.48 0.12 150);
+  --warning: oklch(0.62 0.15 50);
+  --warning-foreground: oklch(0.47 0.11 52);
+  --warning-muted: oklch(0.95 0.03 62);
+  --eye: oklch(0.85 0.11 215);
+  --eye-ink: oklch(0.56 0.11 230);
+  --socket: oklch(0.25 0.014 272);
+  --shell-lit: oklch(0.64 0.012 272);
+  --shell-shade: oklch(0.38 0.014 272);
+  --edge-light: oklch(1 0 0 / 75%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-look="ghost"] {
+    --background: oklch(0.21 0.010 272);
+    --foreground: oklch(0.955 0.003 272);
+    --card: oklch(0.235 0.011 272);
+    --card-foreground: oklch(0.955 0.003 272);
+    --popover: oklch(0.225 0.011 272);
+    --popover-foreground: oklch(0.955 0.003 272);
+    --primary: oklch(0.93 0.004 272);
+    --primary-foreground: oklch(0.2 0.01 272);
+    --secondary: oklch(0.27 0.012 272);
+    --secondary-foreground: oklch(0.955 0.003 272);
+    --muted: oklch(0.27 0.012 272);
+    --muted-foreground: oklch(0.74 0.012 268);
+    --accent: oklch(0.27 0.012 272);
+    --accent-foreground: oklch(0.955 0.003 272);
+    --destructive: oklch(0.70 0.17 25);
+    --border: oklch(0.96 0.005 272 / 12%);
+    --input: oklch(0.96 0.005 272 / 18%);
+    --ring: oklch(0.80 0.10 222);
+    --sidebar: oklch(0.175 0.010 272);
+    --sidebar-foreground: oklch(0.955 0.003 272);
+    --sidebar-primary: oklch(0.82 0.11 220);
+    --sidebar-primary-foreground: oklch(0.2 0.01 272);
+    --sidebar-accent: oklch(0.245 0.011 272);
+    --sidebar-accent-foreground: oklch(0.955 0.003 272);
+    --sidebar-border: oklch(0.96 0.005 272 / 10%);
+    --sidebar-ring: oklch(0.80 0.10 222);
+    --success: oklch(0.82 0.11 220);
+    --success-foreground: oklch(0.78 0.13 150);
+    --warning: oklch(0.72 0.14 58);
+    --warning-foreground: oklch(0.82 0.11 65);
+    --warning-muted: oklch(0.29 0.04 60);
+    --diff-del: oklch(0.70 0.17 25);
+    --eye: oklch(0.85 0.11 215);
+    --eye-ink: oklch(0.82 0.11 220);
+    --socket: oklch(0.15 0.012 272);
+    --shell-lit: oklch(0.90 0.006 272);
+    --shell-shade: oklch(0.64 0.012 272);
+    --edge-light: oklch(1 0 0 / 9%);
+  }
+}
+
+@supports (corner-shape: bevel) {
+  :root[data-look="ghost"] { --radius: 0.4375rem; }
+
+  [data-look="ghost"] :where(
+    .btn, .badge:is(.count, .scope-count), .input, .input-group, .problem, [data-sonner-toast][data-styled="true"],
+    .group-head, .more, .fold, .menu, .menu-item, [data-slot="dialog-content"], [data-slot="alert-dialog-content"],
+    .row, .group[data-drop], .drop-hint, [data-slot="empty"], [data-slot="empty-icon"][data-variant="icon"], .scope,
+    .bubble, .thumb, .thumbs .thumb img, .msg code, .tool code, .msg pre.code, .table,
+    .tool details, .tool-group details, .think details, .tool summary, .tool-group summary, .think summary,
+    .tool-io, .system, .approval, .approval pre, .hold, .dock .notice, .composer-box, .attachment,
+    .attached > .preparing, .context-pop, .context-load > span, .folder, [data-slot="command"],
+    [data-slot="command-input"], .chip, [data-slot="command-item"], .slash-menu, kbd, [data-slot="tooltip-content"],
+    .viewer-img, .offer, .diff, .option, .preview, .chip-card, .widget iframe.card, .widget-note, .widget-wait, .widget-ask
+  ),
+  [data-look="ghost"] .sub-rows > li:last-child::before { corner-shape: bevel; }
+
+  [data-look="ghost"] :is(.composer-row .btn, .btn.thumb-remove) { corner-shape: round; }
+
+  [data-look="ghost"] .bubble { border-radius: 0.25rem 0.875rem 0.25rem 0.25rem; }
+}
+
+@supports not (corner-shape: bevel) {
+  :root[data-look="ghost"] {
+    --radius: 3px;
+    --radius-sm: 2px;
+    --radius-md: 2px;
+    --radius-lg: 3px;
+    --radius-xl: 4px;
+  }
+
+  [data-look="ghost"] .bubble { border-radius: 0.25rem; }
+}
+
+[data-look="ghost"] ::selection { background-color: color-mix(in oklab, var(--eye-ink) 28%, transparent); }
+
+[data-look="ghost"] :is(.input, .input-group-control)::selection {
+  background-color: color-mix(in oklab, var(--eye-ink) 28%, transparent);
+  color: var(--foreground);
+}
+
+[data-look="ghost"] .btn,
+[data-look="ghost"] .btn[data-variant="destructive"] { --btn-ring: var(--ring); }
+
+[data-look="ghost"] .btn[aria-invalid="true"] { --btn-ring: var(--destructive); }
+
+[data-look="ghost"] .transcript:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--ring), inset 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+[data-look="ghost"] .composer-box:has(.input-group-control:focus-visible) {
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent),
+    var(--shadow-xs),
+    0 0 1.5rem -0.5rem color-mix(in oklab, var(--eye-ink) 45%, transparent);
+}
+
+[data-look="ghost"] .context-arc { stroke: var(--context-arc, var(--eye-ink)); }
+
+[data-look="ghost"] .lamp {
+  --lamp-core: var(--eye);
+  --lamp-edge: inset 0 0 0 1px var(--muted-foreground);
+  background: transparent;
+}
+
+[data-look="ghost"] .lamp:is([data-state="working"], [data-state="active"], [data-state="done"], [data-state="waiting"], [data-state="failed"]),
+[data-look="ghost"] .row-dot:is([data-dot="running"], [data-dot="awaiting"]) {
+  --lamp-edge: 0 0 0 1px color-mix(in oklab, var(--foreground) 16%, transparent);
+  background: radial-gradient(circle closest-side, var(--lamp-core, var(--eye)) 0 58%, var(--socket) 64%);
+  box-shadow: var(--lamp-edge);
+}
+
+[data-look="ghost"] .lamp[data-state="working"],
+[data-look="ghost"] .row-dot[data-dot="running"] {
+  box-shadow: var(--lamp-edge), 0 0 0.35rem color-mix(in oklab, var(--eye) 45%, transparent);
+}
+
+[data-look="ghost"] .lamp[data-state="waiting"],
+[data-look="ghost"] .row-dot[data-dot="awaiting"] {
+  --lamp-core: var(--warning);
+  box-shadow: var(--lamp-edge), 0 0 0.6rem color-mix(in oklab, var(--warning) 45%, transparent);
+}
+
+[data-look="ghost"] .lamp[data-state="failed"] { --lamp-core: var(--destructive); }
+
+[data-look="ghost"] .step-lamps { rotate: 45deg; }
+
+[data-look="ghost"] .step-lamps > span { border-radius: 0; }
+
+[data-look="ghost"] .group-head .name {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-look="ghost"] :is(
+  .row:is([aria-current="page"], [aria-selected="true"]),
+  .scope[aria-current="true"],
+  [data-slot="command-item"][data-selected="true"]
+):not(:focus-visible, [data-over], .lifted) {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent);
+}
+
+[data-look="ghost"] .menu,
+[data-look="ghost"] .menu:focus-visible { box-shadow: var(--menu-shadow), inset 0 1px 0 var(--edge-light); }
+
+[data-look="ghost"] .context-pop,
+[data-look="ghost"] .context-pop:focus-visible,
+[data-look="ghost"] .slash-menu { box-shadow: var(--shadow-md), inset 0 1px 0 var(--edge-light); }
+
+[data-look="ghost"] :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"]),
+[data-look="ghost"] :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"]):focus-visible {
+  box-shadow: var(--shadow-lg), inset 0 1px 0 var(--edge-light);
+}
+
+[data-look="ghost"] [data-sonner-toast][data-styled="true"] { box-shadow: 0 4px 12px rgb(0 0 0 / 0.1), inset 0 1px 0 var(--edge-light); }
+
+[data-look="ghost"] [data-sonner-toast]:focus-visible {
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 0.1),
+    inset 0 1px 0 var(--edge-light),
+    0 0 0 1px var(--ring),
+    0 0 0 4px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+[data-look="ghost"] [data-slot="tooltip-content"] {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--background) 22%, transparent), inset 0 1px 0 var(--edge-light);
+}
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) {
+  background-color: var(--popover-foreground);
+  color: var(--popover);
+}
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) svg { color: inherit; }
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
+  color: color-mix(in oklab, var(--popover) 70%, transparent);
+}
+
+[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-state="open"]):not([data-disabled]) {
+  background-color: var(--destructive);
+  color: var(--popover);
+}
+
+[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
+  color: var(--popover);
+}
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state] {
+  background-color: color-mix(in oklab, var(--popover) 30%, transparent);
+}
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] { background-color: var(--popover); }
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state] .menu-switch-thumb { background-color: var(--popover); }
+
+[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] .menu-switch-thumb { background-color: var(--popover-foreground); }
+
+[data-look="ghost"] .menu-label {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+[data-look="ghost"] .shell { overflow: visible; }
+
+[data-look="ghost"] .shell-lit { fill: var(--shell-lit); }
+
+[data-look="ghost"] .shell-shade { fill: var(--shell-shade); }
+
+[data-look="ghost"] .shell-socket { fill: var(--socket); }
+
+[data-look="ghost"] .shell-eye { fill: var(--eye); }
+
+[data-look="ghost"] .shell-glow {
+  fill: color-mix(in oklab, var(--eye) 55%, transparent);
+  opacity: 0;
+}
+
+[data-look="ghost"] .shell-turn {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
+[data-look="ghost"] .chaser { display: none; }
+
+[data-look="ghost"] .shell-spin {
+  display: block;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+[data-look="ghost"] .brand { grid-template-columns: auto minmax(0, 1fr); column-gap: 0.5rem; }
+
+[data-look="ghost"] .brand-mark {
+  display: block;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+[data-look="ghost"] .emblem {
+  position: relative;
+  display: block;
+  width: 5.5rem;
+  height: 6.75rem;
+  margin: 0 auto 1.5rem;
+}
+
+[data-look="ghost"] .emblem-shell {
+  display: block;
+  width: 5.5rem;
+  height: 5.5rem;
+}
+
+[data-look="ghost"] .emblem-shell .shell-glow { opacity: 0.35; }
+
+[data-look="ghost"] .emblem-shadow {
+  position: absolute;
+  top: 6.25rem;
+  left: 50%;
+  width: 3.5rem;
+  height: 0.5rem;
+  margin-left: -1.75rem;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--foreground) 15%, transparent), transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-look="ghost"] .emblem-shadow { background: radial-gradient(closest-side, color-mix(in oklab, black 35%, transparent), transparent); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-look="ghost"] :is(.lamp[data-state="working"], .row-dot[data-dot="running"]) { animation: lamp-breathe 1800ms ease-in-out infinite; }
+
+  [data-look="ghost"] .shell-spin .shell-turn { animation: shell-turn 1800ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+
+  [data-look="ghost"] .shell-spin .shell-plate { animation: shell-open 1800ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+
+  [data-look="ghost"] .shell-spin .shell-glow { animation: shell-glow 1800ms ease-in-out infinite; }
+
+  [data-look="ghost"] .emblem-shell { animation: emblem-float 6000ms ease-in-out infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-turn { animation: emblem-turn 12000ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-plate { animation: emblem-open 12000ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-glow { animation: emblem-glow 12000ms ease-in-out infinite; }
+
+  [data-look="ghost"] .emblem-shadow { animation: emblem-shadow 6000ms ease-in-out infinite; }
+
+  @keyframes lamp-breathe {
+    0%, 100% { box-shadow: var(--lamp-edge), 0 0 0.125rem color-mix(in oklab, var(--eye) 20%, transparent); }
+    50% { box-shadow: var(--lamp-edge), 0 0 0.5rem color-mix(in oklab, var(--eye) 60%, transparent); }
+  }
+
+  @keyframes shell-turn {
+    0%, 18% { transform: rotate(0deg); }
+    66%, 100% { transform: rotate(90deg); }
+  }
+
+  @keyframes shell-open {
+    0%, 4% { transform: translateY(0); }
+    26%, 60% { transform: translateY(-1.8px); }
+    84%, 100% { transform: translateY(0); }
+  }
+
+  @keyframes shell-glow {
+    0%, 6%, 88%, 100% { opacity: 0; }
+    30%, 60% { opacity: 1; }
+  }
+
+  @keyframes emblem-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-0.25rem); }
+  }
+
+  @keyframes emblem-shadow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.88); }
+  }
+
+  @keyframes emblem-turn {
+    0%, 2.7% { transform: rotate(0deg); }
+    9.9%, 100% { transform: rotate(90deg); }
+  }
+
+  @keyframes emblem-open {
+    0%, 0.6% { transform: translateY(0); }
+    3.9%, 9% { transform: translateY(-1.8px); }
+    12.6%, 100% { transform: translateY(0); }
+  }
+
+  @keyframes emblem-glow {
+    0%, 0.9%, 13.2%, 100% { opacity: 0.35; }
+    4.5%, 9% { opacity: 1; }
+  }
+}

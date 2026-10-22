@@ -4,6 +4,7 @@ import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { useClock, useFields, useStick, useStore } from './hooks.js';
 import { isChip, Row, Thought } from './rows.js';
+import { Shell } from './shell.js';
 import { display, doingNow } from './thread.js';
 import { closeViewer, openViewer } from './viewer.js';
 import { DEFAULT_TEXT, hasRow, HOLD_MS, nextHold, ROTATE_MS, waitText } from './widget-wait.js';
@@ -28,7 +29,7 @@ function turnOf({ status, outside }) {
 function Working({ work, since, on, outside, names }) {
   useClock(on, since);
   const text = [work && duration(Date.now() - since), work?.tokens > 0 && `${tokenCount(work.tokens)} tokens`, doingNow(work, names)].filter(Boolean).join(' · ');
-  return html`<p class="working" id="working" hidden=${!on}><span class="chaser" aria-hidden="true"><span></span><span></span><span></span></span>
+  return html`<p class="working" id="working" hidden=${!on}><span class="chaser" aria-hidden="true"><span></span><span></span><span></span></span><${Shell} class="shell-spin" />
     <span class="working-text" id="workingText" title=${outside ? OUTSIDE_TITLE : OWN_TITLE}>${text}</span></p>`;
 }
 

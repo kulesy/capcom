@@ -9,10 +9,12 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-title" content="Capcom">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" data-standard="#ffffff" data-ghost="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" data-standard="#0a0a0a" data-ghost="#17181d" media="(prefers-color-scheme: dark)">
+<script>try { if (JSON.parse(localStorage.getItem('capcom.look')) === 'ghost') { document.documentElement.dataset.look = 'ghost'; for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = meta.dataset.ghost } } catch {}</script>
 <link rel="preload" href="vendor/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="ghost.css">
 <script type="importmap">{ "imports": { "preact": "./vendor/preact.mjs", "preact/hooks": "./vendor/hooks.mjs", "htm": "./vendor/htm.mjs" } }</script>
 <link rel="modulepreload" href="vendor/preact.mjs">
 <link rel="modulepreload" href="vendor/hooks.mjs">
@@ -30,6 +32,8 @@
 <link rel="modulepreload" href="ui/draft.js">
 <link rel="modulepreload" href="ui/shortcuts.js">
 <link rel="modulepreload" href="ui/hooks.js">
+<link rel="modulepreload" href="ui/shell.js">
+<link rel="modulepreload" href="ui/look.js">
 <link rel="modulepreload" href="ui/thread.js">
 <link rel="modulepreload" href="ui/session.js">
 <link rel="modulepreload" href="ui/widget-theme.js">
@@ -76,7 +80,7 @@
   <nav class="list" aria-label="Sessions">
     <header class="list-head">
       <button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Projects" aria-expanded="false" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.75 4v12" stroke="currentColor" stroke-width="1.6"/></svg></button>
-      <div class="brand"><h1>Capcom</h1><span class="station">{{station}}</span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><h1>Capcom</h1><span class="station">{{station}}</span></div>
       <div class="list-actions">
         <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label="New session or group" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -85,12 +89,14 @@
     <div class="sections"><p class="quiet pad">Loading sessions</p></div>
     <footer class="list-foot">
       <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys">Passkeys</a>
+      <button class="btn look" data-variant="ghost" data-size="sm" type="button" disabled>Ghost</button>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
   </nav>
-  <main class="chat"><section class="empty"><p>Pick a session, or start a new one.</p></section></main>
+  <main class="chat"><section class="empty"><div class="emblem" aria-hidden="true"></div><p>Pick a session, or start a new one.</p></section></main>
 </div>
 <script>try { if (localStorage.getItem('capcom.projectsDocked') === 'true' && matchMedia('(min-width: 56rem)').matches) { document.querySelector('#boot .rail').hidden = false; document.querySelector('#boot .projects-toggle').setAttribute('aria-expanded', 'true') } } catch {}</script>
+<script>document.querySelector('#boot .look').setAttribute('aria-pressed', document.documentElement.dataset.look === 'ghost')</script>
 <div id="root" data-home="{{home}}" data-station="{{station}}"></div>
 <script type="module" src="app.js"></script>
 </body>

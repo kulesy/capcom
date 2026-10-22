@@ -9,10 +9,12 @@ import { NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
+import { LookSwitch } from './look.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
+import { Shell } from './shell.js';
 import { archiveHint, keyHint, shortcut } from './shortcuts.js';
 import { say } from './toast.js';
 import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, TITLE_MAX, withKids } from './tree.js';
@@ -581,7 +583,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   <nav class="list" aria-label="Sessions" ref=${nav}>
     <header class="list-head">
       <${ProjectsToggle} projects=${projects} />
-      <div class="brand"><h1>Capcom</h1><span class="station">${STATION}</span></div>
+      <div class="brand"><${Shell} class="brand-mark" /><h1>Capcom</h1><span class="station">${STATION}</span></div>
       <div class="list-actions">
         <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} data-tip=${addMenu.label} data-tip-key=${keyHint(mod, 'N')} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" data-tip="Find a session" data-tip-key=${keyHint(mod, 'K')} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -597,6 +599,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     </div>
     <footer class="list-foot">
       <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
+      <${LookSwitch} />
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />

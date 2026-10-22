@@ -33,3 +33,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-22 | [Show a chat's context usage from the CLI's own count](20261022-context-usage-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Pick the model, effort and fast mode from one menu, with the models read from the CLI](20261022-model-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md) | Accepted |
+| 2026-10-22 | [Offer a Ghost look beside the standard one, switched per device](20261022-ghost-look.md) | Accepted |

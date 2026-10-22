@@ -7,6 +7,7 @@ import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
 import { useProjects } from './ui/projects.js';
 import { useRenewal } from './ui/renew.js';
 import { newSession, SessionList } from './ui/sessions-list.js';
+import { Shell } from './ui/shell.js';
 import { keyHint, shortcut } from './ui/shortcuts.js';
 import { Spotlight } from './ui/spotlight.js';
 import { ToastHost } from './ui/toast.js';
@@ -206,6 +207,7 @@ function App() {
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>
+        <div class="emblem" aria-hidden="true"><${Shell} class="emblem-shell" /><span class="emblem-shadow"></span></div>
         <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
