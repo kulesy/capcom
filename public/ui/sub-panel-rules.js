@@ -64,6 +64,15 @@ export function pendingLine(pending) {
   return `Waiting for you to approve ${what || 'a request'}${more}`;
 }
 
+// The pill a card shows for a session's state: its words and the tone the page colours it by.
+export function pillOf(row) {
+  if (row.state === 'waiting' || row.dot === 'awaiting') return { label: 'Waiting on you', tone: 'needs' };
+  if (row.dot === 'error') return { label: 'Failed', tone: 'error' };
+  if (row.state === 'working') return { label: 'Working', tone: 'working' };
+  if (row.dot === 'ready') return { label: 'Unread', tone: 'ready' };
+  return { label: 'Idle', tone: 'idle' };
+}
+
 // A session's summary is read again when it has moved or changed state, since what it waits on goes with its state.
 export const stampOf = row => `${row.lastActivityAt}:${row.state}`;
 

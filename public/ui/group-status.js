@@ -34,7 +34,7 @@ function Member({ r }) {
 
 export function Part({ label, rows, count = rows.length, children }) {
   return html`<section class="status-part">
-    <h3 class="status-heading">${label} <span class="badge count">${count}</span></h3>
+    <h3 class="status-heading">${`${label} (${count})`}</h3>
     <ul class="status-rows">${rows.map(r => html`<${Member} key=${r.id} r=${r} />`)}</ul>${children}
   </section>`;
 }
@@ -66,7 +66,7 @@ export function Rest({ group, label = 'Idle and archived', count, open, onFlip, 
   const body = `status-more-${group.id}`;
   return html`<section class="status-part">
     <button class="status-fold status-rest" type="button" aria-expanded=${open} aria-controls=${open ? body : null} onClick=${onFlip}>
-      <span>${label}</span><span class="badge count">${count + group.archived}</span>${chevron()}
+      <span>${`${label} (${count + group.archived})`}</span>${chevron()}
     </button>
     ${open ? html`<div id=${body}>
       ${children}
@@ -77,7 +77,7 @@ export function Rest({ group, label = 'Idle and archived', count, open, onFlip, 
 
 export const EMPTY = 'No sessions in this group yet. Move one in from its menu, or ask here to start one.';
 
-export const LIVE = [['needs', 'Needs you'], ['working', 'Working'], ['recent', 'Recent activity']];
+export const LIVE = [['needs', 'Waiting on you'], ['working', 'Working'], ['recent', 'Recent activity']];
 
 // The summary line folds the panel. Both folds are kept for each group in this browser.
 export function GroupStatus({ feed }) {

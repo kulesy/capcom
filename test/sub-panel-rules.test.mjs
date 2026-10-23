@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RECENT_MS } from '../public/ui/group-rules.js';
 import {
-  batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, partOf, partsOf, pendingLine, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
+  batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, partOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
   subStatusOn, summaryLine, trim,
 } from '../public/ui/sub-panel-rules.js';
 
@@ -234,4 +234,13 @@ test('more than 300 lines drawn are all asked for once and the asking stops, whe
   assert.deepEqual(staleIds(rows, kept), []);
   const wide = Array.from({ length: 700 }, (_, n) => row(`w${n}`, 'top', 'working', n * MINUTE));
   assert.equal(settle(wide, new Map()), 1);
+});
+
+test('a card\'s pill says waiting for a waiting or awaiting session, then failed, working, unread, and idle for the rest', () => {
+  assert.deepEqual(pillOf({ state: 'waiting', dot: null }), { label: 'Waiting on you', tone: 'needs' });
+  assert.deepEqual(pillOf({ state: 'idle', dot: 'awaiting' }), { label: 'Waiting on you', tone: 'needs' });
+  assert.deepEqual(pillOf({ state: 'idle', dot: 'error' }), { label: 'Failed', tone: 'error' });
+  assert.deepEqual(pillOf({ state: 'working', dot: 'running' }), { label: 'Working', tone: 'working' });
+  assert.deepEqual(pillOf({ state: 'idle', dot: 'ready' }), { label: 'Unread', tone: 'ready' });
+  assert.deepEqual(pillOf({ state: 'idle', dot: null }), { label: 'Idle', tone: 'idle' });
 });

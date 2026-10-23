@@ -146,11 +146,11 @@ test('the archived sessions are read from the server only when the idle and arch
   const page = await appPage(t, unsummarised.origin, '#/g/cg-work');
   await page.until(`!!document.querySelector('.group-status .status-rest')`);
   assert.equal(await archivedReads(page), 0);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.status-rest > span')].map(el => el.textContent)`), ['Idle and archived', '2']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.status-rest > span')].map(el => el.textContent)`), ['Idle and archived (2)']);
   await page.click('.status-rest');
   await page.until(`document.querySelectorAll('.group-status .status-row').length === 3`);
   assert.equal(await archivedReads(page), 1);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.group-status .status-part')].map(p => p.querySelector(':scope > .status-heading')?.textContent.replace(/\\s+/g, ' ').trim() ?? null)`), ['Recent activity 1', null, 'Idle 1', 'Archived 1']);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.group-status .status-part')].map(p => p.querySelector(':scope > .status-heading')?.textContent.replace(/\\s+/g, ' ').trim() ?? null)`), ['Recent activity (1)', null, 'Idle (1)', 'Archived (1)']);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.group-status .status-row')].map(a => a.getAttribute('href'))`), ['#/s/recent', '#/s/idle', '#/s/old']);
   assert.deepEqual(page.problems, []);
 });

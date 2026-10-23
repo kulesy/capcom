@@ -189,85 +189,114 @@
   scrollbar-color: var(--border) transparent;
 }
 
-.subs-sum { margin: 0; padding: 0.25rem 0.5rem 0.5rem; font: 500 0.8125rem/1.25rem var(--font-sans); }
+.subs-sum { margin: 0; padding: 0.25rem 0.5rem 1rem; font: 500 0.8125rem/1.25rem var(--font-sans); }
 
-.subs .status-part + .status-part { margin-top: 0.5rem; }
+.subs .status-part + .status-part { margin-top: 1.25rem; }
 
-.subs .status-fold:focus-visible { box-shadow: inset 0 0 0 2px var(--ring); }
+.subs .status-part { padding-inline: 0.25rem; }
+
+.subs .status-heading { padding: 0 0 0.5rem; font: 500 0.875rem/1.25rem var(--font-sans); }
+
+.subs .status-rest { padding: 0; border-radius: var(--radius-sm); font: 500 0.875rem/1.25rem var(--font-sans); }
+
+.subs .status-fold:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
 
 .sub-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.sub-row {
-  display: grid;
-  grid-template-columns: 1.5rem 0.75rem minmax(0, 1fr) auto;
-  grid-template-areas: "fold dot title time" ". . body body";
-  align-items: center;
-  column-gap: 0.5rem;
-  padding: 0.125rem 0.5rem 0.25rem 0.125rem;
-  border-radius: var(--radius-md);
+.sub { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+.sub.open { grid-column: 1 / -1; }
+
+.sub-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklab, var(--muted) 55%, var(--background));
 }
 
-.sub-fold { grid-area: fold; }
+.sub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; align-self: stretch; }
+
+.sub-title {
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: 600 0.9375rem/1.375rem var(--font-sans);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.sub-title:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+
+.sub-head .status-time { flex: none; }
+
+.sub-pill {
+  padding: 0.0625rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  font: 500 0.75rem/1.125rem var(--font-sans);
+  white-space: nowrap;
+}
+
+.sub-pill[data-tone="needs"] {
+  border-color: color-mix(in oklab, var(--warning) 55%, var(--warning-muted));
+  background: var(--warning-muted);
+  color: var(--warning-foreground);
+}
+
+.sub-pill[data-tone="working"] { background: var(--muted); color: var(--foreground); }
+
+.sub-pill[data-tone="ready"] {
+  border-color: color-mix(in oklab, var(--ready) 40%, var(--background));
+  background: color-mix(in oklab, var(--ready) 12%, var(--background));
+  color: color-mix(in oklab, var(--ready) 70%, var(--foreground));
+}
+
+.sub-pill[data-tone="error"] {
+  border-color: color-mix(in oklab, var(--destructive) 40%, var(--background));
+  background: color-mix(in oklab, var(--destructive) 12%, var(--background));
+  color: color-mix(in oklab, var(--destructive) 60%, var(--foreground));
+}
+
+.sub-pill[data-tone="idle"] { background: transparent; color: color-mix(in oklab, var(--muted-foreground) 80%, var(--foreground)); }
+
+.sub-card > p { align-self: stretch; margin: 0; font-size: 0.875rem; line-height: 1.375rem; overflow-wrap: anywhere; }
+
+.sub-said {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.sub-wait { font-weight: 600; }
+
+.sub-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; align-self: stretch; margin-top: auto; }
+
+.sub-roll { margin: 0; color: var(--muted-foreground); font-size: 0.75rem; line-height: 1rem; }
+
+.sub-need { color: var(--warning-foreground); font-weight: 500; }
+
+.sub-fold { flex: none; margin-left: auto; color: var(--muted-foreground); }
 
 .sub-fold .chevron { width: 0.875rem; height: 0.875rem; }
 
 .sub-fold[aria-expanded="true"] .chevron { transform: rotate(90deg); }
 
-.sub-title {
-  grid-area: title;
-  min-width: 0;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  color: inherit;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sub-title:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-
-.sub-row .status-time { padding-left: 0.25rem; }
-
-.sub-body {
-  grid-area: body;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  min-width: 0;
-}
-
-.sub-body > p { margin: 0; color: var(--muted-foreground); font-size: 0.75rem; line-height: 1rem; }
-
-.sub-said {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-
-.sub-body .sub-wait, .sub-need { color: var(--warning-foreground); }
-
-.sub-wait { overflow-wrap: anywhere; }
-
-.sub-need { font-weight: 500; }
-
-.sub-open {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem 0.5rem 1.75rem;
-}
+.sub-open { align-self: stretch; min-width: 0; }
 
 .sub-open .sub-reply {
   max-height: 18rem;
@@ -277,6 +306,7 @@
   overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  background: var(--background);
   font-size: 0.8125rem;
   line-height: 1.5;
   scrollbar-width: thin;
@@ -285,6 +315,8 @@
 
 .sub-open .sub-reply:focus-visible { outline-offset: 2px; }
 
+.sub-under { margin-left: 0.75rem; padding-left: 0.75rem; border-left: 1px solid var(--border); }
+
 @media (hover: hover) {
   .sub-title:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 
@@ -292,15 +324,11 @@
 }
 
 @media (pointer: coarse) {
-  .sub-row { grid-template-columns: 2.75rem 0.75rem minmax(0, 1fr) auto; column-gap: 0.25rem; padding-left: 0; }
+  .sub-title { margin-block: -0.6875rem; padding-block: 0.6875rem; }
 
-  .sub-row .sub-fold { width: 2.75rem; height: 2.75rem; }
+  .sub-foot { min-height: 2.75rem; }
 
-  .sub-row { padding-bottom: 0.5rem; }
-
-  .sub-title { line-height: 2.75rem; }
-
-  .sub-body { margin-top: -0.5rem; }
+  .sub-fold { margin-right: 0.25rem; }
 
   .chat-tools { gap: 1rem; }
 }

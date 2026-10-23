@@ -1,16 +1,16 @@
 // The Sub sessions tab of a chat's side panel: the sessions nested under the chat, or the group's own sessions in a group's chat. Each is a
-// line with its mark, when it last moved, the first sentence of its latest reply and its roll-up, and it opens to the whole reply and the
+// card with its state, when it last moved, the first sentence of its latest reply and its roll-up, and it opens to the whole reply and the
 // sessions under it, to any depth. Summaries are read for the lines on screen only, and again for a line when it moves.
 import { md } from '../md.mjs';
 import { api } from './api.js';
 import { DOT_LABEL, STATE_LABEL, when } from './format.js';
 import { flipped, groupOfSession } from './group-rules.js';
-import { chevron, EMPTY, enc, LIVE, Mark, Rest } from './group-status.js';
+import { chevron, EMPTY, enc, LIVE, Rest } from './group-status.js';
 import { useLocal, useStore } from './hooks.js';
 import { html, useEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
 import { createStore } from './store.js';
-import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, splitWaiting, staleIds, stampOf, summaryLine, trim } from './sub-panel-rules.js';
+import { batchesOf, drawnRows, KEPT, linesOf, partsOf, pendingLine, pillOf, splitWaiting, staleIds, stampOf, summaryLine, trim } from './sub-panel-rules.js';
 import { rollupLine, rollupOf } from './sub-rules.js';
 import { everyRow } from './tree.js';
 
@@ -117,23 +117,26 @@ function Line({ node, shared }) {
   const roll = rollupLine(rollupOf(rows, row.id));
   const name = row.title || UNTITLED;
   const state = DOT_LABEL[row.dot] ?? STATE_LABEL[row.state];
+  const pill = pillOf(row);
   const body = `sub-${row.id}`;
-  return html`<li class="sub">
-    <div class="sub-row">
-      <button class="btn sub-fold" data-variant="ghost" data-size="icon-xs" type="button" aria-expanded=${open} aria-controls=${open ? body : null} aria-label=${`Details of ${name}`} data-tip=${`Details of ${name}`} onClick=${() => flip(row.id)}>${chevron()}</button>
-      <${Mark} dot=${row.dot} />
-      <a class="sub-title" href=${`#/s/${enc(row.id)}`}>${name}${state ? html`<span class="sr">, ${state}</span>` : null}</a>
-      <time class="status-time">${when(row.lastActivityAt)}</time>
-      ${waits || heard?.line || roll ? html`<div class="sub-body">
-        ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
-        ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
+  const under = `${body}-subs`;
+  const showSubs = open && subs.length > 0;
+  return html`<li class=${open ? 'sub open' : 'sub'}>
+    <div class="sub-card">
+      <div class="sub-head">
+        <a class="sub-title" href=${`#/s/${enc(row.id)}`}>${name}${state ? html`<span class="sr">, ${state}</span>` : null}</a>
+        <time class="status-time">${when(row.lastActivityAt)}</time>
+      </div>
+      <span class="sub-pill" data-tone=${pill.tone}>${pill.label}</span>
+      ${heard?.line ? html`<p class="sub-said">${heard.line}</p>` : null}
+      ${waits ? html`<p class="sub-wait">${waits}</p>` : null}
+      <div class="sub-foot">
         ${roll ? html`<p class="sub-roll"><${Words} text=${roll} /></p>` : null}
-      </div>` : null}
+        <button class="btn sub-fold" data-variant="ghost" data-size="xs" type="button" aria-expanded=${open} aria-controls=${open ? (showSubs ? `${body} ${under}` : body) : null} aria-label=${`Details of ${name}`} data-tip=${`Details of ${name}`} onClick=${() => flip(row.id)}>Details${chevron()}</button>
+      </div>
+      ${open ? html`<div class="sub-open" id=${body}><${Reply} row=${row} active=${active} /></div>` : null}
     </div>
-    ${open ? html`<div class="sub-open" id=${body}>
-      <${Reply} row=${row} active=${active} />
-      ${subs.length ? html`<${Lines} nodes=${subs} shared=${shared} label=${`Sub sessions of ${name}`} />` : null}
-    </div>` : null}
+    ${showSubs ? html`<div class="sub-under" id=${under}><${Lines} nodes=${subs} shared=${shared} label=${`Sub sessions of ${name}`} /></div>` : null}
   </li>`;
 }
 
@@ -141,7 +144,7 @@ const Lines = ({ nodes, shared, label }) => html`<ul class="sub-lines" aria-labe
 
 function Section({ label, nodes, shared }) {
   return html`<section class="status-part">
-    <h3 class="status-heading">${label} <span class="badge count">${nodes.length}</span></h3>
+    <h3 class="status-heading">${`${label} (${nodes.length})`}</h3>
     <${Lines} nodes=${nodes} shared=${shared} />
   </section>`;
 }
