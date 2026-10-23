@@ -50,7 +50,7 @@ Chosen option: "Rename what people and Claude read, and keep every internal name
 - ✅ A person reads GhostShell in the page, the sign-in and setup pages, a home-screen app's name and the messages.
 - ✅ The password, passkeys, layout, routines, launchd service, macOS answers and tool names behave as before, with no migration.
 - ✅ The change is strings, so it is small to review and to undo.
-- ❌ There are two names to know. The README says near its top that the repo, the service and the stored settings still use capcom.
+- ❌ There are two names to know. The README's "The name" section says that the package, the service and the stored settings still use capcom.
 - ❌ macOS still shows the app as Capcom, in its questions and in System Settings.
 - ❌ A passkey made before the change keeps Capcom as its display name.
 - ❌ An app installed from the page earlier may keep the name it was installed with until it is installed again.

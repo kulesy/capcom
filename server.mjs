@@ -454,7 +454,7 @@ function readBody(req, limit = 1_000_000) {
 
 // A form or script on another site cannot drive this, because every write must come from this host over this scheme.
 // NOTE: [16 Oct 2026] EK - The scheme is the proxy's X-Forwarded-Proto, so a proxy that ends https and does not send it
-// has every write refused with a 403. The README's Remote access section says so.
+// has every write refused with a 403. docs/remote-access.md says so.
 function sameOrigin(req) {
   const { origin, host } = req.headers;
   if (!origin) return true;
