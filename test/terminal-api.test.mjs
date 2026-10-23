@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { as, cliCalls, listen, request, restart, signIn, start, until } from './harness.mjs';
 
@@ -244,6 +245,31 @@ test('a long output is cut to its last 64 KB in a snapshot, and a flood is cappe
   const after = (await snapshot(s, token, id)).runs.find(r => r.id === flood.id);
   assert.equal(after.truncated, true);
   assert.equal(after.output.map(c => c.text).join('').length, 65_536);
+  viewer.close();
+});
+
+test('a viewer that stops reading is dropped once its backlog passes 8 MB, and a viewer that reads keeps its stream', async () => {
+  const { s, token, id } = await open();
+  const viewer = listen(s, token, id);
+  let stalled;
+  const req = http.get({ host: '127.0.0.1', port: s.port, path: `/api/sessions/${id}/events`, headers: { host: `localhost:${s.port}`, ...as(token) } }, res => {
+    stalled = res;
+    res.pause();
+  });
+  req.on('error', () => {});
+  await until(() => stalled && viewer.events.some(e => e.type === 'terminal'), WAIT);
+  const flood = await run(s, token, id, 'head -c 30000000 /dev/zero | tr "\\0" z');
+  await finish(viewer, flood.id);
+  assert.equal(outputOf(viewer, flood.id).length, 30_000_000);
+  // A paused socket cannot see its close, so the stalled viewer reads again and finds its stream ended short.
+  let got = 0;
+  let closed = false;
+  stalled.on('data', chunk => { got += chunk.length; });
+  stalled.on('error', () => {});
+  stalled.on('close', () => { closed = true; });
+  stalled.resume();
+  await until(() => closed, WAIT);
+  assert.ok(got < 20_000_000, `the stalled viewer got ${got} bytes`);
   viewer.close();
 });
 

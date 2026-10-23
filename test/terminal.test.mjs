@@ -199,6 +199,25 @@ test('a run whose pipes are held by something outside its group is closed after 
   assert.deepEqual([r.runs(id).at(-1).running, r.runs(id).at(-1).signal, fake.calls[0].child.stdout.destroyed], [false, 'SIGTERM', true]);
 });
 
+test('a group that has emptied after its shell was reaped is never signalled again, so a reused pid is safe', async () => {
+  const fake = fakeSpawn();
+  const sent = [];
+  let empty = false;
+  const kill = (pid, name) => {
+    if (name === 0 && empty) throw Object.assign(new Error('no such process'), { code: 'ESRCH' });
+    sent.push(name);
+  };
+  const r = rig({ spawn: fake.spawn, grace: 20, kill });
+  const { id } = await r.t.run('a', { command: 'x', source: 'panel', folder: folder('reaped') });
+  fake.calls[0].child.emit('exit', 0, null);
+  empty = true;
+  r.t.stop('a', id);
+  await until(() => finished(r, id), 3000);
+  empty = false;
+  r.t.killAll();
+  assert.deepEqual(sent, [0]);
+});
+
 test('a background job keeps the run open, and Stop still reaches it', async () => {
   const r = rig();
   const { id } = await r.t.run('a', { command: 'sleep 30 & echo bg=$!', source: 'panel', folder: folder('bg') });

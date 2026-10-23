@@ -558,9 +558,16 @@ async function contextFor(id, detail) {
 // What the page redraws from. The clock is left out because it moves on every read.
 const outsideKey = o => (o ? JSON.stringify([o.startedAt, o.tokens, o.tools.map(t => t.id)]) : '');
 
+const EVENT_BACKLOG = 8 * 1024 * 1024;
+
 function events(req, res, id) {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-  const write = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+  // A page that stops reading is dropped once this much waits for it, and its EventSource reconnects to a fresh snapshot.
+  const write = (type, data) => {
+    if (res.destroyed) return;
+    res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (res.writableLength > EVENT_BACKLOG) res.destroy();
+  };
   const chat = getChat(id);
   const first = outsideFor(id);
   // The key of the turn of another app this viewer was last sent, so a change is sent once.
@@ -592,7 +599,7 @@ function events(req, res, id) {
     const out = outsideFor(id);
     if (outsideKey(out) !== shown) { shown = outsideKey(out); write('outside', out); }
   }, 1500);
-  const beat = setInterval(() => res.write(': keep-alive\n\n'), 20_000);
+  const beat = setInterval(() => res.destroyed || res.write(': keep-alive\n\n'), 20_000);
   req.on('close', () => {
     clearInterval(watch);
     clearInterval(beat);
