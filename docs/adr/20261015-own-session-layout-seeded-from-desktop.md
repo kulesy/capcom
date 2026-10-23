@@ -1,6 +1,6 @@
 # Capcom keeps its own session layout, seeded once from Desktop's
 
-- Status: Accepted, amended 2026-10-21 and 2026-10-22
+- Status: Accepted, amended 2026-10-21, 2026-10-22 and 2026-10-23
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: sessions, groups, pins, archive, rename, nesting, claude-desktop, drag-and-drop
@@ -51,6 +51,8 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 
 **Amended 2026-10-22.** A group no longer lists its sessions by title, and the other lists no longer go by the time a transcript was last written. Each list follows the sort the owner set for that section in Desktop: recency, created or alpha, either way round. Capcom reads the sorts from Desktop's config on every refresh and does not copy them, as it does not copy the links. A group made in Capcom, which Desktop has no section for, goes newest first. Capcom's old rule that put titles starting with an emoji first is gone, as Desktop has none. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
 
+**Amended 2026-10-23.** A group can hold `session`, the CLI session id of its own chat, booked the first time the owner opens that chat. A value that is not a UUID, or that an earlier group already holds, is dropped as the file is read and the group stays. That chat is in none of the lists, and the layout routes refuse to move, pin, rename, archive or nest it. See [Give each group a session of its own](20261023-a-session-for-each-group.md).
+
 ### Consequences
 
 - ✅ The owner can move and pin sessions from Capcom, on a phone too, and Desktop cannot overwrite the result.
@@ -89,3 +91,4 @@ Capcom's moves and pins would show in Desktop.
 
 - [List sessions from transcripts and Desktop's records, read only](20261006-read-only-session-list.md), amended 2026-10-15 to point here
 - [Capcom is the only client](20261015-capcom-is-the-only-client.md), which put Capcom's own session organisation first on the roadmap
+- [Give each group a session of its own](20261023-a-session-for-each-group.md), amended this record 2026-10-23

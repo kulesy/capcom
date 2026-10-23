@@ -39,6 +39,8 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-23.** A chip that is started now nests its new session under the session that made the chip (see [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md)).
 
+**Amended 2026-10-23, group sessions.** A group's own chat gets three more tools, listed to that chat alone: `list_group_sessions`, `read_group_session` and `start_group_session`. They reach that group's sessions only. The two that read run with no card in that chat, and starting a session always asks, in Bypass and Auto too, with no Always allow. A tool call can now be answered later, as a start waits for the CLI to name the new session. See [Give each group a session of its own](20261023-a-session-for-each-group.md).
+
 ### Consequences
 
 - ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.
@@ -68,3 +70,4 @@ Capcom allows its own tools by exact name, with no approval card.
 - [Headless CLI per chat](20261006-headless-claude-cli-per-chat.md)
 - [Claude in Chrome on by default](20261015-claude-in-chrome-on-by-default.md), a Desktop tool the CLI provides with a flag
 - [Capcom is the only client](20261015-capcom-is-the-only-client.md)
+- [Give each group a session of its own](20261023-a-session-for-each-group.md), amended this record 2026-10-23

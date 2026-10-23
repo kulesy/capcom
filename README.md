@@ -368,6 +368,11 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
   Capcom session with the chip's prompt, in the folder printed on the card. Chips that Desktop
   sessions created can be started too.
 - **Chapters** (`mark_chapter`) show as titled dividers.
+- **Group sessions.** Each group's header has a button that opens the group's own chat. It works in a
+  private folder under Capcom's state folder, shows the group's live status above the transcript, and gets
+  three tools that reach that group alone: `list_group_sessions`, `read_group_session` and
+  `start_group_session`. Starting a session always asks first, in every permission mode.
+  [The decision record](docs/adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that limits requests to cdnjs, esm.sh, jsDelivr, unpkg and Google Fonts, so model-written HTML
   cannot reach Capcom or its cookie. The frame carries Desktop's variable names, SVG classes and

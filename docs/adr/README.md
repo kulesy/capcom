@@ -17,7 +17,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-15 | [Make Capcom the only client and stop integrating with Desktop](20261015-capcom-is-the-only-client.md) | Accepted, amended 2026-10-15 and 2026-10-22 |
 | 2026-10-15 | [Turn Claude in Chrome on by default in every chat and mode, as Desktop does](20261015-claude-in-chrome-on-by-default.md) | Accepted, amended 2026-10-15 |
 | 2026-10-15 | [Rewrite the front end on vendored Preact with htm, with no build step](20261015-preact-htm-front-end.md) | Accepted. Shipped 2026-10-15. |
-| 2026-10-15 | [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md) | Accepted, amended 2026-10-16, 2026-10-18, 2026-10-21 and 2026-10-22 |
+| 2026-10-15 | [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md) | Accepted, amended 2026-10-16, 2026-10-18, 2026-10-21, 2026-10-22 and 2026-10-23 |
 | 2026-10-15 | [Send pasted images as content blocks and show transcript images through an endpoint](20261015-images-in-the-prompt-box.md) | Accepted, amended 2026-10-17 |
 | 2026-10-15 | [Capcom runs routines itself, from Desktop's prompt files](20261015-capcom-runs-routines-itself.md) | Accepted |
 | 2026-10-16 | [Run the server under a small Capcom app, so macOS permissions belong to Capcom](20261016-capcom-app-for-macos-permissions.md) | Accepted |
@@ -34,3 +34,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-22 | [Pick the model, effort and fast mode from one menu, with the models read from the CLI](20261022-model-menu-from-the-cli.md) | Accepted |
 | 2026-10-22 | [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md) | Accepted |
 | 2026-10-22 | [Make Ghost the look on every device, in a stylesheet of its own](20261022-ghost-look.md) | Accepted, amended 2026-10-23 |
+| 2026-10-23 | [Give each group a session of its own, with the group's status drawn above its chat](20261023-a-session-for-each-group.md) | Accepted |
