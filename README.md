@@ -5,9 +5,10 @@ the routine runs, and the ones started in a terminal. The list uses GhostShell's
 and nests one session under another. The groups and pins start as a copy of Desktop's. It listens on
 http://localhost:4310.
 
-GhostShell used to be called Capcom. The repo, the service and the stored settings still use the name capcom,
-so an existing install keeps working. [The decision record](docs/adr/20261023-ghostshell-name.md) lists what
-keeps it and why.
+GhostShell used to be called Capcom. The GitHub repo is now https://github.com/kulesy/ghostshell, and the old
+address redirects to it. The package, the service, the stored settings and the MCP server still use the name
+capcom, so an existing install keeps working. [The decision record](docs/adr/20261023-ghostshell-name.md) lists
+what keeps it and why.
 
 The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
 

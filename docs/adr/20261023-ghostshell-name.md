@@ -1,6 +1,6 @@
 # Call the app GhostShell, and keep capcom for every internal name
 
-- Status: Accepted
+- Status: Accepted, amended 2026-10-23
 - Deciders: Eli
 - Date: 2026-10-23
 - Tags: naming, branding, compatibility, passkeys, mcp, macos
@@ -42,6 +42,8 @@ Chosen option: "Rename what people and Claude read, and keep every internal name
 - **Why the service and the app keep their names.** Moving the label means a new plist and a new `launchctl bootstrap`, with the agent stopped in between. `Capcom.app` is the root macOS asks about, and macOS ties its answers to that exact build, as the [macOS app decision](20261016-capcom-app-for-macos-permissions.md) sets out. A rename that rebuilt it would need the app opened and answered again. So the app keeps its name, and macOS still lists it as Capcom.
 - **Passkeys.** The relying party ID comes from `rpIdFor(origin)`, the host name of the address, and `lib/webauthn.mjs` checks the hash of that ID when it verifies a passkey. It never reads the name. Only `rp.name` and `user.displayName`, which a passkey manager can show, change. A passkey made before this change was stored with Capcom as its display name, so a manager may go on showing that. It signs in as before, and a new passkey carries GhostShell. A test in `test/passkeys.test.mjs` holds the name and the ID side by side.
 - **Stored settings.** Nothing moves. The state folder and the storage keys are looked up by name, so renaming either would make an install look new: no password, no layout, no pins, no routines, and every folded section open again.
+
+**Amended 2026-10-23, the GitHub repo.** The GitHub repo is now `kulesy/ghostshell`, at https://github.com/kulesy/ghostshell, so the repo leaves the list of what stays capcom. GitHub redirects the old address, for the web pages and for git, so links and clones that use it keep working. The package name, file and folder names, the service, the state folder, the MCP server and the rest of that list keep capcom, for the reasons above.
 
 ### Consequences
 
