@@ -1,0 +1,250 @@
+// What the terminal panel, the code blocks and the prompt box's ! mode decide, with no page in it so node can test it.
+// public/md.mjs imports this too, so the server draws a block's Run button from the same rule the page runs it by.
+
+const SHELL_BLOCKS = new Set(['bash', 'sh', 'zsh', 'shell']);
+
+// The server refuses a longer command, so a block that long gets no Run button.
+export const MAX_COMMAND = 100_000;
+
+// What the owner cannot see in a block: bidi controls, zero-width characters and C0 or C1 controls other than tab and newline.
+// A command holding any of them is not the command the block shows, so Run refuses it.
+const HIDDEN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f؜​-‏‪-‮⁠⁦-⁩﻿]/;
+
+export const hasHiddenCharacters = text => HIDDEN.test(text);
+
+const isPrompt = line => line.trimStart().startsWith('$ ');
+
+// The commands of a block written the way a terminal shows them: each line after "$ ", a line ending in a backslash taking the
+// next as its own, and every other line being output.
+function promptCommands(lines) {
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!isPrompt(lines[i])) continue;
+    let command = lines[i].trimStart().slice(2);
+    while (command.endsWith('\\') && i + 1 < lines.length) command += `\n${lines[++i]}`;
+    out.push(command);
+  }
+  return out;
+}
+
+// What Run would run for a fenced block, or null when the block is not a command. `lang` is the fence's word. A bash, sh, zsh or shell
+// block runs as written, a console block runs only its "$ " lines, and a block with no word runs when it is a single line.
+// A block of shell lines that all start with "$ " is read as a console block. `hidden` says the block holds characters the owner
+// cannot see, and Run is then refused.
+export function runnableBlock(lang, text) {
+  if (typeof text !== 'string') return null;
+  const kind = String(lang || '').toLowerCase();
+  const lines = text.split('\n');
+  const filled = lines.filter(line => line.trim());
+  if (!filled.length) return null;
+  let command;
+  if (kind === 'console') command = promptCommands(lines).join('\n');
+  else if (SHELL_BLOCKS.has(kind)) command = filled.every(isPrompt) ? promptCommands(lines).join('\n') : text;
+  else if (kind === '') command = filled.length === 1 ? (isPrompt(filled[0]) ? promptCommands(filled)[0] : filled[0]) : '';
+  else return null;
+  command = command.trim();
+  if (!command || command.length > MAX_COMMAND) return null;
+  return { command, hidden: hasHiddenCharacters(text) };
+}
+
+// The prompt box is in command mode while its text starts with "!". A new session's box has no folder to run in, and a server with no
+// terminal has nowhere to run it, so neither is ever in it. `command` is what follows the "!".
+// NOTE: [23 Oct 2026] EK - Only the prompt box calls this. A widget's button sends its text through ctrl.prompt, so a "!" a widget
+// writes is an ordinary message and never a command.
+export function bangMode({ text, terminal, draft }) {
+  if (!terminal || draft || typeof text !== 'string' || !text.startsWith('!')) return null;
+  return { command: text.slice(1).trim() };
+}
+
+// The text with command mode left: the "!" and the spaces after it go, and the command stays as a message.
+export const leaveBang = text => (text.startsWith('!') ? text.slice(1).trimStart() : text);
+
+// ---- the panel's input history ---------------------------------------------------------------------------
+
+const HISTORY = 200;
+
+// The commands the panel has run, oldest first, with a command run twice in a row listed once.
+export function historyOf(runs) {
+  const list = [];
+  for (const { command } of runs) if (command && list.at(-1) !== command) list.push(command);
+  return list.slice(-HISTORY);
+}
+
+// One press of Up (-1) or Down (1) in the input. `at` is the place in `list` being shown, or null when the input holds what was typed,
+// which `draft` keeps while a command from the list is on show. Returns the new { at, draft, text }, or null when the key does nothing.
+export function recall({ list, at, draft }, text, direction) {
+  if (!list.length) return null;
+  if (direction < 0) {
+    if (at === 0) return null;
+    const next = at === null ? list.length - 1 : at - 1;
+    return { at: next, draft: at === null ? text : draft, text: list[next] };
+  }
+  if (at === null) return null;
+  return at === list.length - 1 ? { at: null, draft: '', text: draft } : { at: at + 1, draft, text: list[at + 1] };
+}
+
+// ---- the runs the page holds ------------------------------------------------------------------------------
+
+// How much output the page keeps for a run. The server keeps 1 MB and sends a summary's last 64 KB.
+export const KEEP = 256 * 1024;
+
+// The words of a run's output with the page's own echo of what was typed to it left out, which is how two accounts of it are compared.
+export const textOf = chunks => chunks.filter(c => c.stream !== 'in').map(c => c.text).join('');
+
+// A summary carries only the last 64 KB of a run. What the page already holds is kept when it ends with those words, because it is the
+// fuller account, and otherwise the summary wins, since the page has missed some.
+export function mergeOutput(held, tail) {
+  if (!held.length) return tail;
+  return textOf(held).endsWith(textOf(tail)) ? held : tail;
+}
+
+// `output` with `chunks` after it, joined to the last piece when it is the same stream, and the oldest words dropped past `cap`.
+export function appendChunks(output, chunks, cap = KEEP) {
+  const next = output.slice();
+  for (const { stream, text } of chunks) {
+    if (!text) continue;
+    const last = next.at(-1);
+    if (last?.stream === stream) next[next.length - 1] = { stream, text: last.text + text };
+    else next.push({ stream, text });
+  }
+  let size = next.reduce((n, c) => n + c.text.length, 0);
+  while (size > cap && next.length) {
+    const over = size - cap;
+    if (next[0].text.length <= over) {
+      size -= next.shift().text.length;
+    } else {
+      next[0] = { ...next[0], text: next[0].text.slice(over) };
+      size = cap;
+    }
+  }
+  return next;
+}
+
+const RUNS_KEPT = 100;
+
+// A run in `runs` with the server's summary of it. A summary of a run the page does not know yet takes the place of the one the page
+// drew while it waited for the server, which is a run with `pending` set and the same command and source, so it never shows twice.
+export function upsertRun(runs, incoming) {
+  const known = runs.findIndex(r => r.id === incoming.id);
+  if (known >= 0) {
+    const held = runs[known];
+    const next = runs.slice();
+    next[known] = { ...held, ...incoming, key: held.key, pending: false, output: mergeOutput(held.output, incoming.output) };
+    return next;
+  }
+  const waiting = runs.findIndex(r => r.pending && r.command === incoming.command && r.source === incoming.source);
+  if (waiting >= 0) {
+    const next = runs.slice();
+    next[waiting] = { ...incoming, key: runs[waiting].key, pending: false };
+    return next;
+  }
+  return [...runs, { ...incoming, key: incoming.id, pending: false }].slice(-RUNS_KEPT);
+}
+
+// The page's runs after the server sends all of them: each summary joined to the run held for it, and the runs still waiting for the
+// server kept at the end.
+export function replaceRuns(held, summaries) {
+  const byId = new Map(held.map(r => [r.id, r]));
+  const runs = summaries.map(s => {
+    const was = byId.get(s.id);
+    return was ? { ...was, ...s, key: was.key, pending: false, output: mergeOutput(was.output, s.output) } : { ...s, key: s.id, pending: false };
+  });
+  return [...runs, ...held.filter(r => r.pending)].slice(-RUNS_KEPT);
+}
+
+// The running run that Enter, Ctrl+C and Ctrl+D in the panel's input are for: the newest one the server knows is running.
+export const lastRunning = runs => runs.findLast(r => r.running && !r.pending) ?? null;
+
+// ---- how a run reads ---------------------------------------------------------------------------------------
+
+// A folder with the home folder written as ~, only where the path starts with it.
+export function inHome(path, home) {
+  if (!path) return '';
+  if (!home) return path;
+  if (path === home) return '~';
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+// How long a run took: tenths of a second up to ten seconds, then whole seconds, minutes and hours.
+export function took(ms) {
+  if (!(ms >= 0)) return '';
+  if (ms < 9950) return `${(ms / 1000).toFixed(1)}s`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+// How a finished run ended, in words: `Exit 0`, `Stopped`, or the signal that ended it.
+export function ending(run) {
+  if (run.stopped) return 'Stopped';
+  if (run.signal) return `Ended by ${run.signal}`;
+  return `Exit ${run.exitCode ?? '?'}`;
+}
+
+// What the panel says aloud when a run ends, since the output itself is not read out as it arrives.
+export function endedAloud(run) {
+  const words = run.stopped ? 'was stopped' : run.signal ? `ended with ${run.signal}` : `finished with exit code ${run.exitCode ?? 'unknown'}`;
+  const line = run.command.split('\n')[0];
+  return `Command ${words}: ${line.length > 80 ? `${line.slice(0, 80)}...` : line}`;
+}
+
+// What the server did with the result of a command run with !, in the words the footer uses.
+export const deliveredWords = delivered => (delivered === 'sent' ? 'Sent to Claude' : delivered === 'held' ? 'Added to your next message' : '');
+
+// ---- the transcript's bash items ---------------------------------------------------------------------------
+
+const joined = new WeakMap();
+
+// An older CLI wrote a command and its output as two items, the second with no command. They read as one, and a pair is joined once
+// so its row keeps the identity it had.
+export function joinBash(items) {
+  if (!items.some(i => i.kind === 'bash' && i.command === '')) return items;
+  const out = [];
+  for (const item of items) {
+    const before = out.at(-1);
+    if (item.kind === 'bash' && item.command === '' && before?.kind === 'bash' && before.command !== '') {
+      const cached = joined.get(item);
+      if (cached?.first === before) { out[out.length - 1] = cached.merged; continue; }
+      const merged = { ...before, stdout: before.stdout + item.stdout, stderr: before.stderr + item.stderr };
+      joined.set(item, { first: before, merged });
+      out[out.length - 1] = merged;
+    } else out.push(item);
+  }
+  return out;
+}
+
+// A bash item is written after the command ran, and a little clock difference should not hide that.
+const SLACK_MS = 2000;
+
+const sameCommand = (a, b) => a.trim() === b.trim();
+
+// The ids of the runs started with ! that the transcript already holds. Each bash item takes the earliest run with its command that
+// started before the item was written, and a run is taken once, so two runs of one command match two items.
+export function landedRuns(runs, items) {
+  const taken = new Set();
+  for (const item of items) {
+    if (item.kind !== 'bash') continue;
+    const wrote = Date.parse(item.at);
+    const run = runs.find(r => r.source === 'bang' && !taken.has(r.id) && sameCommand(r.command, item.command) && (Number.isNaN(wrote) || r.startedAt <= wrote + SLACK_MS));
+    if (run) taken.add(run.id);
+  }
+  return taken;
+}
+
+// The runs started with ! that the transcript does not hold yet, to be drawn after it. When earlier messages are not loaded, a run that
+// started before the oldest message on show may be in them, so it is left out.
+export function pendingBangs({ runs, items, hasEarlier }) {
+  const bangs = runs.filter(r => r.source === 'bang');
+  if (!bangs.length) return bangs;
+  const landed = landedRuns(bangs, items);
+  const times = items.map(i => Date.parse(i.at)).filter(t => !Number.isNaN(t));
+  const oldest = hasEarlier && times.length ? Math.min(...times) : -Infinity;
+  return bangs.filter(r => !landed.has(r.id) && r.startedAt >= oldest);
+}
+
+// The run in the panel that a bash item in the transcript came from, or null: the latest run with its command that started before it.
+export function runOfItem(runs, item) {
+  const wrote = Date.parse(item.at);
+  return runs.findLast(r => r.source === 'bang' && sameCommand(r.command, item.command) && (Number.isNaN(wrote) || r.startedAt <= wrote + SLACK_MS)) ?? null;
+}

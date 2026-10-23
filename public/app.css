@@ -83,6 +83,22 @@
   --running: color-mix(in oklab, var(--sidebar-foreground) 15%, var(--sidebar));
   /* Removed lines in a diff. Light takes red-700, because --destructive on the muted code background is under 4.5:1. */
   --diff-del: oklch(0.505 0.213 27.518);
+  --ansi-0: oklch(0.28 0 0);
+  --ansi-1: oklch(0.506 0.2 27);
+  --ansi-2: oklch(0.466 0.145 145);
+  --ansi-3: oklch(0.482 0.095 90);
+  --ansi-4: oklch(0.492 0.2 262);
+  --ansi-5: oklch(0.508 0.2 330);
+  --ansi-6: oklch(0.472 0.08 205);
+  --ansi-7: oklch(0.5 0 0);
+  --ansi-8: oklch(0.42 0 0);
+  --ansi-9: oklch(0.53 0.215 27);
+  --ansi-10: oklch(0.49 0.152 145);
+  --ansi-11: oklch(0.506 0.1 90);
+  --ansi-12: oklch(0.516 0.22 262);
+  --ansi-13: oklch(0.534 0.22 330);
+  --ansi-14: oklch(0.496 0.082 205);
+  --ansi-15: oklch(0.34 0 0);
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -126,6 +142,22 @@
     --warning-muted: oklch(0.27 0.04 80);
     --ready: oklch(0.65 0.15 260);
     --diff-del: oklch(0.704 0.191 22.216);
+    --ansi-0: oklch(0.66 0 0);
+    --ansi-1: oklch(0.676 0.2 27);
+    --ansi-2: oklch(0.636 0.17 145);
+    --ansi-3: oklch(0.654 0.13 90);
+    --ansi-4: oklch(0.658 0.18 262);
+    --ansi-5: oklch(0.678 0.2 330);
+    --ansi-6: oklch(0.642 0.11 205);
+    --ansi-7: oklch(0.83 0 0);
+    --ansi-8: oklch(0.72 0 0);
+    --ansi-9: oklch(0.776 0.13 27);
+    --ansi-10: oklch(0.742 0.187 145);
+    --ansi-11: oklch(0.762 0.155 90);
+    --ansi-12: oklch(0.762 0.12 262);
+    --ansi-13: oklch(0.786 0.2 330);
+    --ansi-14: oklch(0.748 0.127 205);
+    --ansi-15: oklch(0.97 0 0);
     --widget-card: oklch(0.205 0 0);
   }
 }
