@@ -27,7 +27,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Closing the page leaves the work running, and a waiting approval is still there when you come back.
   "Always allow" applies the rule Claude suggests, which usually lands in the folder's
   `.claude/settings.local.json`.
-- **The prompt box** follows Desktop's. It is one row: a + on the left attaches images, the text sits in the middle
+- **The prompt box** follows Desktop's. It is one row: a + on the left attaches files, the text sits in the middle
   and the send button on the right. As you type more lines the text grows to 40% of the window's height and then
   scrolls, with the + and send level with its last line. The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions) sits under the box
   as plain text and opens its list when you click it. One button on the right names the model, `Fast` when fast mode is on, and the effort, and opens a
@@ -71,6 +71,35 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   message. Every message in a transcript that carries images shows them as thumbnails that open in the viewer
   on click, including messages sent from Desktop or a terminal. The pictures Claude gets back from its tools,
   such as a browser screenshot or an image file it reads, show the same way under the call that returned them.
+- **Files.** The + also takes any other file, and so do a paste and a drop. Each shows as a card above the text with
+  its name, kind and size, and a cross to take it off. A card says "Uploading..." while the file goes up, and Send waits
+  for it. Up to 10 files to a message, each up to 30 MB, and a message may be files alone. GhostShell saves each file in the
+  `uploads` folder of its state folder (the folder and its files are readable by the owner only) and starts the message with
+  `@"/path/to/file"` for each one, as Desktop does, so the CLI reads the file itself. The CLI puts a text file or a CSV
+  into the message, and asked no permission for it in any permission mode. On CLI 2.1.309 a PDF mention gives Claude
+  only a path and a size, so GhostShell reads each PDF with macOS's PDFKit when it arrives, for the page count and the
+  text. A PDF of 1 to 20 pages and at most 3 MB goes in the message as a document block, so Claude reads it with no
+  tool call, and its text copy is not mentioned. The PDFs in one message share those limits in the order attached, so
+  together they come to at most 20 pages and 3 MB, and the PDFs sent as documents in one chat share 40 pages and 10 MB
+  (GhostShell keeps the running total in `documents.json` in its state folder). The limits are low because the CLI sends every
+  earlier block again on each turn, and a PDF the API refuses would fail every later turn of that chat. Any other PDF is mentioned by path with
+  its text copy, which the CLI puts in the message. A PDF that needs a password, or has no text such as a scan, has no
+  text copy, so one of those that does not go as a document reaches Claude as a path only. The CLI puts nothing of any
+  file into a message sent while Claude works, so there a PDF goes by path with its text copy and Claude reads what it
+  needs with the Read tool, which asked no permission in any mode. For Word documents (`.doc`, `.docx`, `.odt`
+  and `.rtf`) the CLI reads nothing, so GhostShell converts the file to text with macOS's `textutil` when it arrives and
+  mentions that copy as well. A spreadsheet, a slide deck or any other binary file reaches Claude as a path only, and
+  Claude has to open it with a command, which asks in the modes that ask. Claude sees a file by the name GhostShell saved
+  it under, a UUID and the extension, not the name it had on your machine. An image of a
+  type the API does not take, such as a HEIC photo in Safari, is redrawn and sent as an image when the browser can read
+  it, and an SVG goes as a file. A transcript shows each file as a card beside the images, with the path as its
+  tooltip, for messages from Desktop too. A file GhostShell did not save shows with its name and no size. A slash command
+  such as `/compact` cannot go with files, so GhostShell refuses that and puts the message back in the box. An upload that
+  stops arriving for 60 seconds is dropped. The page asks the server once what it takes, so a new page served by a server
+  that has not been restarted since the update stays on images only, and a pasted file that is not an image is left to the
+  browser as before. Uploads stay on disk after sending, and
+  so does a file that was attached and never sent. [The decision record](docs/adr/20261023-attach-files-by-path.md)
+  says why a file goes by path.
 - **The image viewer** opens when you click or tap a thumbnail in a transcript, one still being sent included,
   a picture a tool returned to Claude, or a picture attached to the message you are writing. It shows the
   picture scaled to fit the screen. Esc, the cross at the top right or a click outside the picture
@@ -491,7 +520,7 @@ node server.mjs
 ```
 
 There are no npm dependencies (Node 20 or later), and the page's libraries are vendored. `npm test` runs
-the unit tests, for the cron parser, the routine scheduler, the start timeout, the transcript parser, the
+the unit tests, for the file uploads, the cron parser, the routine scheduler, the start timeout, the transcript parser, the
 live work tracker, the messages the CLI holds, the thread display, the order of a group, the layout file, the
 project and group routes, the arrow-key and move rules of the sidebar tree, which view of the list holds a
 session, what a view's lamp and count show and which views a search finds, the session list and what a
@@ -629,7 +658,8 @@ localhost there. GhostShell believes the localhost address only for a request th
 A message with images can be about 53 MB, because the page sends them as base64 inside the request. The
 proxy has to let a request that large through, and nginx, for one, refuses more than 1 MB until
 `client_max_body_size` says otherwise. GhostShell itself takes that size only on the routes that send a message
-or start a session, and keeps 1 MB on every other route.
+or start a session, and keeps 1 MB on every other route. A file goes up on its own, as the raw request body, to
+`api/uploads`, and that route takes up to 30 MB, so the proxy has to allow that too.
 
 The password, and any passkey you add, is the only thing between that address and a shell on this machine.
 Anyone who signs in can run commands as you. GhostShell locks sign-in for 15 minutes after ten failed tries with

@@ -74,3 +74,4 @@ Chosen option: "Scale in the browser, send base64 in the request, and serve tran
 - [Drive each chat with a headless Claude Code process](20261006-headless-claude-cli-per-chat.md)
 - [List sessions from transcripts and Desktop's records, read only](20261006-read-only-session-list.md)
 - [Match Desktop's flow for new sessions, settings, stopping and tool calls](20261014-desktop-like-prompt-box-flow.md), whose mid-turn messages carry images too
+- [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md), which sends other files by path, and a small PDF as a document block as well

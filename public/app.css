@@ -1750,6 +1750,46 @@ body.dragging .rows .more { opacity: 0; }
 
 .thumbs .thumb img { border-radius: var(--radius-md); background: var(--muted); }
 
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex: none;
+  width: min(14rem, 100%);
+  padding: 0.5rem 0.75rem 0.5rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
+  color: var(--card-foreground);
+  text-align: left;
+}
+
+.file-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font: 600 0.625rem/1 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.file-card-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+
+.file-card-name {
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-card-meta { overflow: hidden; font-size: 0.75rem; color: var(--muted-foreground); text-overflow: ellipsis; white-space: nowrap; }
+
 button.thumb {
   padding: 0;
   font: inherit;
@@ -2300,6 +2340,10 @@ button.thumb {
   right: 0.75rem;
   border-radius: 9999px;
 }
+
+.attachment.file-card { width: min(14rem, 100%); padding: 0.5rem 2.5rem 0.5rem 0.5rem; }
+
+.file-card .btn.thumb-remove { top: 50%; right: 0.5rem; translate: 0 -50%; }
 
 .composer-row {
   display: flex;
@@ -3589,6 +3633,8 @@ html.viewing, html.viewing body { overflow: hidden; }
   .widget-wait-text { animation: widget-wait-text-in 260ms cubic-bezier(0.25, 1, 0.5, 1); }
 
   .attached > .preparing { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+  .file-card[aria-busy="true"] .file-glyph { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 
   .chaser > span { animation: chaser 1200ms ease-in-out infinite backwards; }
 

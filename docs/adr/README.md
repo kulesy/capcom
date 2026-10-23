@@ -14,7 +14,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-13 | [Publish Capcom as a public repository under the MIT licence](20261013-public-repo-under-mit.md) | Accepted |
 | 2026-10-14 | [Match Desktop's flow for new sessions, settings, stopping and tool calls](20261014-desktop-like-prompt-box-flow.md) | Accepted, amended 2026-10-15, 2026-10-16, 2026-10-19, 2026-10-21 and 2026-10-22 |
 | 2026-10-14 | [Hand new sessions to Claude Desktop through its resume link](20261014-hand-new-sessions-to-desktop.md) | Accepted, amended 2026-10-15 (opt-in, off by default) |
-| 2026-10-15 | [Make Capcom the only client and stop integrating with Desktop](20261015-capcom-is-the-only-client.md) | Accepted, amended 2026-10-15 and 2026-10-22 |
+| 2026-10-15 | [Make Capcom the only client and stop integrating with Desktop](20261015-capcom-is-the-only-client.md) | Accepted, amended 2026-10-15, 2026-10-22 and 2026-10-23 |
 | 2026-10-15 | [Turn Claude in Chrome on by default in every chat and mode, as Desktop does](20261015-claude-in-chrome-on-by-default.md) | Accepted, amended 2026-10-15 |
 | 2026-10-15 | [Rewrite the front end on vendored Preact with htm, with no build step](20261015-preact-htm-front-end.md) | Accepted. Shipped 2026-10-15. |
 | 2026-10-15 | [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md) | Accepted, amended 2026-10-16, 2026-10-18, 2026-10-21, 2026-10-22 and 2026-10-23 |
@@ -36,3 +36,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-22 | [Make Ghost the look on every device, in a stylesheet of its own](20261022-ghost-look.md) | Accepted, amended 2026-10-23 |
 | 2026-10-23 | [Give each group a session of its own, with the group's status drawn above its chat](20261023-a-session-for-each-group.md) | Accepted |
 | 2026-10-23 | [Call the app GhostShell, and keep capcom for every internal name](20261023-ghostshell-name.md) | Accepted |
+| 2026-10-23 | [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md) | Accepted |

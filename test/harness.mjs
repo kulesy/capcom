@@ -48,7 +48,7 @@ const freePort = () => new Promise(resolve => {
 // It refuses a switch to the model `refused-by-the-fake`, and a request for fast mode when it was started on the model `no-fast-by-the-fake`.
 // Started on `late-no-fast-by-the-fake` it refuses that request too, but holds the refusal until it is sent anything after 'begin a session'.
 // Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
-// Sent 'begin a session' it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
+// Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents), it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
 // context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
@@ -171,13 +171,14 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    }",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",
+    "    const said = Array.isArray(m.message.content) ? m.message.content.filter(b => b.type === 'text').map(b => b.text).join('\\n') : String(m.message.content);",
     // A session named by --session-id writes its transcript when it takes its first message, as the real one does.
     "    if (namedId && !transcriptOf(namedId)) {",
     "      fs.mkdirSync(path.join(projects, '-group-folder'), { recursive: true });",
     "      fs.writeFileSync(path.join(projects, '-group-folder', `${namedId}.jsonl`), JSON.stringify({ type: 'user', cwd: process.cwd(), message: { role: 'user', content: m.message.content } }) + '\\n');",
     "    }",
-    "    if (m.message.content.startsWith('call ')) {",
-    "      const [, tool, ...json] = m.message.content.split(' ');",
+    "    if (said.startsWith('call ')) {",
+    "      const [, tool, ...json] = said.split(' ');",
     "      say({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(json.join(' ') || '{}') } } } });",
     "    }",
     "    if (m.message.content === 'list the tools') say({ type: 'control_request', request_id: 'list-tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
@@ -187,7 +188,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
-    "    if (m.message.content === 'begin a session') {",
+    "    if (said === 'begin a session' || said.startsWith('@\\\"')) {",
     "      say({ type: 'system', subtype: 'init', session_id: namedId || 'begun-by-the-fake', model: 'stub' });",
     "      begun = true;",
     "    }",

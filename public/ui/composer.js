@@ -1,10 +1,11 @@
-// The prompt box: the text, the images attached to it, the settings under it, and the folder picker for a session that is not started yet.
+// The prompt box: the text, the images and files attached to it, the settings under it, and the folder picker for a session that is not started yet.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
-import { attach, attached, detach, draftText, setDraftText } from './draft.js';
+import { attach, attached, detach, detachFile, draftText, pastedFiles, setDraftText, uploads } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
+import { FileFace } from './file-card.js';
 import { draftImages, imageKey } from './gallery.js';
 import { useFields, useStore } from './hooks.js';
 import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
@@ -24,11 +25,14 @@ const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
 const CONTROLS = 'button, textarea, input, select, a';
 
-function Attachments({ images, preparing }) {
-  return html`<ul class="attached" aria-label="Attached images">
+function Attachments({ images, files, preparing }) {
+  return html`<ul class="attached" aria-label="Attachments">
     ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
       <button class="thumb" type="button" data-image=${imageKey(img)} aria-label=${`View ${img.name}`} aria-haspopup="dialog" onClick=${e => openViewer(draftImages(images), n, e.currentTarget)}><img src=${img.src} alt=${img.name} /></button>
       <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
+    ${files.map(file => html`<li class="attachment file-card" key=${file.key} title=${file.name} aria-busy=${file.uploading || null}>
+      <${FileFace} file=${file} />
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${file.name}`} onClick=${() => detachFile(file.key)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
 }
@@ -76,7 +80,10 @@ export function focusNextComposer() {
 export function Composer({ ctrl }) {
   const { status, starting, folder } = useFields(ctrl.store, 'status', 'starting', 'folder');
   const images = useStore(attached, a => a.images);
+  const files = useStore(attached, a => a.files);
   const preparing = useStore(attached, a => a.preparing);
+  const takesFiles = useStore(uploads, u => u.limits !== null);
+  const uploading = files.some(f => f.uploading);
   const [text, setLocal] = useState(draftText);
   const [over, setOver] = useState(false);
   const setText = value => { setDraftText(value); setLocal(value); };
@@ -94,8 +101,8 @@ export function Composer({ ctrl }) {
   const [shown, setShown] = useState(null);
   const opened = useRef(0);
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
-  // Images alone are a message too.
-  const ready = !!text.trim() || images.length > 0;
+  // Images or files alone are a message too.
+  const ready = !!text.trim() || images.length > 0 || files.length > 0;
   // While Claude works and the box is empty, the Send button is the Stop button. Typing or attaching turns it back into Send.
   const stop = isBusy(status) && !draft && !ready;
 
@@ -168,18 +175,18 @@ export function Composer({ ctrl }) {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // Pasting or dropping image files anywhere on the page attaches them, even in a text field, which would lose them.
+  // Pasting or dropping files anywhere on the page attaches them, even in a text field, which would lose them.
   // A paste that also holds text stays text if it has several lines, as a spreadsheet copy does, or is in another field.
   useLayoutEffect(() => {
     const note = text => now.current.ctrl.notice(text);
     let depth = 0;
     const onPaste = e => {
-      const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+      const pasted = pastedFiles([...(e.clipboardData?.files || [])]);
       const text = e.clipboardData?.getData('text/plain') || '';
-      if (!files.length || /[\n\t]/.test(text)) return;
+      if (!pasted.length || /[\n\t]/.test(text)) return;
       if (text && e.target !== area.current && e.target.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
-      attach(files, note);
+      attach(pasted, note);
       if (matchMedia('(pointer: fine)').matches) area.current.focus({ preventScroll: true });
     };
     const onEnter = e => { if (hasFiles(e)) { depth++; setOver(true); } };
@@ -200,12 +207,12 @@ export function Composer({ ctrl }) {
   const submit = async e => {
     e.preventDefault();
     const t = area.current.value.trim();
-    const sent = attached.get().images;
-    if ((!t && !sent.length) || attached.get().preparing) return;
-    const clear = () => { setText(''); attached.set({ images: [] }); };
-    if (draft) { ctrl.startNew(t, sent, clear); return; }
+    const { images: sent, files: sentFiles } = attached.get();
+    if ((!t && !sent.length && !sentFiles.length) || attached.get().preparing || sentFiles.some(f => f.uploading)) return;
+    const clear = () => { setText(''); attached.set({ images: [], files: [] }); };
+    if (draft) { ctrl.startNew(t, sent, clear, sentFiles); return; }
     clear();
-    if (!(await ctrl.send(t, sent, s.mode))) { setText(t); attached.set({ images: sent }); }
+    if (!(await ctrl.send(t, sent, s.mode, sentFiles))) { setText(t); attached.set({ images: sent, files: sentFiles }); }
   };
 
   const pickFiles = e => {
@@ -256,7 +263,7 @@ export function Composer({ ctrl }) {
     if (slashKey(e)) { e.preventDefault(); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
       e.preventDefault();
-      if (e.currentTarget.value.trim() || images.length) form.current.requestSubmit();
+      if (e.currentTarget.value.trim() || images.length || files.length) form.current.requestSubmit();
     }
   };
 
@@ -265,13 +272,14 @@ export function Composer({ ctrl }) {
   const onBoxClick = e => { if (!e.target.closest(CONTROLS)) area.current.focus({ preventScroll: true }); };
 
   const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
+  const attachLabel = takesFiles ? 'Attach files' : 'Attach images';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
-      ${images.length || preparing ? html`<${Attachments} images=${images} preparing=${preparing} />` : null}
+      ${images.length || files.length || preparing ? html`<${Attachments} images=${images} files=${files} preparing=${preparing} />` : null}
       ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
       <div class="composer-row">
-        <button class="btn attach" data-variant="ghost" data-size="icon-sm" id="attach" type="button" aria-label="Attach images" data-tip="Attach images" onClick=${() => picker.current.click()}><${Plus} /></button>
-        <input type="file" ref=${picker} accept=${TYPES.join(',')} multiple hidden onChange=${pickFiles} />
+        <button class="btn attach" data-variant="ghost" data-size="icon-sm" id="attach" type="button" aria-label=${attachLabel} data-tip=${attachLabel} onClick=${() => picker.current.click()}><${Plus} /></button>
+        <input type="file" key=${takesFiles ? 'files' : 'images'} ref=${picker} ...${takesFiles ? {} : { accept: TYPES.join(',') }} multiple hidden onChange=${pickFiles} />
         <div class="composer-field">
           <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded=${open}
             aria-controls=${open ? 'slash-list' : undefined} aria-activedescendant=${at >= 0 ? `slash-${at}` : undefined} aria-describedby=${hint ? 'slash-hint' : undefined}
@@ -280,7 +288,7 @@ export function Composer({ ctrl }) {
             oncompositionstart=${() => setComposing(true)} oncompositionend=${onCompositionEnd}></textarea>
           ${hint ? html`<div class="composer-hint" aria-hidden="true"><span>${text}</span>${hint}</div><span class="sr" id="slash-hint">Arguments: ${hint}</span>` : null}
         </div>
-        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
+        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0 || uploading)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
       </div>
     </div>
     <div class="composer-bar">

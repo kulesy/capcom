@@ -1,6 +1,6 @@
 # Make Capcom the only client and stop integrating with Desktop
 
-- Status: Accepted, amended 2026-10-15 and 2026-10-22
+- Status: Accepted, amended 2026-10-15, 2026-10-22 and 2026-10-23
 - Deciders: Eli
 - Date: 2026-10-15
 - Tags: scope, claude-desktop, roadmap, routines
@@ -50,6 +50,8 @@ Chosen option: "Capcom is the only client", because Capcom can run any session i
 **Amended 2026-10-15.** Capcom now runs routines itself, from the prompt files Desktop keeps, so Desktop no longer has to stay open for them once the owner has switched each routine over (see [Capcom runs routines itself](20261015-capcom-runs-routines-itself.md)).
 
 **Amended 2026-10-22.** Unread markers are in. Each row ends in the mark Desktop would give it: needs input, unread, running or failed. Capcom reads the rows Desktop marks unread from Desktop's Local Storage, read only, and keeps its own marks for the turns it runs in `marks.json`. It still writes nothing to Desktop, so a session the owner reads only in Capcom stays unread in Desktop. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
+
+**Amended 2026-10-23.** Attached files are in. The + button, a paste and a drop take any file, Capcom saves it and starts the message with its path as Desktop does, and the CLI reads it. See [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md).
 
 ## Pros and Cons of the Options
 

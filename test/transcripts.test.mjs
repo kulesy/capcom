@@ -870,3 +870,135 @@ test('a block or line that is not an object leaves the whole chat\'s picture lis
   assert.deepEqual(listImages(t).map(item => [item.kind, item.name]), [['tool', '']]);
   assert.equal(drawn(listImages(t)).length, 1, 'the page\'s threadImages takes the list as the server sends it');
 });
+
+// Capcom's uploads folder as the server has it, with an upload in it for each of `names`, and the transcript line that mentions them.
+function uploaded(names) {
+  const dir = path.join(fs.mkdtempSync(path.join(base, 'uploads-')), 'uploads');
+  fs.mkdirSync(dir);
+  return names.map(([id, name, content, companion]) => {
+    const ext = /\.([a-z0-9]+)$/.exec(name)?.[1];
+    const stored = path.join(dir, ext ? `${id}.${ext}` : id);
+    fs.writeFileSync(stored, content);
+    fs.writeFileSync(path.join(dir, `${id}.meta.json`), JSON.stringify({ name, type: 'text/plain', size: content.length }));
+    if (companion) fs.writeFileSync(`${stored}.txt`, companion);
+    return { dir, stored, companion: companion ? `${stored}.txt` : null };
+  });
+}
+const ID_A = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a';
+const ID_B = '0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b';
+const readsWith = (t, dir) => [readBefore(t, t.size, t.size, '/work', 8000, dir).items, readAfter(t, 0, '/work', 8000, dir).items];
+
+test('the mentions Capcom puts at the start of a message become file cards described from the upload\'s sidecar, and the typed text is what is left', () => {
+  const [a, b] = uploaded([[ID_A, 'Plan v2.html', '<p>hi</p>'], [ID_B, 'Brief.md', '# brief']]);
+  const t = file('mentions-capcom', [user(`@"${a.stored}" @"${b.stored}"\ncompare them`)]);
+  for (const items of readsWith(t, a.dir)) {
+    assert.equal(items.length, 1);
+    assert.deepEqual(items[0].files, [
+      { name: 'Plan v2.html', type: 'text/plain', size: 9, path: a.stored },
+      { name: 'Brief.md', type: 'text/plain', size: 7, path: b.stored },
+    ]);
+    assert.equal(items[0].text, 'compare them');
+  }
+});
+
+test('a text copy of a document is mentioned for the CLI and hidden from the card, and a message of files alone has no text', () => {
+  const [doc] = uploaded([[ID_A, 'Brief.docx', 'zip bytes', 'the words inside']]);
+  const t = file('mentions-companion', [user(`@"${doc.stored}" @"${doc.companion}"`)]);
+  for (const items of readsWith(t, doc.dir)) {
+    assert.deepEqual(items.map(i => [i.kind, i.text, i.files.map(f => f.name)]), [['user', '', ['Brief.docx']]]);
+  }
+});
+
+test('a mention of a file Desktop attached is described by its name and a type from its extension, and its size is not read from the disk', () => {
+  const dir = fs.mkdtempSync(path.join(base, 'desktop-'));
+  const here = path.join(dir, 'Notes.PDF');
+  fs.writeFileSync(here, '12345');
+  const gone = path.join(dir, 'gone.csv');
+  const t = file('mentions-desktop', [user(`@"${here}" @"${gone}" @"${dir}/README"\nhave a look`)]);
+  const uploadsDir = path.join(base, 'not-the-uploads-folder');
+  for (const items of readsWith(t, uploadsDir)) {
+    assert.deepEqual(items[0].files, [
+      { name: 'Notes.PDF', type: 'application/pdf', size: null, path: here },
+      { name: 'gone.csv', type: 'text/csv', size: null, path: gone },
+      { name: 'README', type: '', size: null, path: `${dir}/README` },
+    ]);
+    assert.equal(items[0].text, 'have a look');
+  }
+});
+
+test('a sidecar is only believed inside Capcom\'s uploads folder: the same file name anywhere else is described by its own name', () => {
+  const [a] = uploaded([[ID_A, 'Called something else.txt', 'x']]);
+  const t = file('mentions-elsewhere', [user(`@"${a.stored}"\nlook`)]);
+  assert.equal(readsWith(t, path.join(base, 'somewhere-else'))[0][0].files[0].name, `${ID_A}.txt`);
+  assert.equal(readsWith(t, undefined)[0][0].files[0].name, `${ID_A}.txt`);
+});
+
+test('only a run of mentions at the very start that ends at a newline or the end is taken: the same words in the middle stay text', () => {
+  const same = text => readsWith(file(`mentions-text-${text.length}`, [user(text)]), '').map(items => [items[0].text, items[0].files]);
+  for (const text of ['please read @"/tmp/a.txt"', '@"/tmp/a.txt" please read it', '@"/tmp/a.txt"@"/tmp/b.txt"\nx', '@"relative/a.txt"\nx', '@"/tmp/a.txt\nx"', 'a\n@"/tmp/a.txt"']) {
+    for (const [shown, files] of same(text)) assert.deepEqual([shown, files], [text, undefined], text);
+  }
+  assert.deepEqual(readsWith(file('mentions-two-lines', [user('@"/tmp/a.txt"\nline one\n@"/tmp/b.txt"')]), '')[0].map(i => [i.text, i.files.length]), [['line one\n@"/tmp/b.txt"', 1]]);
+});
+
+test('mentions are read out of a message sent as content blocks beside its pictures, and out of a queued prompt', () => {
+  const [a] = uploaded([[ID_A, 'a.txt', 'hello']]);
+  const blocks = [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }, { type: 'text', text: `@"${a.stored}"\nwith a picture` }];
+  const t = file('mentions-blocks', [user(blocks), queued(`@"${a.stored}"\nthen this`, 'prompt')]);
+  for (const items of readsWith(t, a.dir)) {
+    assert.deepEqual(items.map(i => [i.text, i.files?.map(f => f.name), i.images?.length]), [['with a picture', ['a.txt'], 1], ['then this', ['a.txt'], undefined]]);
+  }
+});
+
+test('a session started with files alone is titled by the file, and by Files when there are several, and typed words win', () => {
+  const dir = fs.mkdtempSync(path.join(base, 'head-'));
+  const head = (name, text) => readHead(file(name, [{ ...user(text), cwd: '/work' }])).title;
+  assert.equal(head('head-one-file', `@"${dir}/plan.csv"`), 'plan.csv');
+  assert.equal(head('head-two-files', `@"${dir}/plan.csv" @"${dir}/notes.txt"`), 'Files');
+  assert.equal(head('head-file-and-words', `@"${dir}/plan.csv"\nSummarise this`), 'Summarise this');
+});
+
+test('a session started with uploaded files alone is titled by the names the owner gave them, not by <uuid>.<ext>, and a PDF with a text copy is one file', () => {
+  const [csv, pdf, doc] = uploaded([[ID_A, 'Budget 2026.csv', 'a,b'], [ID_B, 'Annual report.pdf', 'pdf bytes', 'the words'], ['0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c', 'Brief.docx', 'zip bytes', 'the brief']]);
+  const title = (name, dir, text) => readHead(file(name, [{ ...user(text), cwd: '/work' }]), dir).title;
+  assert.equal(title('head-upload-csv', csv.dir, `@"${csv.stored}"`), 'Budget 2026.csv');
+  assert.equal(title('head-upload-pdf', pdf.dir, `@"${pdf.stored}" @"${pdf.companion}"`), 'Annual report.pdf', 'the text copy is not a second file');
+  assert.equal(title('head-upload-docx', doc.dir, `@"${doc.stored}" @"${doc.companion}"`), 'Brief.docx');
+  assert.equal(title('head-upload-two', csv.dir, `@"${csv.stored}" @"${pdf.stored}" @"${pdf.companion}"`), 'Files');
+  assert.equal(title('head-upload-words', csv.dir, `@"${csv.stored}"\nSummarise this`), 'Summarise this');
+  assert.equal(title('head-upload-blind', undefined, `@"${csv.stored}"`), `${ID_A}.csv`, 'without the folder the stored name is all there is, which is why the server passes it');
+});
+
+const pdfBlock = bytes => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: Buffer.from(bytes).toString('base64') } });
+
+test('a document block in a message the user sent adds no text and no mark, and the file card comes from the mention beside it', () => {
+  const [pdf] = uploaded([[ID_A, 'Report.pdf', 'pdf bytes']]);
+  const mention = { type: 'text', text: `@"${pdf.stored}"\nwhat does it say` };
+  const t = file('document-blocks', [
+    user([pdfBlock([1, 2, 3]), mention]),
+    user([picture([4, 5]), pdfBlock([1, 2, 3]), mention]),
+    user([pdfBlock([1, 2, 3])]),
+    queued([pdfBlock([1, 2, 3]), mention], 'prompt'),
+  ]);
+  for (const items of readsWith(t, pdf.dir)) {
+    assert.deepEqual(items.map(i => [i.kind, i.text, i.files?.map(f => f.name), i.images?.length]), [
+      ['user', 'what does it say', ['Report.pdf'], undefined],
+      ['user', 'what does it say', ['Report.pdf'], 1],
+      ['user', 'what does it say', ['Report.pdf'], undefined],
+    ]);
+  }
+});
+
+test('a line holding a document is skipped by the picture scan and gives no picture, and the pictures on the lines around it keep their place', () => {
+  const big = pdfBlock(Array.from({ length: 5000 }, (_, i) => i % 251));
+  const second = line('u2', [big, { type: 'text', text: '@"/up/a.pdf"\nthe pdf' }]);
+  assert.equal(JSON.stringify(second).includes('"image"'), false, 'the line has nothing the scan looks for');
+  const t = file('document-scan', [line('u1', [picture('before'), { type: 'text', text: 'one' }]), second, line('u3', [picture('after'), { type: 'text', text: 'three' }])]);
+  const at = lineStarts(t);
+  assert.deepEqual(listImages(t), [
+    { kind: 'user', images: [{ ref: `${at[0]}.0.u1`, type: 'image/png' }] },
+    { kind: 'user', images: [{ ref: `${at[2]}.0.u3`, type: 'image/png' }] },
+  ]);
+  assert.equal(readImage(t, `${at[2]}.0.u3`).bytes.toString(), 'after');
+  assert.deepEqual(listImages(t, at[2]).map(i => i.images.length), [1], 'a list that stops at the picture after the document holds the one before it');
+});

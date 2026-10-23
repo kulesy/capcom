@@ -89,6 +89,47 @@ test('Claude is asked for thinking summaries, and what it streams reaches the pa
   chat.stop();
 });
 
+test('a message is written as images first, then documents, then the text, and as the bare text when it carries neither', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-'));
+  const log = path.join(dir, 'stdin.log');
+  const cli = path.join(dir, 'logging-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    'let turn = 0;',
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    "  if (m.type !== 'user') return;",
+    `  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(m.message.content) + '\\n');`,
+    "  if (!turn++) process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-blocks', model: 'stub' }) + '\\n');",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const picture = { mediaType: 'image/png', data: 'AAAA' };
+  const picture2 = { mediaType: 'image/jpeg', data: 'BBBB' };
+  const pdf = { mediaType: 'application/pdf', data: 'CCCC' };
+  const chat = await startChat({ cwd: dir, mode: 'manual', text: '@"/up/a.pdf"\nfirst', images: [picture], documents: [pdf], claude: cli, chrome: false, chips: null });
+  chat.send('plain words');
+  chat.send('all three', [picture, picture2], [pdf, pdf]);
+  chat.send('documents only', [], [pdf]);
+  chat.send('  ', [], [pdf]);
+  chat.send('pictures only', [picture]);
+  await until(() => fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length === 6);
+  const sent = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+  const image = (mediaType, data) => ({ type: 'image', source: { type: 'base64', media_type: mediaType, data } });
+  const document = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'CCCC' } };
+  assert.deepEqual(sent, [
+    [image('image/png', 'AAAA'), document, { type: 'text', text: '@"/up/a.pdf"\nfirst' }],
+    'plain words',
+    [image('image/png', 'AAAA'), image('image/jpeg', 'BBBB'), document, document, { type: 'text', text: 'all three' }],
+    [document, { type: 'text', text: 'documents only' }],
+    [document],
+    [image('image/png', 'AAAA')].concat([{ type: 'text', text: 'pictures only' }]),
+  ]);
+  chat.stop();
+});
+
 const holdingCli = dir => {
   const cli = path.join(dir, 'holding-claude.mjs');
   fs.writeFileSync(cli, [

@@ -18,6 +18,7 @@ import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
+import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
 import { createOutside, STALE_MS } from './lib/outside.mjs';
 import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/runner.mjs';
 import { listCommands, listModels } from './lib/commands.mjs';
@@ -34,6 +35,9 @@ const chips = makeChips(cfg.stateDir);
 const layout = makeLayout(cfg.stateDir);
 const marks = makeMarks(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
+const uploads = makeUploads(cfg.stateDir);
+// A mention of a file in front of /name stops the CLI reading the message as a command.
+const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 // The levels `claude --help` lists for --effort. Models are checked for shape only, because the CLI knows the current names.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -126,7 +130,7 @@ function buildIndex({ archived = false } = {}) {
   const groupSessionIds = new Set(own.groups.filter(g => g.session).map(g => g.session));
   for (const t of files.values()) {
     if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id) && !groupSessionIds.has(t.id))) continue;
-    const head = readHead(t);
+    const head = readHead(t, uploads.dir);
     // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
     const routine = head.routine || started.get(t.id)?.routine || null;
@@ -242,14 +246,14 @@ function readMessages(id, q) {
   const cwd = row?.cwd || '';
   // A client far behind (a stale tab, or a file that was rewritten) gets a fresh tail, not the whole file.
   const after = Number(q.get('after')) || 0;
-  if (q.has('after') && completeEnd(t) - after <= cfg.chunkBytes * 4 && after <= completeEnd(t)) return readAfter(t, after, cwd, cfg.outputChars);
+  if (q.has('after') && completeEnd(t) - after <= cfg.chunkBytes * 4 && after <= completeEnd(t)) return readAfter(t, after, cwd, cfg.outputChars, uploads.dir);
   let end = q.has('before') ? Number(q.get('before')) : completeEnd(t);
   const reset = q.has('after');
-  const first = readBefore(t, end, cfg.chunkBytes, cwd, cfg.outputChars);
+  const first = readBefore(t, end, cfg.chunkBytes, cwd, cfg.outputChars, uploads.dir);
   let { items, start } = first;
   end = first.end;
   for (let i = 0; i < 6 && start > 0 && shown(items) < 40; i++) {
-    const more = readBefore(t, start, cfg.chunkBytes, cwd, cfg.outputChars);
+    const more = readBefore(t, start, cfg.chunkBytes, cwd, cfg.outputChars, uploads.dir);
     items = [...more.items, ...items];
     start = more.start;
   }
@@ -277,14 +281,14 @@ function settingsFor(id, row) {
   return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], mode, model, effort, fast, title, routine }) {
+async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text, images, chrome: cfg.chrome, claude: cfg.claude, chips });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
-    const named = title || text.trim() || (images.length > 1 ? 'Images' : 'Image');
+    const named = title || text.trim() || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
     fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
     // Fast mode is saved from the chat, as the CLI may have refused it already. The hook covers a refusal that comes later.
     if (model || effort || chat.fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chat.fast && { fast: true }) });
@@ -779,6 +783,22 @@ async function passkeysApi(req, res, parts, u) {
   }
 }
 
+// A file the CLI reads by path. GET says whether this server takes files and how many and how large, so a page loaded before an
+// update to this server can tell. POST is the file itself, named in x-file-name, and answers with the id a message names it by.
+async function uploadsApi(req, res) {
+  if (req.method === 'GET') return send(res, 200, { maxBytes: MAX_FILE_BYTES, maxFiles: MAX_FILES });
+  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
+  try {
+    return send(res, 200, await uploads.save(req, { signedIn: () => !!auth.check(req) }));
+  } catch (e) {
+    if (!e.status) console.error(e);
+    // The rest of a refused body is read and dropped, so the sender is not cut off before it has the reason. A sender that never stops is cut off.
+    req.resume();
+    setTimeout(() => { if (!req.complete) req.destroy(); }, 10_000).unref();
+    return send(res, e.status || 500, { error: e.status ? e.message : 'The file could not be saved.' });
+  }
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -831,18 +851,25 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, fast, images: sent } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    const { cwd, text, mode, model, effort, fast, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
+    const { files, error: fileError } = uploads.readFiles(listed);
+    if (fileError) return send(res, 400, { error: fileError });
+    if (files.length && isSlashCommand(text || '')) return send(res, 400, { error: SLASH_WITH_FILES });
+    const { documents, error: documentError } = uploads.readDocuments(files);
+    if (documentError) return send(res, 400, { error: documentError });
     if (!cwd || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) return send(res, 400, { error: 'That folder does not exist on this Mac.' });
-    if (!text?.trim() && !images.length) return send(res, 400, { error: 'Write the first message.' });
+    if (!text?.trim() && !images.length && !files.length) return send(res, 400, { error: 'Write the first message.' });
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     if (fast !== undefined && typeof fast !== 'boolean') return send(res, 400, { error: 'Unknown fast mode.' });
     const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text: text || '', images, mode: chosen, model, effort, fast });
+    const id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast });
+    uploads.record(id, files);
     return send(res, 200, { id });
   }
+  if (u.pathname === '/api/uploads') return uploadsApi(req, res);
   // POSTs, so a page on another site can never start a CLI through them (the same-origin check covers POSTs only).
   if (req.method === 'POST' && u.pathname === '/api/commands') return askLists(req, res, 'commands', listCommands);
   if (req.method === 'POST' && u.pathname === '/api/models') return askLists(req, res, 'models', listModels);
@@ -943,11 +970,17 @@ async function api(req, res, u) {
   if (action === 'send') {
     const { images, error } = readImages(body.images);
     if (error) return send(res, 400, { error });
-    if (!body.text?.trim() && !images.length) return send(res, 400, { error: 'Nothing to send.' });
+    const { files, error: fileError } = uploads.readFiles(body.files, id, { blocks: !['working', 'waiting'].includes(getChat(id)?.state) });
+    if (fileError) return send(res, 400, { error: fileError });
+    if (files.length && isSlashCommand(body.text || '')) return send(res, 400, { error: SLASH_WITH_FILES });
+    const { documents, error: documentError } = uploads.readDocuments(files);
+    if (documentError) return send(res, 400, { error: documentError });
+    if (!body.text?.trim() && !images.length && !files.length) return send(res, 400, { error: 'Nothing to send.' });
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
-    chat.send(body.text || '', images);
+    chat.send(withMentions(files, body.text || ''), images, documents);
+    uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
     return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
   }

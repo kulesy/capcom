@@ -3,6 +3,7 @@
 import { api } from './api.js';
 import { mergeContext } from './context-rules.js';
 import { HOME } from './env.js';
+import { leadingMentions } from './files.js';
 import { payload } from './images.js';
 import { createStore } from './store.js';
 import { absorb, prepend } from './thread.js';
@@ -12,8 +13,14 @@ const enc = encodeURIComponent;
 // The first message of a session started here shows as a bubble until its transcript has it.
 let startedHere = null;
 
-// A bubble that is still being sent and the transcript's copy of it are one message when the words and the number of images match.
-const sameMessage = (item, m) => item.kind === 'user' && item.text.trim() === m.text.trim() && (item.images?.length || 0) === m.images.length;
+// A bubble that is still being sent and the transcript's copy of it are one message when the words and the number of images and files match.
+// With files attached, the transcript's copy has their mentions taken out and the words are the typed ones. With none, the words may start
+// with a mention the owner typed, which the transcript takes out as well and counts as a file.
+const sameMessage = (item, m) => {
+  const typed = m.files?.length ? { paths: [], text: m.text } : leadingMentions(m.text);
+  return item.kind === 'user' && item.text.trim() === typed.text.trim() && (item.images?.length || 0) === m.images.length
+    && (item.files?.length || 0) === (m.files?.length || 0) + typed.paths.length;
+};
 
 // When the turn began by this page's clock. A later report can only move it earlier, so a slow one never steps the timer back.
 const began = work => (work ? Date.now() - work.turnMs : 0);
@@ -48,7 +55,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
-    sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
+    sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
     folder: HOME, folders: [], jump: 0, earlierSeq: 0, context: null,
   });
@@ -255,11 +262,11 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // ---- talking to Claude -------------------------------------------------------------------------------
 
   // Sent while Claude works, a message redirects it without stopping: Claude reads it before its next step.
-  async function send(text, images, mode) {
-    const message = { text, images };
+  async function send(text, images, mode, files = []) {
+    const message = { text, images, files };
     store.set(s => ({ sending: [...s.sending, message], notice: '', jump: s.jump + 1 }));
     try {
-      const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }) });
+      const { unarchived, ...status } = await api(`api/sessions/${enc(id)}/send`, { text, mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }) });
       // Each change of fast mode reaches the page over SSE, and a reply can be older than the last one.
       if (!closed) store.set(s => ({ status: { ...status, fast: s.status ? s.status.fast : status.fast } }));
       if (unarchived) refreshIndex();
@@ -363,17 +370,17 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   }
 
   // The first message goes to the new session; the page follows once the list knows about it.
-  async function startNew(text, images, onCreated) {
+  async function startNew(text, images, onCreated, files = []) {
     if (state().starting) return;
     const s = state().status;
     store.set({ starting: true, notice: '' });
     try {
       const { id: created } = await api('api/new', {
-        cwd: state().folder.trim(), text, mode: s.mode, ...(images.length && { images: payload(images) }),
+        cwd: state().folder.trim(), text, mode: s.mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();
-      startedHere = { id: created, text, images };
+      startedHere = { id: created, text, images, files };
       await refreshIndex();
       location.hash = `#/s/${enc(created)}`;
     } catch (err) {

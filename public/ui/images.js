@@ -48,14 +48,17 @@ async function fit(bitmap, width, height, photo) {
 
 // A file as the page holds it: a data URL, which draws the thumbnail and is what gets sent. A file within both limits
 // goes as it is, which keeps an animated GIF animated. Anything else is redrawn smaller first.
-export async function prepare(file) {
+// With `convert`, an image of another type that the browser can decode, such as a HEIC photo in Safari, is redrawn as a JPEG or PNG.
+export async function prepare(file, { convert = false } = {}) {
   const name = file.name || 'That file';
-  if (!TYPES.includes(file.type)) throw new Error(`${name} is not a PNG, JPEG, GIF or WebP image.`);
+  const native = TYPES.includes(file.type);
+  if (!native && !convert) throw new Error(`${name} is not a PNG, JPEG, GIF or WebP image.`);
   const bitmap = await createImageBitmap(file).catch(() => { throw new Error(`${name} could not be read as an image.`); });
   try {
     const { width, height } = bitmap;
     const shrink = Math.min(1, MAX_EDGE / Math.max(width, height));
-    const blob = shrink === 1 && file.size <= MAX_BYTES ? file : await fit(bitmap, Math.round(width * shrink), Math.round(height * shrink), file.type === 'image/jpeg');
+    const photo = file.type === 'image/jpeg' || !native;
+    const blob = native && shrink === 1 && file.size <= MAX_BYTES ? file : await fit(bitmap, Math.round(width * shrink), Math.round(height * shrink), photo);
     if (!blob) throw new Error(`${name} could not be made small enough to send.`);
     return { id: ++counter, name, src: await dataUrl(blob) };
   } finally {

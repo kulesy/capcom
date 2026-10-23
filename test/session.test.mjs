@@ -662,3 +662,153 @@ test('a count that failed does not stand in the way of an older one that comes b
     chat.close();
   });
 });
+
+const attachedFile = (id, name) => ({ key: `file-${id}`, id, name, size: 12, type: 'text/plain' });
+
+test('a send names its files by id beside the text, and a send without files says nothing of them', async () => {
+  await withChanges(() => ({ status: 200, ok: true, json: async () => SETTINGS }), async sent => {
+    const { chat, stream } = await openChat('chat-files-send');
+    stream.emit('status', SETTINGS);
+    await chat.send('compare them', [], 'manual', [attachedFile('u1', 'a.html'), attachedFile('u2', 'b.md')]);
+    await chat.send('plain', []);
+    const posts = sent.filter(([url]) => url.endsWith('/send'));
+    assert.deepEqual(posts.map(([, body]) => body.files), [['u1', 'u2'], undefined]);
+    assert.equal('files' in posts[1][1], false);
+    chat.close();
+  });
+});
+
+test('a new chat posts the ids of its files with the first message, and remembers them for the bubble until the transcript has it', async () => {
+  globalThis.location = {};
+  try {
+    await withChanges(() => ({ status: 200, ok: true, json: async () => ({ id: 'made-with-files' }) }), async sent => {
+      const chat = createChat({ draft: true, refreshIndex() {} });
+      chat.setFolder('/work');
+      await chat.startNew('hello', [], () => {}, [attachedFile('u1', 'a.html')]);
+      assert.deepEqual(sent[0][1].files, ['u1']);
+      const next = createChat({ id: 'made-with-files', refreshIndex() {} });
+      assert.deepEqual(next.store.get().sending.map(m => [m.text, m.files.map(f => f.name)]), [['hello', ['a.html']]]);
+
+      const plain = createChat({ draft: true, refreshIndex() {} });
+      plain.setFolder('/work');
+      await plain.startNew('hello', [], () => {});
+      assert.equal('files' in sent[1][1], false);
+    });
+  } finally {
+    delete globalThis.location;
+  }
+});
+
+test('a bubble of files stays until the transcript has a message with the same words and number of files, and then goes', async () => {
+  const real = globalThis.fetch;
+  let items = [];
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async (url, init) => {
+    const address = String(url);
+    if (init?.method === 'POST') return reply(SETTINGS);
+    if (address.endsWith('/chips')) return reply({ chips: [] });
+    if (address.includes('/messages')) return reply({ items, start: 0, end: 900, hasEarlier: false });
+    return real(url, init);
+  };
+  try {
+    const { chat, stream } = await openChat('chat-files-reconcile');
+    stream.emit('status', SETTINGS);
+    await chat.send('compare them', [], 'manual', [attachedFile('u1', 'a.html')]);
+    assert.equal(chat.store.get().sending.length, 1);
+    items = [{ kind: 'user', text: 'compare them', at: null }];
+    await chat.fetchNew();
+    assert.equal(chat.store.get().sending.length, 1, 'a message with no files is another message');
+    items = [{ kind: 'user', text: 'compare them', files: [{ name: 'a.html', type: 'text/plain', size: 12, path: '/up/u1.html' }], at: null }];
+    await chat.fetchNew();
+    assert.equal(chat.store.get().sending.length, 0);
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('a typed first line of mentions comes back from the transcript stripped and counted as files, and still clears the bubble it was sent from', async () => {
+  const real = globalThis.fetch;
+  let items = [];
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async (url, init) => {
+    const address = String(url);
+    if (init?.method === 'POST') return reply(SETTINGS);
+    if (address.endsWith('/chips')) return reply({ chips: [] });
+    if (address.includes('/messages')) return reply({ items, start: 0, end: 900, hasEarlier: false });
+    return real(url, init);
+  };
+  const still = async chat => { await chat.fetchNew(); return chat.store.get().sending.length; };
+  try {
+    const { chat, stream } = await openChat('chat-typed-mention');
+    stream.emit('status', SETTINGS);
+    await chat.send('@"/etc/hosts"\nlook at this', [], 'manual', []);
+    await chat.send('@"/etc/hosts"', [], 'manual', []);
+    await chat.send('@"/a" @"/b"\nboth', [], 'manual', []);
+    assert.equal(chat.store.get().sending.length, 3);
+    items = [{ kind: 'user', text: 'look at this', files: [{ name: 'hosts', path: '/etc/hosts', size: null }], at: null }];
+    assert.equal(await still(chat), 2, 'the first is the same message as the transcript\'s');
+    items = [{ kind: 'user', text: '', files: [{ name: 'hosts', path: '/etc/hosts', size: null }], at: null }];
+    assert.equal(await still(chat), 1, 'a line of only a mention is a message of one file');
+    items = [{ kind: 'user', text: 'both', files: [{ name: 'a', path: '/a' }], at: null }];
+    assert.equal(await still(chat), 1, 'one file where two were typed is another message');
+    items = [{ kind: 'user', text: 'both', files: [{ name: 'a', path: '/a' }, { name: 'b', path: '/b' }], at: null }];
+    assert.equal(await still(chat), 0);
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('with files attached, a mention the owner typed stays in the words and counts as text, so the bubble clears on the server\'s copy', async () => {
+  const real = globalThis.fetch;
+  let items = [];
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async (url, init) => {
+    const address = String(url);
+    if (init?.method === 'POST') return reply(SETTINGS);
+    if (address.endsWith('/chips')) return reply({ chips: [] });
+    if (address.includes('/messages')) return reply({ items, start: 0, end: 900, hasEarlier: false });
+    return real(url, init);
+  };
+  try {
+    const { chat, stream } = await openChat('chat-typed-mention-and-file');
+    stream.emit('status', SETTINGS);
+    await chat.send('@"/etc/hosts"\nlook', [], 'manual', [attachedFile('u1', 'a.html')]);
+    items = [{ kind: 'user', text: '@"/etc/hosts"\nlook', files: [{ name: 'a.html', path: '/up/u1.html' }, { name: 'hosts', path: '/etc/hosts' }], at: null }];
+    await chat.fetchNew();
+    assert.equal(chat.store.get().sending.length, 1, 'the typed mention is not a second file when files are attached, so two files is another message');
+    items = [{ kind: 'user', text: '@"/etc/hosts"\nlook', files: [{ name: 'a.html', path: '/up/u1.html', size: 12 }], at: null }];
+    await chat.fetchNew();
+    assert.equal(chat.store.get().sending.length, 0);
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('a slash command with files that the server refuses leaves no bubble, tells the box to put the message back, and shows the server\'s words', async () => {
+  const words = 'Send a slash command on its own, without files.';
+  const refuse = () => ({ status: 400, ok: false, json: async () => ({ error: words }) });
+  await withChanges(refuse, async () => {
+    const { chat, stream } = await openChat('chat-slash-refused');
+    stream.emit('status', SETTINGS);
+    assert.equal(await chat.send('/compact', [], 'manual', [attachedFile('u1', 'a.html')]), false, 'false is what makes the box restore the text and the files');
+    assert.equal(chat.store.get().sending.length, 0);
+    assert.equal(chat.store.get().notice, `Not sent: ${words}`);
+    chat.close();
+
+    globalThis.location = {};
+    try {
+      const draft = createChat({ draft: true, refreshIndex() {} });
+      draft.setFolder('/work');
+      let cleared = 0;
+      await draft.startNew('/compact', [], () => { cleared++; }, [attachedFile('u1', 'a.html')]);
+      assert.equal(cleared, 0, 'the box keeps its text and files');
+      assert.equal(draft.store.get().notice, words);
+      assert.equal(draft.store.get().starting, false);
+    } finally {
+      delete globalThis.location;
+    }
+  });
+});

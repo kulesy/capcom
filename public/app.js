@@ -4,6 +4,7 @@ import { ChatPane } from './ui/chat.js';
 import { FileViewHost } from './ui/file-view.js';
 import { groupById, groupOfSession } from './ui/group-rules.js';
 import { GroupPane } from './ui/group.js';
+import { checkUploads } from './ui/draft.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
@@ -63,6 +64,7 @@ function App() {
 
   // A session's route waits for a list, so the session opens with its name already known, unless the first load fails.
   useEffect(() => { loadIndex().then(() => setReady(true)); }, []);
+  useEffect(() => { checkUploads(); }, []);
 
   // A drop shows at once and the server's list then replaces the guess. If the server refuses, the row goes back and the reason is returned.
   // The old list goes back only while none has been drawn since, or it would undo that one. The reload puts the row back then.

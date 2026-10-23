@@ -2,6 +2,7 @@
 import { md } from '../md.mjs';
 import { HOME } from './env.js';
 import { clip, duration, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
+import { FileCard } from './file-card.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
 import { Fragment, html, memo, useReducer, useRef, useState } from './html.js';
 import { useClock } from './hooks.js';
@@ -112,9 +113,9 @@ function ChipCard({ t, chip, cwd, onChip }) {
     <div class="chip-actions">${actions}</div></li>`;
 }
 
-// The pictures in a message. Each opens in the viewer. One from the transcript loads from its address, and one still being sent from the page's own copy.
-function Thumbs({ images, url, onOpen }) {
-  return html`<div class="thumbs">${images.map((img, n) => {
+// The files and pictures in a message. Each picture opens in the viewer. One from the transcript loads from its address, and one still being sent from the page's own copy.
+function Thumbs({ images = [], files = [], url, onOpen }) {
+  return html`<div class="thumbs">${files.map((file, n) => html`<${FileCard} key=${`file${n}`} file=${file} />`)}${images.map((img, n) => {
     const key = imageKey(img);
     const label = images.length > 1 ? `View attached image ${n + 1} of ${images.length}` : 'View attached image';
     // loading before src, as in ToolPictures.
@@ -129,7 +130,7 @@ const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
 export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl }) {
-  if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? html`<div class="bubble">${lf(i.text)}</div>` : null}</li>`;
+  if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? html`<div class="bubble">${lf(i.text)}</div>` : null}</li>`;
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;
