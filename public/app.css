@@ -134,7 +134,7 @@
 
 html, body { height: 100%; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
 
 @media (pointer: fine) {
   html { font-size: 93.75%; }
@@ -1574,6 +1574,7 @@ body.dragging .rows .more { opacity: 0; }
 }
 
 .transcript {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
