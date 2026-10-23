@@ -231,15 +231,15 @@ test('every reason the CLI gives for holding a message, and every way a hold end
 });
 
 test('a reason or outcome from a newer CLI, or one a sender made up, falls back to a general sentence and is never shown as sent', () => {
-  assert.equal(holdCause('<img src=x>'), 'The CLI gave a reason Capcom does not know.');
-  assert.equal(holdCause(undefined), 'The CLI gave a reason Capcom does not know.');
+  assert.equal(holdCause('<img src=x>'), 'The CLI gave a reason GhostShell does not know.');
+  assert.equal(holdCause(undefined), 'The CLI gave a reason GhostShell does not know.');
   assert.equal(holdEnd('<b>x</b>'), 'The CLI ended the hold without delivering.');
   assert.equal(holdEnd(''), 'The CLI ended the hold without delivering.');
 });
 
 test('a name that every object inherits is no reason or outcome, and falls back to the general sentence', () => {
   for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
-    assert.equal(holdCause(name), 'The CLI gave a reason Capcom does not know.');
+    assert.equal(holdCause(name), 'The CLI gave a reason GhostShell does not know.');
     assert.equal(holdEnd(name), 'The CLI ended the hold without delivering.');
   }
 });

@@ -81,7 +81,7 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   const [{ started, cwd }] = startsOf(s);
   assert.equal(flagOf(started, '--session-id'), id);
   assert.equal(started.includes('--resume'), false);
-  assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in Capcom\./);
+  assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
   assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
   assert.equal(flagOf(started, '--setting-sources'), 'user');
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
@@ -195,7 +195,7 @@ test('a session started by the group\'s chat runs in the folder it gave, with it
   await sendTo(s, token, WORK, 'begin a session');
   await until(() => startsOf(s).length === 1);
   const folder = s.home;
-  for (const [cwd, why] of [['relative/path', /absolute folder/], [path.join(s.home, 'missing'), /does not exist/], [s.state, /belongs to Capcom/], [path.join(s.state, 'groups', 'cg-work'), /belongs to Capcom/]]) {
+  for (const [cwd, why] of [['relative/path', /absolute folder/], [path.join(s.home, 'missing'), /does not exist/], [s.state, /belongs to GhostShell/], [path.join(s.state, 'groups', 'cg-work'), /belongs to GhostShell/]]) {
     const reply = await callTool(s, token, WORK, 'start_group_session', { cwd, prompt: 'begin a session' });
     assert.equal(reply.result.isError, true, cwd);
     assert.match(textOf(reply), why, cwd);
@@ -242,7 +242,7 @@ test('a chip made by a group\'s session is refused when it names no folder, a fo
   if (caseBlind) inState.push(s.state.toUpperCase(), own.toUpperCase());
   for (const [n, cwd] of inState.entries()) {
     const res = await start(`toolu_state${n}`, { cwd, confirmCwd: cwd });
-    assert.deepEqual([res.status, res.body().error], [400, 'That folder belongs to Capcom. Pick the folder the work is in.'], cwd);
+    assert.deepEqual([res.status, res.body().error], [400, 'That folder belongs to GhostShell. Pick the folder the work is in.'], cwd);
   }
   const bare = await start('toolu_none', {});
   assert.deepEqual([bare.status, bare.body().error], [400, 'This chip names no folder, and a group\'s session has none of its own. Ask it to suggest the task again with a folder.']);
@@ -272,7 +272,7 @@ test('spawn_task in a group\'s chat refuses a folder in Capcom\'s state folder, 
   for (const cwd of [s.state, path.join(s.state, 'groups', 'cg-work')]) {
     const reply = await callTool(s, token, WORK, 'spawn_task', { title: 'Follow up', prompt: 'begin a session', cwd });
     assert.equal(reply.result.isError, true, cwd);
-    assert.match(textOf(reply), /belongs to Capcom/, cwd);
+    assert.match(textOf(reply), /belongs to GhostShell/, cwd);
   }
   assert.deepEqual((await get(s, token, `/api/sessions/${WORK}/chips`)).chips, []);
   const ok = await callTool(s, token, WORK, 'spawn_task', { title: 'Follow up', prompt: 'begin a session', cwd: s.home });

@@ -42,7 +42,7 @@ export function Holds({ ctrl }) {
   return html`<div class="holds" role="status" ref=${box}>
     <${More} n=${held.hidden} what="earlier held message" />
     ${held.groups.map(g => html`<${HeldCard} key=${g.key} g=${g} />`)}
-    ${held.groups.length ? html`<p class="quiet hold-more">Claude has seen none of it. The CLI gives Capcom no way to approve a held message.</p>` : null}
+    ${held.groups.length ? html`<p class="quiet hold-more">Claude has seen none of it. The CLI gives GhostShell no way to approve a held message.</p>` : null}
     <${More} n=${ended.hidden} what="earlier undelivered message" />
     ${ended.groups.map(g => html`<${EndedCard} key=${g.key} g=${g} onDismiss=${ctrl.dismissHold} />`)}
   </div>`;

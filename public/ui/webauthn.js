@@ -43,9 +43,9 @@ export async function usePasskey(options, { conditional = false, signal } = {}) 
 // An empty string means the person backed out, which needs no message.
 export function describeFailure(e) {
   if (e?.name === 'NotAllowedError' || e?.name === 'AbortError') return '';
-  if (e?.name === 'InvalidStateError') return 'This device already has a passkey for Capcom.';
+  if (e?.name === 'InvalidStateError') return 'This device already has a passkey for GhostShell.';
   if (e?.name === 'SecurityError') return 'This address cannot use passkeys.';
-  if (e?.name === 'NotSupportedError') return 'This device cannot make a passkey Capcom accepts.';
-  if (e instanceof TypeError) return 'Could not reach Capcom.';
+  if (e?.name === 'NotSupportedError') return 'This device cannot make a passkey GhostShell accepts.';
+  if (e instanceof TypeError) return 'Could not reach GhostShell.';
   return e?.message || 'The passkey did not work.';
 }

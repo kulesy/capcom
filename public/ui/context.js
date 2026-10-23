@@ -30,8 +30,8 @@ const Row = ({ part }) => html`<tr><th scope="row">${part.name}</th><td>${part.s
 function Parts({ figure, view, busy, failed }) {
   if (figure.source !== 'process') {
     return html`<div class="context-parts">
-      <p class="context-note">From the transcript, as of Claude's last reply. The breakdown shows while Capcom runs this chat.</p>
-      ${figure.window ? null : html`<p class="context-note">Capcom learns this model's window the next time it runs a chat set to it.</p>`}
+      <p class="context-note">From the transcript, as of Claude's last reply. The breakdown shows while GhostShell runs this chat.</p>
+      ${figure.window ? null : html`<p class="context-note">GhostShell learns this model's window the next time it runs a chat set to it.</p>`}
     </div>`;
   }
   return html`<div class="context-parts" aria-busy=${busy}>

@@ -1,6 +1,6 @@
 {
-  "name": "Capcom",
-  "short_name": "Capcom",
+  "name": "GhostShell",
+  "short_name": "GhostShell",
   "description": "Your Claude Code sessions on this Mac.",
   "start_url": "./",
   "scope": "./",

@@ -263,7 +263,7 @@ test('a file over the limit is described and never sent, a folder, a pipe and a 
   const started = Date.now();
   const pipe = await previewOf(at('pipe'));
   assert.equal(pipe.status, 415);
-  assert.equal(errorOf(pipe), 'Capcom opens plain files only.');
+  assert.equal(errorOf(pipe), 'GhostShell opens plain files only.');
   assert.equal((await fileOf(at('pipe'))).status, 415);
   assert.ok(Date.now() - started < 5000, 'both answered at once');
   assert.equal((await previewOf(at('empty.txt'))).status, 200, 'and the server still answers');
@@ -280,7 +280,7 @@ test('a file the server cannot read is refused with the reason', { skip: process
   const { at } = await setup();
   const res = await previewOf(at('locked.txt'));
   assert.equal(res.status, 403);
-  assert.equal(errorOf(res), 'Capcom cannot read that file.');
+  assert.equal(errorOf(res), 'GhostShell cannot read that file.');
 });
 
 test('a linked symlink is served from what it points at, and the preview says where that is', async () => {
@@ -390,8 +390,8 @@ test('linksOf reads a thought cut at the limit it is given, a reply whole, and k
 test('a device is refused as not a plain file without being opened, since opening a serial port can reset the board on it', async () => {
   const opened = await watchOpens(async () => {
     for (const device of ['/dev/null', '/dev/zero']) {
-      await assert.rejects(previewFile(device, () => true), { status: 415, message: 'Capcom opens plain files only.' }, device);
-      await assert.rejects(serveFile(device, () => true, false), { status: 415, message: 'Capcom opens plain files only.' }, device);
+      await assert.rejects(previewFile(device, () => true), { status: 415, message: 'GhostShell opens plain files only.' }, device);
+      await assert.rejects(serveFile(device, () => true, false), { status: 415, message: 'GhostShell opens plain files only.' }, device);
     }
   });
   assert.equal(opened.length, 0);
@@ -399,7 +399,7 @@ test('a device is refused as not a plain file without being opened, since openin
   await watchOpens(async () => assert.equal((await previewFile(at('note.txt'), () => true)).kind, 'text'));
   const res = await previewOf('/dev/null');
   assert.equal(res.status, 415, 'and over HTTP, for a chat that links to it');
-  assert.equal(errorOf(res), 'Capcom opens plain files only.');
+  assert.equal(errorOf(res), 'GhostShell opens plain files only.');
   assert.equal((await fileOf('/dev/null')).status, 415);
 });
 

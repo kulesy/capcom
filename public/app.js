@@ -227,7 +227,7 @@ function App() {
     setHash(location.hash);
   };
   const projects = useProjects(ix, current, hash, toList);
-  useEffect(() => { if (view === 'list') document.title = 'Capcom'; }, [view]);
+  useEffect(() => { if (view === 'list') document.title = 'GhostShell'; }, [view]);
 
   // A view picked in the search.
   const showView = viewId => {

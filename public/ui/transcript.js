@@ -18,7 +18,7 @@ function LiveThink({ think }) {
 }
 
 const OWN_TITLE = 'Time since the turn began, and the tokens in the replies Claude has finished this turn. The count moves when a reply ends, not while it is written.';
-const OUTSIDE_TITLE = 'Another app runs this chat, so Capcom reads the time and tokens from its transcript. They move when a step is saved.';
+const OUTSIDE_TITLE = 'Another app runs this chat, so GhostShell reads the time and tokens from its transcript. They move when a step is saved.';
 
 // Whose turn is on screen: Capcom's own while it works, else one another app is running in a chat Capcom is not working on.
 function turnOf({ status, outside }) {

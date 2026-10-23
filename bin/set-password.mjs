@@ -12,7 +12,7 @@ function ask(question) {
   });
 }
 
-const first = await ask('New Capcom password: ');
+const first = await ask('New GhostShell password: ');
 if (first.length < 12) { console.error('Use at least 12 characters.'); process.exit(1); }
 const second = await ask('Type it again: ');
 if (first !== second) { console.error('Those did not match. Nothing was changed.'); process.exit(1); }

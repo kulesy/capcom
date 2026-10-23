@@ -391,7 +391,7 @@ async function handOff(id) {
   if (!t) return;
   if (inDesktop(id)) return markStarted(id, { desktopAt: Date.now() });
   if (!fs.readFileSync(t.file, 'utf8').includes('"type":"custom-title"')) {
-    fs.appendFileSync(t.file, `${JSON.stringify({ type: 'custom-title', customTitle: shortTitle(ownTitle(layout.read(), id) || s.title || 'Capcom session'), sessionId: id })}\n`);
+    fs.appendFileSync(t.file, `${JSON.stringify({ type: 'custom-title', customTitle: shortTitle(ownTitle(layout.read(), id) || s.title || 'GhostShell session'), sessionId: id })}\n`);
   }
   // Marked before the link opens, so a failed hand-off is logged once rather than retried into Desktop's window.
   markStarted(id, { desktopAt: Date.now() });

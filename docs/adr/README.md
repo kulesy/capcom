@@ -35,3 +35,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-22 | [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md) | Accepted |
 | 2026-10-22 | [Make Ghost the look on every device, in a stylesheet of its own](20261022-ghost-look.md) | Accepted, amended 2026-10-23 |
 | 2026-10-23 | [Give each group a session of its own, with the group's status drawn above its chat](20261023-a-session-for-each-group.md) | Accepted |
+| 2026-10-23 | [Call the app GhostShell, and keep capcom for every internal name](20261023-ghostshell-name.md) | Accepted |

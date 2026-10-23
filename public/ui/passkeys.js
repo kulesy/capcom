@@ -103,7 +103,7 @@ function PasskeyRow({ p, asking, ask, remove }) {
 }
 
 export function PasskeysPane() {
-  useDocumentTitle('Passkeys · Capcom');
+  useDocumentTitle('Passkeys · GhostShell');
   const [shown, setShown] = useState(null);
   const [problem, setProblem] = useState('');
   const [status, setStatus] = useState('');
@@ -147,7 +147,7 @@ export function PasskeysPane() {
   };
 
   const list = shown?.passkeys;
-  const why = !support.ok ? support.why : shown && !shown.available ? 'This address is not in passkeyOrigins, so Capcom cannot use passkeys here.' : '';
+  const why = !support.ok ? support.why : shown && !shown.available ? 'This address is not in passkeyOrigins, so GhostShell cannot use passkeys here.' : '';
 
   return html`<section class="session" id="passkeys">
     <header class="chat-head">

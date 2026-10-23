@@ -66,6 +66,14 @@ test('asks the browser for a discoverable credential with user verification and 
   assert.notEqual(r.passkeys.registrationOptions(LOCAL).challenge, options.challenge);
 });
 
+test('shows a passkey manager the name GhostShell, while the RP ID stays the host name of the address', () => {
+  const r = rig();
+  for (const [origin, rpId] of [[LOCAL, 'localhost'], [SECURE, 'capcom.example.test']]) {
+    const { rp, user } = r.passkeys.registrationOptions(origin);
+    assert.deepEqual([rp.name, user.displayName, rp.id], ['GhostShell', 'GhostShell', rpId]);
+  }
+});
+
 test('keeps one user handle per install and lists the passkeys already added to stop a second', () => {
   const r = rig();
   const first = r.passkeys.registrationOptions(LOCAL);
@@ -379,7 +387,7 @@ test('keeps the challenges it holds to a fixed number', () => {
 test('keeps at most 25 passkeys', () => {
   const r = rig();
   for (let i = 0; i < 25; i++) add(r, makeAuthenticator());
-  refuses(() => r.passkeys.registrationOptions(LOCAL), 409, undefined);
+  refuses(() => r.passkeys.registrationOptions(LOCAL), 409, /^GhostShell keeps at most 25 passkeys\. Remove one first\.$/);
 });
 
 test('works again after a restart, because passkeys live in the file and challenges do not', () => {

@@ -1,6 +1,6 @@
-# Writing a widget for Capcom
+# Writing a widget for GhostShell
 
-A widget is a picture or a small tool that Capcom draws in the chat when you call `show_widget`. Read this once per chat, before your first widget.
+A widget is a picture or a small tool that GhostShell draws in the chat when you call `show_widget`. GhostShell's tools come from the `capcom` MCP server. Read this once per chat, before your first widget.
 
 ## When to use one
 
@@ -12,7 +12,7 @@ You cannot see the widget once it draws, and the tool result only says it is sho
 
 ## The code
 
-`widget_code` is a fragment. Write no doctype, `html`, `head` or `body` tags. The root is HTML or SVG. Capcom puts it in a document that already holds the styles and scripts below, so `sendPrompt` and `openLink` exist before your scripts run.
+`widget_code` is a fragment. Write no doctype, `html`, `head` or `body` tags. The root is HTML or SVG. GhostShell puts it in a document that already holds the styles and scripts below, so `sendPrompt` and `openLink` exist before your scripts run.
 
 - A root that starts with `<svg` is drawn as a card: a border, rounded corners, a surface colour and padding. Give the SVG a `viewBox` and `width="100%"`, and no fixed pixel size. Text scales with the picture, so make the viewBox about 400 units wide. A wider one shrinks the labels on a phone.
 - Any other root is drawn on a transparent background over the chat. Add a panel of your own (`background: var(--surface-1)`) where you want one.
@@ -64,7 +64,7 @@ document.getElementById('out').innerHTML = svg;
 
 ## Theme
 
-Capcom follows the system's light or dark setting. `<html>` carries `data-mode="light"` or `data-mode="dark"`, and the colour variables change with it. CSS that uses the variables needs nothing more.
+GhostShell follows the system's light or dark setting. `<html>` carries `data-mode="light"` or `data-mode="dark"`, and the colour variables change with it. CSS that uses the variables needs nothing more.
 
 Script that picks colours, such as a canvas or a chart library, reads the variables when it draws and draws again when `data-mode` changes. Give a canvas a wrapper with a set height, and set `maintainAspectRatio: false` on a Chart.js chart:
 
@@ -149,7 +149,7 @@ The nine ramps `c-purple`, `c-teal`, `c-coral`, `c-pink`, `c-gray`, `c-blue`, `c
 
 ## Icons
 
-Tabler outline icons draw from a font: `<i class="ti ti-chart-bar" aria-hidden="true"></i>`. About 5,200 names exist, all outline, and a name that does not exist draws nothing. An icon takes its parent's colour and font size. Capcom loads the font only when your code contains `ti-`.
+Tabler outline icons draw from a font: `<i class="ti ti-chart-bar" aria-hidden="true"></i>`. About 5,200 names exist, all outline, and a name that does not exist draws nothing. An icon takes its parent's colour and font size. GhostShell loads the font only when your code contains `ti-`.
 
 ## Accessibility
 
@@ -169,14 +169,14 @@ Build the text from what the user chose, and write it as their own message (`Com
 
 ## Links
 
-Links always ask first. `<a href>`, `openLink(url)` and `window.open(url)` open nothing by themselves: Capcom shows the address and opens it in a new tab only when the user presses Open link. It offers `http` and `https` addresses of at most 2048 characters with no username or password, and ignores the rest. A `#` link stays inside the widget.
+Links always ask first. `<a href>`, `openLink(url)` and `window.open(url)` open nothing by themselves: GhostShell shows the address and opens it in a new tab only when the user presses Open link. It offers `http` and `https` addresses of at most 2048 characters with no username or password, and ignores the rest. A `#` link stays inside the widget.
 
-Never set `location` or `location.href`. The frame would leave your page, and Capcom closes the widget and shows a note in its place.
+Never set `location` or `location.href`. The frame would leave your page, and GhostShell closes the widget and shows a note in its place.
 
 ## The tool arguments
 
 Call `widget_guide` once per chat. Call `show_widget` with its arguments in this order:
 
-1. `loading_messages`: one to four short phrases of a few words each, such as `Plotting the three values`. Capcom shows them in a placeholder while you write the code. Put this field first, so it arrives before the long code does.
+1. `loading_messages`: one to four short phrases of a few words each, such as `Plotting the three values`. GhostShell shows them in a placeholder while you write the code. Put this field first, so it arrives before the long code does.
 2. `title`: a short snake_case name. It becomes the frame's accessible name.
 3. `widget_code`: the fragment.

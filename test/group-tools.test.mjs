@@ -203,11 +203,11 @@ test('a session started from a group needs an absolute folder that exists, is a 
     [{ cwd: repo, prompt: '   ' }, /first message/],
     [{ cwd: path.join(base, 'missing'), prompt: 'x' }, /does not exist/],
     [{ cwd: file, prompt: 'x' }, /not a folder/],
-    [{ cwd: state, prompt: 'x' }, /belongs to Capcom/],
-    [{ cwd: path.join(state, 'groups', 'cg-a'), prompt: 'x' }, /belongs to Capcom/],
-    [{ cwd: link, prompt: 'x' }, /belongs to Capcom/],
-    [{ cwd: path.join(link, 'groups'), prompt: 'x' }, /belongs to Capcom/],
-    [{ cwd: `${state}/../${path.basename(state)}/groups`, prompt: 'x' }, /belongs to Capcom/],
+    [{ cwd: state, prompt: 'x' }, /belongs to GhostShell/],
+    [{ cwd: path.join(state, 'groups', 'cg-a'), prompt: 'x' }, /belongs to GhostShell/],
+    [{ cwd: link, prompt: 'x' }, /belongs to GhostShell/],
+    [{ cwd: path.join(link, 'groups'), prompt: 'x' }, /belongs to GhostShell/],
+    [{ cwd: `${state}/../${path.basename(state)}/groups`, prompt: 'x' }, /belongs to GhostShell/],
   ];
   for (const [args, why] of reasons) await assert.rejects(startGroupSession(args, group), { refusal: true, message: why }, JSON.stringify(args));
   assert.deepEqual(started, [], 'nothing was started by a refused call');
@@ -227,7 +227,7 @@ test('a state folder spelled in another case is refused as the state folder, and
   const group = groupOf(MINE, { start: async args => { started.push(args); return { id: 'fresh-id', placed: true }; } });
   fs.mkdirSync(path.join(state, 'groups', 'cg-case'), { recursive: true });
   for (const cwd of [state.toUpperCase(), path.join(state, 'groups', 'cg-case').toUpperCase(), path.join(state.toUpperCase(), 'groups', 'cg-case'), state.toLowerCase()]) {
-    await assert.rejects(startGroupSession({ cwd, prompt: 'x' }, group), { refusal: true, message: /belongs to Capcom/ }, cwd);
+    await assert.rejects(startGroupSession({ cwd, prompt: 'x' }, group), { refusal: true, message: /belongs to GhostShell/ }, cwd);
   }
   assert.deepEqual(started, []);
   const repo = fs.mkdtempSync(path.join(base, 'repo-'));
@@ -239,8 +239,8 @@ test('the fence holds when only one side of the comparison is spelled in another
   const folder = fs.mkdtempSync(path.join(base, 'fence-'));
   const inside = path.join(folder, 'inside');
   fs.mkdirSync(inside);
-  assert.throws(() => workFolder(inside, folder.toUpperCase()), { refusal: true, message: /belongs to Capcom/ });
-  assert.throws(() => workFolder(inside.toUpperCase(), folder), { refusal: true, message: /belongs to Capcom/ });
+  assert.throws(() => workFolder(inside, folder.toUpperCase()), { refusal: true, message: /belongs to GhostShell/ });
+  assert.throws(() => workFolder(inside.toUpperCase(), folder), { refusal: true, message: /belongs to GhostShell/ });
   assert.equal(workFolder(inside, path.join(base, 'projects')), fs.realpathSync.native(inside));
 });
 

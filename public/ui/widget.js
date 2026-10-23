@@ -196,7 +196,7 @@ export const Widget = memo(function Widget({ t, onPrompt }) {
     if (latest.current.code.includes('ti-')) loadIcons().then(font => { if (font && frames.has(win)) tell(win, 'icons', font); });
   };
 
-  if (closed) return html`<li class="widget"><p class="widget-note">This widget tried to open another page, so Capcom closed it.</p></li>`;
+  if (closed) return html`<li class="widget"><p class="widget-note">This widget tried to open another page, so GhostShell closed it.</p></li>`;
   // Until the page in the frame has measured itself, an SVG card holds the place its picture will take.
   const style = height ? { height: `${height}px` } : ratio ? { height: 'auto', aspectRatio: `${ratio.width} / ${ratio.height}` } : undefined;
   const note = request ? (request.kind === 'link' ? 'A widget wants to open a link. Choose Open link or Cancel.' : 'A widget wants to send a message. Choose Send or Cancel.') : '';

@@ -55,6 +55,12 @@ test('the tools Capcom serves are all allowed without asking, the guide included
   assert.deepEqual(TOOL_NAMES, Object.keys(listed()).map(name => `mcp__capcom__${name}`));
 });
 
+test('the guide and every description call the app GhostShell, and the guide says once that its tools come from the capcom server', () => {
+  const texts = [guide, ...Object.values(listed()).map(t => t.description)];
+  for (const text of texts) assert.doesNotMatch(text, /Capcom/);
+  assert.equal(texts.join('\n').split("GhostShell's tools come from the `capcom` MCP server").length - 1, 1);
+});
+
 test('asking for the guide returns its text as the tool result', () => {
   const { result } = call('tools/call', { name: 'widget_guide', arguments: {} });
   assert.deepEqual(result, { content: [{ type: 'text', text: guide }] });
@@ -81,6 +87,7 @@ test('the other tools answer as before', () => {
   assert.equal(call('tools/call', { name: 'show_widget', arguments: { title: 'x', widget_code: '<p></p>' } }).result.content[0].text, 'The widget is showing in the chat.');
   assert.equal(call('tools/call', { name: 'mark_chapter', arguments: { title: 'x' } }).result.content[0].text, 'Chapter marked.');
   assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.isError, true);
+  assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.content[0].text, 'GhostShell has no tool called nothing_here.');
 });
 
 test('chips map each session a chip started to the session that made it, and leave out a chip that is open, dismissed, or missing either session', t => {
@@ -178,7 +185,7 @@ test('a chat that is no group\'s is told the group tools do not exist, and is ha
   for (const name of GROUP_TOOLS) {
     const { result } = call('tools/call', { name, arguments: { cwd: '/tmp', prompt: 'x', session_id: 'x' } });
     assert.equal(result.isError, true);
-    assert.equal(result.content[0].text, `Capcom has no tool called ${name}.`);
+    assert.equal(result.content[0].text, `GhostShell has no tool called ${name}.`);
   }
 });
 
@@ -216,10 +223,10 @@ test('a chip from a group\'s chat is refused for a folder that is missing, relat
   const reasons = [
     ['relative/dir', /absolute folder/],
     [path.join(base, 'missing'), /does not exist/],
-    [stateDir, /belongs to Capcom/],
-    [path.join(stateDir, 'groups', 'cg-a'), /belongs to Capcom/],
-    [link, /belongs to Capcom/],
-    [`${stateDir}/../state/groups`, /belongs to Capcom/],
+    [stateDir, /belongs to GhostShell/],
+    [path.join(stateDir, 'groups', 'cg-a'), /belongs to GhostShell/],
+    [link, /belongs to GhostShell/],
+    [`${stateDir}/../state/groups`, /belongs to GhostShell/],
   ];
   for (const [cwd, why] of reasons) {
     const { result } = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', cwd } } }, { group: { stateDir }, chips, cwd: '/tmp/group' });

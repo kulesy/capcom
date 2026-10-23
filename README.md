@@ -1,9 +1,13 @@
-# Capcom
+# GhostShell
 
 A browser chat client for every Claude Code session on this Mac: the ones started in Claude Desktop,
-the routine runs, and the ones started in a terminal. The list uses Capcom's own projects, groups and pins,
+the routine runs, and the ones started in a terminal. The list uses GhostShell's own projects, groups and pins,
 and nests one session under another. The groups and pins start as a copy of Desktop's. It listens on
 http://localhost:4310.
+
+GhostShell used to be called Capcom. The repo, the service and the stored settings still use the name capcom,
+so an existing install keeps working. [The decision record](docs/adr/20261023-ghostshell-name.md) lists what
+keeps it and why.
 
 The reasons behind the design are in [docs/adr](docs/adr/README.md), one record per decision.
 
@@ -11,7 +15,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 
 - **Sessions** come from two places, both read only. Claude Code saves every session as a JSON lines
   file under `~/.claude/projects`. Claude Desktop keeps its titles, groups and pins under
-  `~/Library/Application Support/Claude`. Capcom reads the titles, the records and the links between sessions
+  `~/Library/Application Support/Claude`. GhostShell reads the titles, the records and the links between sessions
   each time, and the groups and pins once (see "Groups and pins" and "Nested sessions"). Those Desktop files
   are internal and undocumented, so when a Desktop update moves them the list carries on from the session
   files alone and says so at the top.
@@ -31,7 +35,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   Effort opens Low, Medium, High, Extra and Max, with a warning on Max. More models holds Opus 5.5 (1M) and every other model the CLI
   lists. When the model takes fast mode, the menu also has an Enable fast mode switch. A change applies from
   Claude's next request, even mid-turn, and is remembered
-  for that session in `picks.json` in Capcom's state folder, so it survives the idle stop and a restart. Fast mode is off until you switch it on for a session.
+  for that session in `picks.json` in GhostShell's state folder, so it survives the idle stop and a restart. Fast mode is off until you switch it on for a session.
   `Fast` shows off while a chat's process starts, until Claude accepts fast mode, and a chat with no process shows what you picked. A refusal turns it off for that session.
 - **Skills and commands.** Type / at the start of the prompt box and a list of the skills and slash commands that
   chat can run opens above it, filtered by name and alias as you type. The arrow keys move, Enter or Tab picks, a
@@ -41,17 +45,17 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   typed, and a message that starts with / but matches nothing, such as a path, sends as typed. The list is the
   CLI's own. A running chat uses the one its process gave when it started. A new session, or a chat with no process
   yet, gets it from a short `claude -p` run in its folder that sends no message, starts no MCP servers, runs no hooks
-  and writes no session. Capcom keeps a folder's list for 2 minutes. `/clear` is left out, because the CLI answers it with a new
-  session that Capcom's chat would not follow. [The decision record](docs/adr/20261022-slash-menu-from-the-cli.md)
+  and writes no session. GhostShell keeps a folder's list for 2 minutes. `/clear` is left out, because the CLI answers it with a new
+  session that GhostShell's chat would not follow. [The decision record](docs/adr/20261022-slash-menu-from-the-cli.md)
   says why the list comes from the CLI.
 - **Context.** A ring at the right end of the row under the prompt box, where Desktop puts its own, shows how full
   the chat's context window is. It turns amber when the chat is 90% of the way to auto-compact, and its tooltip gives
   the tokens used and the percent. Press it to see the tokens used out of the window, where auto-compact starts, and
-  what fills the context, largest first, as Claude Code's /context lists it. While Capcom runs the chat, the figures
+  what fills the context, largest first, as Claude Code's /context lists it. While GhostShell runs the chat, the figures
   come from the CLI's own count, which runs no model turn and writes nothing to the session. A chat with no process
   shows the total from its session file instead, as of Claude's last reply, with no parts. The window and the
-  auto-compact point come from the CLI, and Capcom keeps them per model in `windows.json` in its state folder, so a
-  chat with no process shows its window once Capcom has run a chat set to that model. On a narrow phone the
+  auto-compact point come from the CLI, and GhostShell keeps them per model in `windows.json` in its state folder, so a
+  chat with no process shows its window once GhostShell has run a chat set to that model. On a narrow phone the
   permission mode's name shortens to keep that row on one line.
   [The decision record](docs/adr/20261022-context-usage-from-the-cli.md) says where each figure comes from.
 - **Images.** Paste a screenshot anywhere on the page, drop image files onto it, or pick them with the +, and
@@ -97,30 +101,30 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   message starts the session in that folder. The + and the keys work while the list is still loading.
   The search shows its action once the list has arrived. In a browser tab Chrome runs Cmd+N as New
   Window before the page sees the key, so it still opens a window there. In the app's window Chrome
-  gives the page the key first, so there Cmd+N starts a session instead. Capcom tells a tab from the
+  gives the page the key first, so there Cmd+N starts a session instead. GhostShell tells a tab from the
   app's window with the `(display-mode: standalone)` media query, and treats a full-screen app window
-  as a tab, because Chrome reports it as full screen. In the app Cmd+N still opens a second Capcom
-  window on the sign-in page and while a widget has focus, because Capcom's page never sees the key
+  as a tab, because Chrome reports it as full screen. In the app Cmd+N still opens a second GhostShell
+  window on the sign-in page and while a widget has focus, because GhostShell's page never sees the key
   there. File > New Window in the menu bar opens one too. New session in the + menu and in the search,
   the Find and Projects buttons' tooltips and the line on the empty page name the modifier that works
-  where Capcom is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no
+  where GhostShell is running: Cmd in the app on a Mac, and Ctrl everywhere else. A touch screen shows no
   key beside New session.
 - **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
   Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
   started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
   project's groups, with no header for the project, because the sidebar already names it. Each section
   sorts as you set it in Claude Desktop: by last turn, by when the session was made or by title, either
-  way round. A group made in Capcom, which Desktop has no sort for, lists its newest session first. A
+  way round. A group made in GhostShell, which Desktop has no sort for, lists its newest session first. A
   group shows when it is empty, so one that was just made can be found and filled, and a project with no groups says so beside a New group button.
   The other sections show only when they hold a session. A session's row is one line on a mouse, as in
   Claude Desktop: the title, and a mark at the right end that says what the session needs from you. The
   mark is amber when the session needs your input, blue when it has something you have not read, grey
   while a turn runs, and a small warning triangle when the last turn failed. A row that needs nothing
-  shows none. Capcom reads Desktop's unread marks, read only, so a session you read only in Capcom stays
+  shows none. GhostShell reads Desktop's unread marks, read only, so a session you read only in GhostShell stays
   unread in Desktop. On a mouse a row's text is grey, and darkens on the open chat's row and under the
   pointer. A row whose turn
   is running also shows how long that turn has run, left of the mark and of any fold arrow, for a chat
-  Capcom runs and for one Desktop or a terminal runs. The open chat's row keeps time with its status line.
+  GhostShell runs and for one Desktop or a terminal runs. The open chat's row keeps time with its status line.
   Other rows pick up a turn's start and end on the list's next load, up to 15 seconds later. The dots
   button takes the mark's place only on a mouse in a window at least 48rem wide, while the pointer is over
   the row or the focus is in it. The arrow that folds a parent's nested sessions or a routine's earlier
@@ -129,7 +133,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   last ran opens on the right of the row 700ms after the pointer reaches it, at once if another tooltip
   closed in the last 300ms, and at once on keyboard focus. A touch screen has no tooltips, so its rows
   have a second line with those details, and the mark and the buttons always show.
-- **Groups and pins** are Capcom's own, kept in `layout.json` in its state folder. The first time Capcom
+- **Groups and pins** are GhostShell's own, kept in `layout.json` in its state folder. The first time GhostShell
   starts without that file it copies Desktop's groups, their sessions and its pins in, once, and records
   when. After that it ignores Desktop's groups and pins. If it cannot read Desktop's files at that start,
   the layout starts empty and it tries again on each later start. Drag a row onto a group to move it there,
@@ -140,7 +144,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   name) and the loose list the session came from, with the place the session is already in left out. It
   lists the groups of every project, so it also moves a session to a view that is not on screen. A
   routine's run that was moved into a group or pinned can go back to Routines from there. There is no
-  screen yet to rename, delete or reorder groups. Edit `layout.json` for those: Capcom reads it on every
+  screen yet to rename, delete or reorder groups. Edit `layout.json` for those: GhostShell reads it on every
   refresh, and shows the error at the top of the list if it cannot.
 - **Nested sessions** show under a parent session in the list, indented, with a line from the parent that
   turns into the last of them, as Claude Desktop draws them. Drop a row on the middle of another row to
@@ -162,13 +166,13 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   under the parent again when it comes back. Taking a
   nested session out, moving it, pinning it or archiving it leaves the rest of the family under the parent,
   even when Desktop links them through that session. Claude Desktop records which sessions it linked to a
-  parent: side chats, forks and suggested tasks. Capcom reads those links on every refresh, so it shows the families Desktop shows with no drag,
-  and shows a link Desktop records later on the next refresh. Capcom's own choice wins over Desktop's in
+  parent: side chats, forks and suggested tasks. GhostShell reads those links on every refresh, so it shows the families Desktop shows with no drag,
+  and shows a link Desktop records later on the next refresh. GhostShell's own choice wins over Desktop's in
   both directions, as it does for the archive flag. A session you nest stays nested whatever Desktop
   records, and one you take out stays out although Desktop links it. `layout.json` keeps those choices under
   `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows the chip it
   was started from, and then Desktop. A session you start from a chip nests under the session that made the
-  chip, as Desktop nests the tasks it suggests. Capcom reads that from `chips.json`, so chips you started
+  chip, as Desktop nests the tasks it suggests. GhostShell reads that from `chips.json`, so chips you started
   earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip,
   as it does over Desktop's links.
 - **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
@@ -203,7 +207,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   A lamp beside Home and each project is green when a chat in it is working and amber when one needs you.
   When the sidebar is not showing and a chat in another view needs you, the button has an amber dot. New
   project is the button at the bottom of the sidebar. It asks for a name, shows the reason in the sidebar
-  if Capcom refuses one, and shows the new project when it takes it.
+  if GhostShell refuses one, and shows the new project when it takes it.
 - **Finding a session.** Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a
   search laid out like Desktop's. Chips pick what to look through: All, Sessions, Projects, Routines and
   Archived, and the left and right arrows move between them from either end of the text. With nothing
@@ -231,21 +235,21 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   nothing while the ring is on anything in the list or the projects sidebar that is not a session. Text
   fields and the forms in the list and the projects sidebar keep Cmd+A as Select All. So does the page
   when no menu is open, no ring is in the list or the projects sidebar, and there is no session to
-  archive. Capcom leaves Ctrl+A to the browser. For a chat that is working or waiting, Cmd+A asks first with
+  archive. GhostShell leaves Ctrl+A to the browser. For a chat that is working or waiting, Cmd+A asks first with
   Cancel focused, so Enter or Esc leaves the chat running. Archiving the open chat, from the key or the
   menu, goes back to the list, where the note shows. Undo then opens the chat again if you are still on the
   list. In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the
   selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine
-  it had. Desktop's records are read only, so Capcom keeps these choices in `layout.json`, and its choice
+  it had. Desktop's records are read only, so GhostShell keeps these choices in `layout.json`, and its choice
   wins over Desktop's archive flag in both directions.
 - **Renaming.** Double-click a session's row, or choose Rename in its menu, and a field takes the row's
   place with the title selected. Enter saves, Esc cancels, and a title runs to 120 characters at most. On a
-  phone a double tap opens the session, so rename from the menu. Capcom keeps the title in `layout.json`
+  phone a double tap opens the session, so rename from the menu. GhostShell keeps the title in `layout.json`
   and shows it in place of every other title, for any session, whichever app started it. It shows in
-  Capcom only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop
+  GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop
   and the terminal keep the titles they have. A group lists its sessions by the new title, and the search
   finds them by it. With `desktopHandoff` set to `true`, a session renamed here before it is handed to
-  Desktop takes its Capcom title with it.
+  Desktop takes its GhostShell title with it.
 - **Keyboard in the list.** The up and down arrows move through the section headers and the sessions,
   Home and End jump to either end, and left and right fold a section, a routine's runs or the sessions
   nested under a row. Right on a row whose nested sessions show moves to the first of them, and left on a
@@ -258,7 +262,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   between the views and the New project button. Tab reaches a project's dots, and the menu key or
   Shift+F10 on a project opens its menu.
 - **Routines** open their latest run with a click. The arrow at the end of a routine's row folds its
-  earlier runs out underneath. Runs that Capcom starts itself (see "Routines" below) list there with the
+  earlier runs out underneath. Runs that GhostShell starts itself (see "Routines" below) list there with the
   routine's title, beside Desktop's runs of the same routine.
 - **Tool calls** are collapsed into one row for each run between Claude's messages, such as "Read 3
   files, ran 2 commands, edited 1 file" with a `+12 -1` count of changed lines. Tap a row to see every
@@ -269,7 +273,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   a click on it opens the viewer at that picture. Each thumbnail opens the viewer. A call to an MCP tool shows
   its server first, as in "Chrome computer" or "Gmail search threads", and its thumbnails are labelled with
   where they came from, such as "Image from Chrome". Desktop's app tools show as "Desktop". Some older
-  Desktop chats name Chrome's server `Claude_in_Chrome`, where the CLI says `claude-in-chrome`. Capcom
+  Desktop chats name Chrome's server `Claude_in_Chrome`, where the CLI says `claude-in-chrome`. GhostShell
   reads both as Chrome, in tool rows and in group titles such as "Used Chrome 3 times". Desktop names a
   claude.ai connector by an id, so in a Desktop session it shows by the name that session's Desktop record
   gives it, or as "connector" when the record has none. A picture a tool returned in a form the page cannot
@@ -287,14 +291,14 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   sits, its title is the step Claude is on, such as "Running npm test" or "Reading lib/runner.mjs", and its
   own timer counts from the group's first row. When the step changes, the old text fades out as the new
   text fades in, and the last step fades into the group's summary when the turn ends. With reduced motion
-  on, the lamps stay lit and the text changes at once. A headless CLI redacts its thinking, so Capcom asks
+  on, the lamps stay lit and the text changes at once. A headless CLI redacts its thinking, so GhostShell asks
   it for summaries when the process starts, and the CLI saves them in the transcript. If the CLI sends no
   thinking text, no block appears and the status line says "Thinking" after the timer. A thinking block
   saved with no text shows nothing, and a turn stopped mid-thought keeps none of it, because the CLI saves
   a block only when it ends. Checked on CLI 2.1.301 with Haiku 5.5. A chat that Desktop or a terminal runs
-  shows the same line and row, and its header lamp reads working. Those apps send Capcom no stream, so
-  Capcom reads the chat's transcript. It counts the chat as working while the transcript ends inside a
-  turn, Capcom's own headless CLI did not write that turn, and the transcript or one of the chat's agents'
+  shows the same line and row, and its header lamp reads working. Those apps send GhostShell no stream, so
+  GhostShell reads the chat's transcript. It counts the chat as working while the transcript ends inside a
+  turn, GhostShell's own headless CLI did not write that turn, and the transcript or one of the chat's agents'
   files changed in the last 10 minutes. The time and tokens move when a step is saved. Such a chat has no
   thinking text. It reads as running while Desktop waits for an approval, because a call that waits for one
   looks the same in the transcript as a call that runs, and for up to 10 minutes after an app quits in the
@@ -303,7 +307,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `!` in a terminal neither starts a turn nor ends one, because Claude does not reply to it.
 - **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
   failed or was stopped, a line from a monitor, a message from another session or a subagent, the CLI's
-  report on a message this chat sent to another session, and a command you ran with `!`. Capcom shows each
+  report on a message this chat sent to another session, and a command you ran with `!`. GhostShell shows each
   as a compact notice instead of a message from you. A notice has a lamp (green when a task finished or a
   message was delivered, amber while a message waits for approval, red when a task failed or a message was
   not delivered, grey otherwise), a title such as "Background task finished", and a line saying what
@@ -313,10 +317,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **Messages between chats.** Chats message each other with the CLI's `SendMessage` tool and find each
   other with `ListAgents`. The CLI delivers a message when the sender and the receiving chat are in the
   same kind of permission mode, both bypassing permission prompts or both asking. An idle chat then starts
-  a turn to answer it. Capcom shows the message as a notice titled "Message from" and the sender's name,
+  a turn to answer it. GhostShell shows the message as a notice titled "Message from" and the sender's name,
   with the sender's address and mode behind Details. A report from one of this chat's own subagents is
   titled "Message from a subagent". The name and the address are claims the sender makes, so they label a
-  message and do not prove who sent it. A chat that Capcom stopped after 30 idle minutes has nothing
+  message and do not prove who sent it. A chat that GhostShell stopped after 30 idle minutes has nothing
   listening and receives no messages until it starts again.
 - **Held messages.** The CLI holds a message instead of delivering it when the two kinds of permission
   mode differ, when the sender does not say which kind it is in and this chat bypasses permission prompts,
@@ -327,19 +331,19 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   bottom, where the newest sits. The box scrolls to its foot when the cards change, so the newest card is
   in view on a phone. When the CLI gives up on a message, a grey card says why. It stays until you press
   Dismiss or reload the page, and it is still there when you come back to the chat from another one.
-  Capcom remembers up to 100 undelivered messages for each chat, and the oldest go first. Cards are live
-  only. The CLI saves nothing about a held message, so Capcom learns that a hold ended only while the chat
+  GhostShell remembers up to 100 undelivered messages for each chat, and the oldest go first. Cards are live
+  only. The CLI saves nothing about a held message, so GhostShell learns that a hold ended only while the chat
   is open, and a page opened later shows the messages still held and none that ended. The amber cards go
   when the chat's process ends, and when a new process starts after you stopped the chat.
-- **Approving a held message** cannot be done from Capcom. A terminal session shows its owner an approval
-  dialog, which the CLI's code calls `peer_inbound_approval`. A chat run as Capcom runs it was not sent
+- **Approving a held message** cannot be done from GhostShell. A terminal session shows its owner an approval
+  dialog, which the CLI's code calls `peer_inbound_approval`. A chat run as GhostShell runs it was not sent
   that dialog when checked on CLI 2.1.302, even after it declared it could show one. It gets only a note
   that a message is held, and the CLI answers a made-up approval request with "Unsupported control request
   subtype". The CLI waits 5 minutes for an approval by default (its `dialogExpiry` setting, which the
   `CLAUDE_CODE_USER_DIALOG_TIMEOUT_MS` environment variable overrides), and then drops the message. Two
   things release a held message sooner. One is changing the chat's permission mode to the sender's kind.
   The other is setting `crossSessionInbound` to `accept`, which releases every held message and accepts the
-  later ones. Capcom does neither for you, because a message from another session is untrusted input.
+  later ones. GhostShell does neither for you, because a message from another session is untrusted input.
   [The decision record](docs/adr/20261016-peer-messages-between-chats.md) says what approving one message
   would need from the CLI.
 - **Reading** a long session loads only its last 2 MB, with "Load earlier" for the rest. Sessions
@@ -352,20 +356,20 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   viewer opens, and keeps the answer until Load earlier moves that offset. The answer names each picture by its ref
   and type and carries no image data. The server builds the list in one pass over the transcript, keeps it, and
   afterwards reads only the lines added since, so the first list for a 130 MB chat takes about 200 ms and later ones 1 ms.
-- **Look.** Capcom is built on shadcn/ui and follows the system's light or dark setting. Every device gets the
+- **Look.** GhostShell is built on shadcn/ui and follows the system's light or dark setting. Every device gets the
   Ghost look, inspired by the Ghost in Destiny: black, white and grey, cut corners, status dots drawn as eyes,
   and a working spinner shaped like a shell that opens and turns round its eye. Sign-in and setup keep the
   plain shadcn/ui look. [The decision record](docs/adr/20261022-ghost-look.md) says what changes and why.
 
 ## Tools
 
-Capcom sessions get the standard Claude Code tools, the claude.ai connectors and the MCP servers in
-`~/.claude.json`. Desktop's own built-in tools are served from inside the Desktop app, so Capcom
+GhostShell sessions get the standard Claude Code tools, the claude.ai connectors and the MCP servers in
+`~/.claude.json`. Desktop's own built-in tools are served from inside the Desktop app, so GhostShell
 cannot borrow them. It adds its own instead, the same way: a server called `capcom`, declared in the
 initialize request and answered over the session's stdio (`lib/tools.mjs`).
 
 - **Chips** (`spawn_task`, `dismiss_task`) show as cards with Start and Dismiss. Start opens a new
-  Capcom session with the chip's prompt, in the folder printed on the card. Chips that Desktop
+  GhostShell session with the chip's prompt, in the folder printed on the card. Chips that Desktop
   sessions created can be started too.
 - **Chapters** (`mark_chapter`) show as titled dividers.
 - **Group sessions.** Each group's header has a button that opens the group's own chat. It works in a
@@ -375,17 +379,17 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
   [The decision record](docs/adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that limits requests to cdnjs, esm.sh, jsDelivr, unpkg and Google Fonts, so model-written HTML
-  cannot reach Capcom or its cookie. The frame carries Desktop's variable names, SVG classes and
-  colour ramps (with Capcom's own values) and the Tabler icons, so a widget written for Desktop draws
+  cannot reach GhostShell or its cookie. The frame carries Desktop's variable names, SVG classes and
+  colour ramps (with GhostShell's own values) and the Tabler icons, so a widget written for Desktop draws
   the same. `sendPrompt` sends a message at once on a click inside the widget and asks you first for
   anything else, and links always ask first. `widget_guide` tells the model how to write one, once per
   chat, and its `loading_messages` show in a placeholder while it writes.
 - **Questions** (`AskUserQuestion`) show as option buttons, plus a box for your own answer.
 - **Claude in Chrome** is on in every session and every permission mode, as it is in Desktop. The
-  `chrome` setting turns it off for all of Capcom (see Configuration). Capcom starts the CLI
+  `chrome` setting turns it off for all of GhostShell (see Configuration). GhostShell starts the CLI
   with `--chrome` and an ask rule for every Chrome tool, so Chrome asks before each action, even ones
   your settings already allow, and the question shows as an approval card. Bypass permissions is the
-  exception: Capcom allows Chrome there without a card, as Desktop does, and a switch to a stricter mode
+  exception: GhostShell allows Chrome there without a card, as Desktop does, and a switch to a stricter mode
   asks again at once. Chrome cards have no Always allow.
 
 Still Desktop only: the in-app browser, the iOS Simulator panel, Desktop's window and sidebar, and
@@ -393,11 +397,11 @@ computer use (not available to the CLI in `-p` mode).
 
 Things to know:
 
-- Sessions started here stay in Capcom, under "Started here", and do not appear in Desktop's sidebar.
-  With `desktopHandoff` set to `true` (see Configuration), Capcom hands each new session to Desktop
+- Sessions started here stay in GhostShell, under "Started here", and do not appear in Desktop's sidebar.
+  With `desktopHandoff` set to `true` (see Configuration), GhostShell hands each new session to Desktop
   when its first reply finishes. It stops its own process for the session, adds a title to the
   transcript, and opens Desktop's hand-off link (`claude://resume?session=<id>`). Desktop adds the
-  session to its sidebar and switches its window to it. The next message sent from Capcom starts the
+  session to its sidebar and switches its window to it. The next message sent from GhostShell starts the
   process again.
 - Opening a session that is also open in Desktop continues the same session. If both are used at
   once, the two can drift apart.
@@ -409,9 +413,9 @@ Things to know:
 
 ## Routines
 
-Capcom runs the routines that Claude Desktop runs, so Desktop does not have to stay open for them. A
-routine is a prompt file that Desktop keeps, `~/.claude/scheduled-tasks/<id>/SKILL.md`, which Capcom reads
-and never writes, and a schedule that Capcom keeps in `routines.json` in its state folder. Capcom has to be
+GhostShell runs the routines that Claude Desktop runs, so Desktop does not have to stay open for them. A
+routine is a prompt file that Desktop keeps, `~/.claude/scheduled-tasks/<id>/SKILL.md`, which GhostShell reads
+and never writes, and a schedule that GhostShell keeps in `routines.json` in its state folder. GhostShell has to be
 running when a routine is due, which is what the launchd agent under "Always on" is for.
 
 - **Seeding.** Desktop's own schedule file is internal to it and has no jitter in it, so the schedules
@@ -419,20 +423,20 @@ running when a routine is due, which is what the launchd agent under "Always on"
   `cron`, `jitterSeconds`, `file`, `cwd`, `model`, `effort`, `mode` and `enabledInDesktop`.
   `npm run seed-routines -- <export.json>` copies them into `routines.json`, every one switched off, and
   prints when each would fire next. Run it again with a newer export to add routines that are new. The
-  ones already there are left as they are, apart from `enabledInDesktop`. Capcom reads `routines.json`
-  on every check, so a seed run or a hand edit shows without a restart. Capcom writes the file too, so
+  ones already there are left as they are, apart from `enabledInDesktop`. GhostShell reads `routines.json`
+  on every check, so a seed run or a hand edit shows without a restart. GhostShell writes the file too, so
   reload it before a hand edit.
-- **Switching over.** A routine runs in Capcom only once it is switched on here, so switch it off in
+- **Switching over.** A routine runs in GhostShell only once it is switched on here, so switch it off in
   Desktop first, or both apps run it. Switching on counts the schedule from that moment, so a fire time
   earlier in the day is not run on top of Desktop's own run.
-- **When it fires.** The schedule is a five-field cron in the Mac's time zone, which Capcom follows if it
+- **When it fires.** The schedule is a five-field cron in the Mac's time zone, which GhostShell follows if it
   changes, with the routine's jitter added as a fixed offset, as Desktop does it: `30 7 * * 1-5` with 737
-  seconds of jitter fires at 07:42:17. Capcom checks every 30 seconds, and once when it starts. A routine
+  seconds of jitter fires at 07:42:17. GhostShell checks every 30 seconds, and once when it starts. A routine
   that is due starts a new session in its folder with its permission mode, model and effort. The first
   message is Desktop's: the text of `SKILL.md` after its frontmatter, inside the same `<scheduled-task>`
   wrapper. The file is read afresh at each run, so an edit applies at once.
-- **Missed runs.** If Capcom was not running at a fire time, the latest missed fire runs once as soon as
-  Capcom is up, provided it is under 12 hours late. A later one is skipped and logged. However many fires
+- **Missed runs.** If GhostShell was not running at a fire time, the latest missed fire runs once as soon as
+  GhostShell is up, provided it is under 12 hours late. A later one is skipped and logged. However many fires
   were missed, that is at most one run.
 - **One at a time.** A fire that comes while the routine's previous run is still working is skipped and
   logged, not held over until it ends. A previous run that is only waiting for an answer is stopped, and
@@ -441,13 +445,13 @@ running when a routine is due, which is what the launchd agent under "Always on"
   over one Chrome. A fourth that comes due waits for a free place, and starts as soon as one frees up. A
   run waiting for an answer does not take a place. Run now ignores the limit.
 - **Restarts.** `routines.json` records when each routine was switched on and last ran, and the next
-  fire is worked out from that. A restart does not repeat a run, and a run that came due while Capcom
-  was down is caught up as above. A restart can cut a run in progress short, and Capcom does not start
+  fire is worked out from that. A restart does not repeat a run, and a run that came due while GhostShell
+  was down is caught up as above. A restart can cut a run in progress short, and GhostShell does not start
   that run again. A run that cannot start is recorded in `lastError` and waits for the routine's next
   fire.
-- **A wrong file.** Capcom runs nothing while `routines.json` cannot be read, has a routine with no id, or
+- **A wrong file.** GhostShell runs nothing while `routines.json` cannot be read, has a routine with no id, or
   has an id twice, which is what a copied entry with its id left alone looks like. `GET api/routines` says
-  which, and Capcom logs it once on stderr. An `enabled` that is not `true` or `false` counts as off.
+  which, and GhostShell logs it once on stderr. An `enabled` that is not `true` or `false` counts as off.
 - **API.** `GET api/routines` lists the routines with their next fire time, whether each is running, and
   what is wrong with it if anything. `POST api/routines/<id>/run` runs one now, switched on or not, and
   answers 409 while its previous run is working. `POST api/routines/<id>/enabled` takes
@@ -488,10 +492,10 @@ message does to it, the sign-in and the passkey checks, with Node's own test run
 in a page run it in Playwright's Chromium headless shell, the newest in Playwright's cache or the one that
 `CAPCOM_BROWSER` names, and skip when there is none. The password is kept only as a
 scrypt hash in `~/.config/capcom/auth.json`, and setting a new one signs every browser out and removes every
-passkey. Until one is set, Capcom refuses every request.
+passkey. Until one is set, GhostShell refuses every request.
 
 A browser that signs in stays signed in while it is used at least every 90 days, for up to a year from the
-sign-in. Each day it is used, Capcom pushes the expiry 90 days out, but never past a year after the sign-in,
+sign-in. Each day it is used, GhostShell pushes the expiry 90 days out, but never past a year after the sign-in,
 and sends the cookie again with the time that is left. Every sign-in records when it was made, when it was
 last used and a short device label such as "Chrome 155 on macOS".
 
@@ -499,19 +503,19 @@ Passkeys are the second way in. A passkey signs you in with a fingerprint, face 
 password keeps working beside it. After a password sign-in the page offers once to add one, and Passkeys in
 the footer of the session list adds, lists and removes them. Browsers offer passkeys only on an https
 address or on localhost, so http://localhost:4310 works as it is, and a remote address needs https and an
-entry in `passkeyOrigins` (see "Remote access"). Capcom keeps the public keys in `passkeys.json` in its state
+entry in `passkeyOrigins` (see "Remote access"). GhostShell keeps the public keys in `passkeys.json` in its state
 folder. `npm run set-password` signs every browser out and removes every passkey, so a passkey added with a
 stolen cookie cannot outlast a reset. Add yours again once you have signed in with the new password. To end
 one passkey, remove it under Passkeys and delete it from the device or password manager that holds it as well.
 
-Capcom has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own
+GhostShell has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own
 window and Dock icon. Window managers then see it as its own app rather than as the browser. On the Mac,
 install it from http://localhost:4310, because Chrome only offers Install on a secure address, and it
 treats localhost as one.
 
 ## Configuration
 
-`config.json` holds the defaults: the port, the `claude` command, the folders Capcom reads and the
+`config.json` holds the defaults: the port, the `claude` command, the folders GhostShell reads and the
 timeouts. To change a value on one machine, put it in `config.local.json` in the repo root. That file is
 optional and git-ignored, and its values replace the ones in `config.json`.
 
@@ -523,12 +527,12 @@ optional and git-ignored, and its values replace the ones in `config.json`.
 - `claude` is the CLI to run. It defaults to `claude`, found on `PATH`.
 - `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome.
 - `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see
-  "Things to know"). Turning it on also hands over, the next time Capcom starts, every session started
+  "Things to know"). Turning it on also hands over, the next time GhostShell starts, every session started
   here that Desktop does not have yet.
 - `passkeyOrigins` is a list of the https addresses that may use passkeys, empty by default. Write each
   entry as the browser shows the address, such as `https://capcom.example.com` or
   `https://capcom.example.com:8443`, with no path. `http://localhost:<port>` needs no entry and works for a
-  browser that opens it directly. Capcom ignores an entry that is not https or that is an IP address, and says
+  browser that opens it directly. GhostShell ignores an entry that is not https or that is an IP address, and says
   so on stderr. Keep your real addresses in `config.local.json`.
 
 Three environment variables win over both files. `PORT` sets the port, `CAPCOM_CLAUDE` sets the CLI,
@@ -537,8 +541,9 @@ share a state folder both fire its routines, so always give a test instance its 
 
 ## Always on
 
-On macOS, a launchd agent starts Capcom at login and restarts it if it stops. It runs the server through
-Capcom.app, a small app this folder builds, so that macOS asks about permissions for Capcom.
+On macOS, a launchd agent starts GhostShell at login and restarts it if it stops. It runs the server through
+Capcom.app, a small app this folder builds, so that macOS asks about permissions for the app. The app keeps
+the name Capcom, so macOS lists it as Capcom.
 
 ```bash
 npm run build-app
@@ -575,52 +580,52 @@ again after you move the folder or change Node versions, because the plist store
 
 ## Remote access
 
-Capcom binds to 127.0.0.1 only, so no other device can reach it directly. To use it from a phone or
+GhostShell binds to 127.0.0.1 only, so no other device can reach it directly. To use it from a phone or
 another computer, put a reverse proxy or a private network you trust in front of it.
 
 It works when mounted under a sub-path such as `/chat`. Every URL in the page is relative, and the
-page adds its own trailing slash. The proxy must strip the prefix before the request reaches Capcom.
+page adds its own trailing slash. The proxy must strip the prefix before the request reaches GhostShell.
 
 If the proxy ends https, it must send `X-Forwarded-Proto: https`, which nginx does with
-`proxy_set_header X-Forwarded-Proto $scheme;`. Capcom then adds `Secure` to the sign-in cookie. It also takes a
+`proxy_set_header X-Forwarded-Proto $scheme;`. GhostShell then adds `Secure` to the sign-in cookie. It also takes a
 write only when the page's address, in the `Origin` header, matches the `Host` and the scheme of the request.
 A proxy that ends https and leaves the header out, or that does not pass the original `Host` on
-(`proxy_set_header Host $host;` in nginx), gets a 403 on every write, sign-in included. Capcom believes the
-header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached Capcom some other way
-could not switch `Secure` on. Capcom listens on 127.0.0.1 only, so the test passes for every connection today.
+(`proxy_set_header Host $host;` in nginx), gets a 403 on every write, sign-in included. GhostShell believes the
+header only on a connection from this Mac (127.0.0.1 or ::1), so a client that reached GhostShell some other way
+could not switch `Secure` on. GhostShell listens on 127.0.0.1 only, so the test passes for every connection today.
 An http address keeps working, because it sends no such header. The cookie is also `HttpOnly` and
-`SameSite=Lax`, so a signed-in browser that follows a link to Capcom from another website arrives signed in,
+`SameSite=Lax`, so a signed-in browser that follows a link to GhostShell from another website arrives signed in,
 and the cookie is not sent with a form or script request from that website.
 
 The browser keeps each picture it has shown for a year, so a chat opens fast. A picture comes with
 `Vary: Cookie`, so the browser reuses its copy only while it holds the sign-in cookie it fetched the picture
-with. Once Sign out has cleared that cookie, or the cookie has run out, opening a picture's address asks Capcom
+with. Once Sign out has cleared that cookie, or the cookie has run out, opening a picture's address asks GhostShell
 again and gets a 401. Sign out also sends `Clear-Site-Data: "cache"`, and Chrome and Edge, and Firefox from
 version 138, then delete their copies, at an https address or at localhost. Safari 27 keeps its copies, and so
 does any browser at a plain http address, but neither shows one without the cookie. After a new password ends
 every sign-in, a browser keeps its old cookie until it signs in again, and until then it can show a picture it
 kept. Sign out clears that cookie too, but only from a tab that has not yet gone back to the sign-in page.
 
-Passkeys need an https address. A phone that reaches Capcom over plain http, as on a private network without
+Passkeys need an https address. A phone that reaches GhostShell over plain http, as on a private network without
 https, signs in with the password only, and the sign-in page says why. To use passkeys remotely, serve
-Capcom over https and list the address in `config.local.json`:
+GhostShell over https and list the address in `config.local.json`:
 
 ```json
 { "passkeyOrigins": ["https://capcom.example.com"] }
 ```
 
-Restart Capcom after a change. A passkey belongs to a host name, so one made on `capcom.example.com` does
+Restart GhostShell after a change. A passkey belongs to a host name, so one made on `capcom.example.com` does
 not work on another name. An IP address cannot have passkeys, which includes http://127.0.0.1:4310, so use
-localhost there. Capcom believes the localhost address only for a request that reaches it as localhost, with no
+localhost there. GhostShell believes the localhost address only for a request that reaches it as localhost, with no
 `X-Forwarded-*` or `Forwarded` header, so a proxy cannot hand it to a page on another device.
 
 A message with images can be about 53 MB, because the page sends them as base64 inside the request. The
 proxy has to let a request that large through, and nginx, for one, refuses more than 1 MB until
-`client_max_body_size` says otherwise. Capcom itself takes that size only on the routes that send a message
+`client_max_body_size` says otherwise. GhostShell itself takes that size only on the routes that send a message
 or start a session, and keeps 1 MB on every other route.
 
 The password, and any passkey you add, is the only thing between that address and a shell on this machine.
-Anyone who signs in can run commands as you. Capcom locks sign-in for 15 minutes after ten failed tries with
+Anyone who signs in can run commands as you. GhostShell locks sign-in for 15 minutes after ten failed tries with
 the password or a passkey. Pick a long password and keep the address private. A lost phone stays signed in
 until 90 days after its last use, or a year after its sign-in if that comes first, so set a new password with
 `npm run set-password`, which signs every browser out and removes every passkey.
