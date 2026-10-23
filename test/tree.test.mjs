@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GROUP_SORT, UNTITLED } from '../public/ui/order.js';
-import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortGroups, stampTurns, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
+import { archiveTarget, everyRow, findRow, LOOSE_HOME, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestRow, nestTargets, nextStop, placeRow, rootOf, sessionTargets, sortGroups, stampTurns, stayAbove, unnestRow, withKids, withoutRow } from '../public/ui/tree.js';
 
 test('down and up step one stop, Home and End jump to the ends, and there is nothing past either end', () => {
   const from = (at, key) => nextStop(5, at, key);
@@ -573,6 +573,104 @@ test('the focus has nowhere to go when the row was the only one or is not in the
   assert.equal(neighbour(['a'], 'a'), null);
   assert.equal(neighbour(['a', 'b'], 'x'), null);
   assert.equal(neighbour([], 'a'), null);
+});
+
+// Pinned holds p1 with one child. Work holds a family a1 with three children, then a2 and a3. Home holds b1. The routine nightly has two
+// earlier runs and weekly has none. Two sessions are loose.
+const ABOVE = {
+  ...FAM,
+  pinned: [person('p1', { pinned: true, children: [kid('pk', 'p1', { pinned: true })] })],
+  groups: [
+    { id: 'cg-a', name: 'Work', project: null, sort: RECENT, sessions: [
+      person('a1', { group: 'cg-a', children: [kid('c1', 'a1', { group: 'cg-a' }), kid('c2', 'a1', { group: 'cg-a' }), kid('c3', 'a1', { group: 'cg-a' })] }),
+      person('a2', { group: 'cg-a' }),
+      person('a3', { group: 'cg-a' }),
+    ] },
+    { id: 'cg-b', name: 'Home', project: null, sort: RECENT, sessions: [person('b1', { group: 'cg-b' })] },
+  ],
+  routines: [
+    { name: 'nightly', latest: person('r3', { routine: 'nightly' }), earlier: [person('r2', { routine: 'nightly' }), person('r1', { routine: 'nightly' })] },
+    { name: 'weekly', latest: person('w1', { routine: 'weekly' }), earlier: [] },
+  ],
+  ungrouped: [person('u1'), person('u2')],
+};
+const ABOVE_ORDER = ['r3', 'r2', 'r1', 'w1', 'p1', 'pk', 'a1', 'c1', 'c2', 'c3', 'a2', 'a3', 'b1', 'u1', 'u2'];
+const above = (...ids) => stayAbove(ABOVE, ABOVE_ORDER, ids);
+
+test('a nested session lands on the nested session above it, or on its parent when it is the first', () => {
+  assert.equal(above('c2'), 'c1');
+  assert.equal(above('c3'), 'c2');
+  assert.equal(above('c1'), 'a1');
+  assert.equal(above('pk'), 'p1');
+});
+
+test('a top level session lands on the top level session above it and not inside that session\'s family', () => {
+  assert.equal(above('a2'), 'a1');
+  assert.equal(above('a3'), 'a2');
+  assert.equal(above('u2'), 'u1');
+});
+
+test('the first top level session of a section lands on the one below it and not on its own children', () => {
+  assert.equal(above('a1'), 'a2');
+  assert.equal(above('u1'), 'u2');
+});
+
+test('the only top level session of a section has nowhere to land, and the section above or below it is no neighbour', () => {
+  assert.equal(above('p1'), null);
+  assert.equal(above('b1'), null);
+});
+
+test('the latest run of a routine lands on its next run, or on the run after when that one leaves too', () => {
+  assert.equal(above('r3'), 'r2');
+  assert.equal(above('r3', 'r2'), 'r1');
+});
+
+test('a routine with no run left lands on the routine above it, or below it when it is the first', () => {
+  assert.equal(above('w1'), 'r3');
+  assert.equal(above('r3', 'r2', 'r1'), 'w1');
+  assert.equal(above('w1', 'r3', 'r2', 'r1'), null);
+});
+
+test('an earlier run lands on the earlier run above it, or on the routine\'s latest run when it is the first', () => {
+  assert.equal(above('r1'), 'r2');
+  assert.equal(above('r2'), 'r3');
+  assert.equal(above('r2', 'r1'), 'r3');
+});
+
+test('several sessions land above the topmost of them, whatever order they are named in, and skip the ones leaving with it', () => {
+  assert.equal(above('a3', 'a2'), 'a1');
+  assert.equal(above('a2', 'a3'), 'a1');
+  assert.equal(above('c3', 'c2'), 'c1');
+  assert.equal(above('c3', 'c1'), 'a1');
+  assert.equal(above('u2', 'a3', 'c2'), 'c1', 'the topmost is c2, whatever level the others are on');
+  assert.equal(above('c1', 'c2', 'c3'), 'a1');
+});
+
+test('several sessions with the first of a section topmost land on the first one below them that stays', () => {
+  assert.equal(above('a1', 'a2'), 'a3');
+  assert.equal(above('a2', 'a1', 'c2'), 'a3');
+  assert.equal(above('a1', 'a2', 'a3'), null);
+  assert.equal(above('u1', 'u2'), null);
+});
+
+test('a row the list no longer draws is passed over, as one archived a moment ago is, but a routine\'s next run counts while its runs are folded', () => {
+  assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'a2'), ['a3']), 'a1');
+  assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'c1'), ['c2']), 'a1');
+  assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'r2' && id !== 'r1'), ['r3']), 'r2');
+});
+
+test('a session that is not drawn lands nowhere, and nor does an id the list does not have, or none at all', () => {
+  assert.equal(stayAbove(ABOVE, [], ['a2']), null);
+  assert.equal(stayAbove(ABOVE, ['a1'], ['a3']), null);
+  assert.equal(above('nobody'), null);
+  assert.equal(above(), null);
+  assert.equal(stayAbove({ ...ABOVE, routines: [] }, ABOVE_ORDER, ['r3']), null);
+});
+
+test('landing somewhere leaves the list it was given as it was', () => {
+  const before = JSON.stringify(ABOVE);
+  for (const ids of [['a1'], ['r3'], ['c2', 'a3'], ['r1']]) above(...ids);
+  assert.equal(JSON.stringify(ABOVE), before);
 });
 
 const LISTED = ['a', 'b', 'c'];

@@ -259,16 +259,21 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   that a turn has started, so if Archive finds the chat running, it asks first. On a Mac, Cmd+A archives
   too, and the menu shows the key beside the item, except on a touch screen. The key archives the session
   whose menu is open, or else the row the keyboard moved to, which shows the focus ring, or else the open
-  chat. A row you clicked shows no ring, so it doesn't count. After the key archives a session the ring
-  moves to the row beside it, so pressing the key again archives that one. When no row is left beside it,
-  the ring moves to the first header, or to the Projects button when there is no header. The key does
+  chat. A row you clicked shows no ring, so it doesn't count. After an archive the focus stays at the
+  same level of the tree. Archive a nested session and it goes to the session above it in the family, or
+  to the parent when it was the first. Archive a top level row and it goes to the row above it in its
+  section, or the row below when it was the first. A routine's next run takes the place of its latest.
+  Archive several together and the topmost of them decides where it goes. Only a section left empty sends
+  it to the next row in the list. After the key archives a session the ring moves there too, so pressing the key
+  again archives that one. When no row is left, the ring moves to the first header, or to the Projects
+  button when there is no header. The key does
   nothing while the ring is on anything in the list or the projects sidebar that is not a session. Text
   fields and the forms in the list and the projects sidebar keep Cmd+A as Select All. So does the page
   when no menu is open, no ring is in the list or the projects sidebar, and there is no session to
   archive. GhostShell leaves Ctrl+A to the browser. For a chat that is working or waiting, Cmd+A asks first with
   Cancel focused, so Enter or Esc leaves the chat running. Archiving the open chat, from the key or the
-  menu, goes back to the list, where the note shows. Undo then opens the chat again if you are still on the
-  list. In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the
+  menu, opens the session the focus went to, or the list when there is none. Undo then opens the archived
+  chat again if you haven't moved on. In the search, each archived result has an Unarchive button, and Shift+Enter unarchives the
   selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine
   it had. Desktop's records are read only, so GhostShell keeps these choices in `layout.json`, and its choice
   wins over Desktop's archive flag in both directions.

@@ -162,18 +162,50 @@ export function unnestRow(ix, id) {
   return placeRow(ix, id, row.pinned ? 'pinned' : row.group ?? looseHome(row));
 }
 
+// The lists of top level rows, which hold the others as `children`. A routine's rows are in none of them.
+const topLists = ix => [ix.pinned, ...ix.groups.map(g => g.sessions), ix.started, ix.ungrouped, ix.other];
+
 // The sessions a row's menu can nest it under: the other top level sessions in the list it shows in, with no routine run and not
 // the parent it has already. Its own children are not in the list.
 export function nestTargets(ix, row) {
   const home = row.parent ?? row.id;
-  const lists = [ix.pinned, ...ix.groups.map(g => g.sessions), ix.started, ix.ungrouped, ix.other];
-  return (lists.find(list => list.some(r => r.id === home)) ?? []).filter(r => r.id !== row.id && r.id !== row.parent && !r.routine);
+  return (topLists(ix).find(list => list.some(r => r.id === home)) ?? []).filter(r => r.id !== row.id && r.id !== row.parent && !r.routine);
 }
 
-// The row that takes the focus once `id` is archived: the next one in the list, or the one before it when it was the last.
+// The one that takes the focus once `id` has left a list of groups: the next one, or the one before it when it was the last.
 export function neighbour(ids, id) {
   const at = ids.indexOf(id);
   return at < 0 ? null : ids[at + 1] ?? ids[at - 1] ?? null;
+}
+
+// The rows a row stands among, and the row they show under (null at the top level): an earlier run of a routine stands among its
+// routine's earlier runs under the latest run, and a nested row among its parent's children.
+function levelOf(ix, row) {
+  const run = ix.routines.find(g => g.earlier.some(r => r.id === row.id));
+  if (run) return { siblings: run.earlier, parent: run.latest };
+  const parent = findRow(ix, row.parent);
+  if (parent) return { siblings: parent.children ?? [], parent };
+  return { siblings: [ix.routines.map(g => g.latest), ...topLists(ix)].find(list => list.some(r => r.id === row.id)) ?? [], parent: null };
+}
+
+// The row that takes the focus once `ids` leave the list, at the level of the tree of the topmost of them in `order`, the drawn rows in
+// screen order: the nearest row above it that stays, else the row it is nested under, else the nearest row below it. A routine's latest
+// run gives way to its next run, drawn or not, as that run takes its place. Any other row has to be drawn, so the focus never lands out
+// of sight. It returns null when that level has nothing left, and the caller then goes by `stayAfter`.
+export function stayAbove(ix, order, ids) {
+  const leaving = new Set(ids);
+  const drawn = new Set(order);
+  const stays = r => !leaving.has(r.id) && drawn.has(r.id);
+  const top = order.find(id => leaving.has(id));
+  const row = top && findRow(ix, top);
+  if (!row) return null;
+  const next = ix.routines.find(g => g.latest.id === top)?.earlier.find(r => !leaving.has(r.id));
+  if (next) return next.id;
+  const { siblings, parent } = levelOf(ix, row);
+  const at = siblings.findIndex(r => r.id === top);
+  if (at < 0) return null;
+  const to = siblings.slice(0, at).findLast(stays) ?? (parent && stays(parent) ? parent : null) ?? siblings.slice(at + 1).find(stays);
+  return to?.id ?? null;
 }
 
 // The session Cmd+A archives: null leaves the key to the browser, { id: null } takes it and archives nothing, { id } archives that one

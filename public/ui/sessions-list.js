@@ -19,10 +19,12 @@ import { groupsIn, HOME_VIEW } from './scopes.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
 import { say } from './toast.js';
-import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, TITLE_MAX, withKids } from './tree.js';
+import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
 // The target a row is while another is dragged over it, which only its middle half counts as. See targetAt in drag.js.
 const NEST = 'nest:';
+
+const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
 
 // `drop` is whether a dragged row can nest here, and `over` whether it would land here now, which the row says at its right end.
 // A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock. The mark is the server's `dot`.
@@ -35,7 +37,7 @@ function RowLink({ r, title = r.title, current, lifted, marked, picked, drop, ov
   const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   const at = title === last ? '' : last;
   const detail = [where, at].filter(Boolean).join(' · ');
-  return html`<a class="row" href=${`#/s/${encodeURIComponent(r.id)}`} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
+  return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
     data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
     data-tip=${detail || null} data-tip-side="right" data-tip-delay="700">
     ${r.dot ? html`<span class="row-dot" data-dot=${r.dot} aria-hidden="true">${r.dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
@@ -231,6 +233,9 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const opened = useRef(0);
   const latestPlace = useRef(place);
   latestPlace.current = place;
+  // A question's answer runs an archive from the render that asked it, so the focus rule reads the list as it is now.
+  const latestIx = useRef(ix);
+  latestIx.current = ix;
   const latestForm = useRef(form);
   latestForm.current = form;
   const latestNest = useRef(null);
@@ -314,10 +319,11 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     projects.settle();
   }, [projects.landing]);
 
-  // Once a row has left the list, the focus goes to the row beside it or to a header, so the keyboard stays in the list. Below 56rem an
-  // open chat hides the list, so it waits until the list shows, and a focus that something else hides the list from is dropped. A key
-  // asks for the ring, because after a click the browser gives none. A ring meant for the first header goes to the Projects button when
-  // no header is left. Below 56rem a view picked in the search closes the chat in the same render, and the view's header keeps the focus.
+  // Once a row has left the list, the focus goes to the row above it at its own level or to a header, so the keyboard stays in the list.
+  // Below 56rem an open chat hides the list, so it waits until the list shows, and a focus that something else hides the list from is
+  // dropped. A key asks for the ring, because after a click the browser gives none. A ring meant for the first header goes to the
+  // Projects button when no header is left. Below 56rem a view picked in the search closes the chat in the same render, and the view's
+  // header keeps the focus.
   useLayoutEffect(() => {
     if (!after || projects.landing) return;
     const el = box.current.querySelector(after.to) ?? (after.to === '.group-head' ? projects.opener.current : null);
@@ -356,51 +362,52 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return problem ? null : made;
   }
 
-  // Starts a change that takes the row out of its place and resolves with what `start` resolves with. The focus moves on to the row
-  // beside it at once, with its ring if `ring`, and back to the row if the change is refused. With no row left beside it, a ring goes
-  // to the first header, or to the Projects button when no header is left, so the keyboard stays in the list and a press too many
-  // archives nothing.
+  // The row that takes the focus once `ids` leave: the one above them at their level of the tree, or else the next one in the list.
+  const focusAfter = ids => {
+    const order = drawnIds();
+    return stayAbove(latestIx.current, order, ids) ?? stayAfter(order, ids);
+  };
+
+  // Starts a change that takes the row out of its place and resolves with what `start` resolves with and `to`, the row that takes the
+  // focus. The focus moves on to it at once, with its ring if `ring`, and back to the row if the change is refused. With no row left,
+  // a ring goes to the first header, or to the Projects button when no header is left, so the keyboard stays in the list and a press
+  // too many archives nothing.
   async function leaving(id, start, ring = false) {
-    const ids = drawnIds();
-    // A routine's next run takes the place of its latest, so the focus goes to that run and not past the routine.
-    const next = ix.routines.find(g => g.latest.id === id)?.earlier[0]?.id;
+    const to = focusAfter([id]);
     const done = start();
-    const to = next ?? neighbour(ids, id);
     setAfter(to ? { to: rowOf(to), ring } : ring ? { to: '.group-head', ring } : null);
     const result = await done;
     if (result.problem) setAfter({ to: rowOf(id), ring });
-    return result;
+    return { ...result, to };
   }
 
-  // Archives a session and says so with a way to undo it, or says why it could not. A session on screen is left for the list, and
-  // Undo reopens it. `ask` asks first about a chat that turns out to be running.
+  // Archives a session and says so with a way to undo it, or says why it could not. A session on screen is left for the row that took
+  // the focus, and Undo reopens it while the page is still there. `ask` asks first about a chat that turns out to be running.
   async function archiveRow(id, title, { ask: askFirst = false, ring = false } = {}) {
-    const { problem, stopped, running } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
+    const { problem, stopped, running, to } = await leaving(id, () => archive(id, true, { stop: !askFirst }), ring);
     if (running) {
       // A focus still waiting for a hidden list would move later. Cancel finds the row, a new element, by its id.
       setAfter(null);
       return confirmStop(id, title, { back: () => box.current.querySelector(rowOf(id)), ring });
     }
-    const onScreen = location.hash === `#/s/${encodeURIComponent(id)}`;
+    const onScreen = location.hash === sessionHash(id);
+    const landed = to && !problem ? sessionHash(to) : '#/';
     // A refusal shows in the list's note, so a list hidden behind the chat is brought back to show it.
-    if (onScreen && (!problem || !box.current.getClientRects().length)) location.hash = '#/';
+    if (onScreen && (!problem || !box.current.getClientRects().length)) location.hash = landed;
     if (problem) problemNote(problem);
-    else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”.`, { action: undoAction({ id, title, reopen: onScreen }) });
+    else say(`${stopped ? 'Stopped and archived' : 'Archived'} “${title}”.`, { action: undoAction({ id, title, landed: onScreen ? landed : null }) });
   }
 
   const confirmStop = (id, title, { back, ring } = {}) => ask({ action: 'Stop and archive', title, detail: STOP_DETAIL, back, run: () => archiveRow(id, title, { ring }) });
 
-  // The same for several rows leaving together. The focus goes to the row beside them, or back to them if none of them went.
+  // The same for several rows leaving together. The focus goes to the row above the topmost of them, or back to them if none went.
   async function leavingAll(ids, start, ring = false) {
-    const order = drawnIds();
-    // As in `leaving`, a routine's next run takes the place of its latest, unless it leaves too.
-    const next = ix.routines.find(g => g.latest.id === order.findLast(id => ids.includes(id)))?.earlier[0]?.id;
-    const to = next && !ids.includes(next) ? next : stayAfter(order, ids);
+    const to = focusAfter(ids);
     const done = start();
     setAfter(to ? { to: rowOf(to), ring } : ring ? { to: '.group-head', ring } : null);
     const result = await done;
     if (!result.done.length) setAfter({ to: ids.map(rowOf).join(', '), ring });
-    return result;
+    return { ...result, to };
   }
 
   // Archives the picked sessions. One goes the way any archive does, so its note and Undo are the same. Several that include a running
@@ -419,15 +426,19 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   }
 
   // Sends the batch and says what happened, with one Undo for the sessions that went. A chat that turned out to be running when none
-  // were meant to be stopped is asked about once more, and `tally` carries what the first round did into the note after it.
+  // were meant to be stopped is asked about once more, and `tally` carries what the first round did into the note after it. Its
+  // `reopen` is the session that was on screen and the hash the page was left on.
   async function archiveBatch(ids, { stop = false, ring = false, tally = { count: ids.length, done: [], stopped: 0, refused: [], reopen: null } } = {}) {
     setPick(NO_PICK);
-    const { done, stopped, failed } = await leavingAll(ids, () => archiveAll(ids, true, { stop }), ring);
+    const { done, stopped, failed, to } = await leavingAll(ids, () => archiveAll(ids, true, { stop }), ring);
     const running = failed.filter(f => f.running).map(f => f.id);
     const all = { ...tally, done: [...tally.done, ...done], stopped: tally.stopped + stopped, refused: [...tally.refused, ...failed.filter(f => !f.running)] };
-    // The session on screen goes to the list when it was archived, and Undo reopens it.
-    if (!all.reopen) all.reopen = all.done.find(id => location.hash === `#/s/${encodeURIComponent(id)}`) ?? null;
-    if (all.reopen && location.hash === `#/s/${encodeURIComponent(all.reopen)}`) location.hash = '#/';
+    // The session on screen is left for the row that took the focus when it was archived, and Undo reopens it while the page is there.
+    const shown = all.reopen?.id ?? all.done.find(id => location.hash === sessionHash(id));
+    if (shown && location.hash === sessionHash(shown)) {
+      all.reopen = { id: shown, landed: to ? sessionHash(to) : '#/' };
+      location.hash = all.reopen.landed;
+    }
     const settled = all.count - running.length;
     if (settled) {
       const note = archiveNote({ archived: all.done.length, total: settled, stopped: all.stopped, reason: all.refused[0]?.message });
@@ -467,15 +478,20 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     return !!done;
   }
 
+  // Reopens a session whose archive left the page on `landed`, if the page is still there.
+  const reopenAt = (id, landed) => {
+    if (landed && (location.hash || '#/') === landed) location.hash = sessionHash(id);
+  };
+
   // Takes an archive back, puts the focus on the row that returns, and reopens the session if its archive closed it and the page is
-  // still on the list. If the server refuses, the note keeps its Undo button to try again.
-  async function undo({ id, title, reopen }) {
+  // still where the archive left it. If the server refuses, the note keeps its Undo button to try again.
+  async function undo({ id, title, landed }) {
     const { problem } = await archive(id, false);
     if (!problem) {
       setAfter({ to: rowOf(id) });
-      if (reopen && (!location.hash || location.hash === '#/')) location.hash = `#/s/${encodeURIComponent(id)}`;
+      reopenAt(id, landed);
     }
-    if (problem) say(problem, { problem: true, action: undoAction({ id, title, reopen }) });
+    if (problem) say(problem, { problem: true, action: undoAction({ id, title, landed }) });
     else say(`Unarchived “${title}”.`);
   }
 
@@ -487,7 +503,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const { done, failed } = await archiveAll(ids, false);
     if (done.length) {
       setAfter({ to: done.map(rowOf).join(', ') });
-      if (reopen && done.includes(reopen) && (!location.hash || location.hash === '#/')) location.hash = `#/s/${encodeURIComponent(reopen)}`;
+      if (reopen && done.includes(reopen.id)) reopenAt(reopen.id, reopen.landed);
     }
     const note = { restored: done.length, total: ids.length, reason: failed[0]?.message };
     if (failed.length) say(unarchiveNote(note), { problem: true, action: undoManyAction(failed.map(f => f.id), reopen) });
@@ -719,7 +735,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       detail: deleteDetail(g),
       back: () => box.current.querySelector(headOf(g.id)) ?? nav.current.querySelector('.add'),
       run: async () => {
-        const onScreen = [`#/g/${encodeURIComponent(g.id)}`, g.session && `#/s/${encodeURIComponent(g.session.id)}`].includes(location.hash);
+        const onScreen = [`#/g/${encodeURIComponent(g.id)}`, g.session && sessionHash(g.session.id)].includes(location.hash);
         const gone = await change('api/layout/group/remove', { id: g.id });
         if (!gone) return;
         if (onScreen) location.hash = '#/';

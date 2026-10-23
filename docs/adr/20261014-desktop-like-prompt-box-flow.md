@@ -49,6 +49,8 @@ Chosen option: "Build all four changes", because the owner wants Capcom to work 
 
 **Amended 2026-10-23.** The owner had the folder picker removed, because a new session should always start at the root, which the page reads as the home folder. "+ New session" now opens an empty chat with only the prompt box, and the first message starts the session in the home folder, with the mode and effort Desktop would use there. The server's `api/folders` route stays, but nothing in the page calls it.
 
+**Amended 2026-10-23, the focus after an archive.** At the owner's request the focus stays at the same level of the tree (`stayAbove` in `public/ui/tree.js`). After a nested session is archived it goes to the session above it in the family, or to the parent when that session was the first. After a top level row it goes to the row above it in its section, or the row below when it was the first. A routine's next run still takes the place of its latest, and several archived together go by the topmost of them. Only a level left empty sends the focus to the next row in the list, as before. Archiving the open chat now opens the session the focus went to, or the list when there is none, so the page stays on the same branch of the tree. The note is drawn over the whole page, so its Undo shows over that chat on a phone too. Undo opens the archived chat again while the page is still where the archive left it. Moving or nesting a row from its menu moves the focus by the same rule.
+
 ### Consequences
 
 - ✅ New sessions, settings and stopping work as they do in Desktop.
