@@ -573,7 +573,7 @@ function events(req, res, id) {
   };
   const row = findRow(id);
   write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), outside: first });
-  write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
+  if (!row?.groupSession) write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
   chat?.listeners.add(forward);
@@ -851,6 +851,7 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   if (step === undefined) {
     if (req.method !== 'GET') return reply(405, { error: 'Method not allowed' }, { allow: 'GET' });
     const row = findRow(id);
+    if (row?.groupSession) return reply(400, { error: 'A group\'s session has no terminal.' });
     return row ? reply(200, terminal.snapshot(id, row.cwd || '')) : reply(404, { error: NO_SESSION });
   }
   if (!TERMINAL_STEPS.includes(step)) return reply(404, { error: 'Not found' });
@@ -867,6 +868,8 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   if (!auth.check(req)) return reply(401, { error: 'Signed out.' });
   const row = findRow(id);
   if (!row) return reply(404, { error: NO_SESSION });
+  // A group's session works in GhostShell's own state folder and asks before every Bash call, so it gets no terminal.
+  if (row.groupSession) return reply(400, { error: 'A group\'s session has no terminal.' });
   try {
     if (step === 'run') {
       if (!row.cwd || !isDirectory(row.cwd)) return reply(409, { error: 'This session\'s folder does not exist on this Mac.' });
@@ -1012,7 +1015,7 @@ async function api(req, res, u) {
     const row = findRow(id);
     const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};
     // fileLinks and terminal tell the page that those routes exist, so a page newer than this server draws nothing that would 404.
-    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: true, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
+    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: !row?.groupSession, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });

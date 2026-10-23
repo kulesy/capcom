@@ -331,3 +331,13 @@ test('commands end with Capcom when it is stopped, and a restarted Capcom starts
   const { token: next } = await signIn(again);
   assert.deepEqual((await snapshot(again, next, id)).runs, []);
 });
+
+test('a group\'s session has no terminal, and its messages say so', async () => {
+  const group = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+  const s = await start({ sessions: [{ id: 'one', title: 'One' }], groups: [{ id: 'cg-work', name: 'Work', session: group }] });
+  const { token } = await signIn(s);
+  assert.equal((await post(s, token, group, 'run', { command: 'echo should-not-run', source: 'panel' })).status, 400);
+  assert.equal((await request(s, 'GET', url(group), { headers: as(token) })).status, 400);
+  assert.equal((await request(s, 'GET', `/api/sessions/${group}/messages`, { headers: as(token) })).body().terminal, false);
+  assert.equal((await request(s, 'GET', '/api/sessions/one/messages', { headers: as(token) })).body().terminal, true);
+});
