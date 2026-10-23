@@ -34,6 +34,7 @@ function App() {
   const latest = useRef(0);
   const shown = useRef(0);
   const writing = useRef(0);
+  const taking = useRef(new Set());
   const [offering, stopOffering] = usePasskeyOffer();
   const mod = useModifier();
   const flipKey = useRef(null);
@@ -43,9 +44,12 @@ function App() {
   // finishes the screen shows its list or a newer one.
   const loadIndex = useCallback(async () => {
     const mine = ++latest.current;
+    const hiding = [...taking.current];
     try {
-      const next = await api('api/sessions');
+      const loaded = await api('api/sessions');
       const arrived = Date.now();
+      // A list asked for in the middle of an archive batch still has the rows the batch has not reached, which would flicker back.
+      const next = hiding.reduce((list, id) => withoutRow(list, id), loaded);
       if (mine > shown.current) { shown.current = mine; setIx(stampTurns(next, now.current.ix, arrived)); setError(''); }
     } catch (e) {
       if (!now.current.ix) setError(e.message);
@@ -130,6 +134,42 @@ function App() {
     }
   }, []);
 
+  // Archives or unarchives several sessions one after another, one request each, and loads the list once at the end. Archiving takes
+  // every row out at once, and the rows the server refused come back at once. It resolves with { done, stopped, failed }: the ids the
+  // server took, how many of those were running chats it stopped, and { id, message, running } for each it refused.
+  const archiveAll = useCallback(async (ids, archived, { stop = true } = {}) => {
+    const before = now.current.ix;
+    const without = gone => gone.reduce((list, id) => withoutRow(list, id), before);
+    const mark = archived ? ++latest.current : 0;
+    if (archived) {
+      setIx(without(ids));
+      shown.current = mark;
+    }
+    writing.current++;
+    if (archived) ids.forEach(id => taking.current.add(id));
+    const done = [];
+    const failed = [];
+    let stopped = 0;
+    try {
+      for (const id of ids) {
+        try {
+          const reply = await api('api/layout/archive', stop ? { id, archived } : { id, archived, stop: false });
+          done.push(id);
+          if (reply.stopped) stopped++;
+        } catch (e) {
+          taking.current.delete(id);
+          failed.push({ id, message: e.message, running: e.status === 409 });
+        }
+      }
+      if (archived && failed.length && shown.current === mark) setIx(without(done));
+      return { done, stopped, failed };
+    } finally {
+      writing.current--;
+      ids.forEach(id => taking.current.delete(id));
+      await loadIndex();
+    }
+  }, []);
+
   // A change to a project or group. It resolves with { problem, made }: the reason when the server refuses, or an empty string and
   // the project or group the server made, changed or removed. Either way the list is loaded again before it resolves.
   const edit = useCallback(async (path, body) => {
@@ -203,7 +243,7 @@ function App() {
 
   return html`<${Fragment}>
   <div class="app" id="app" data-view=${view}>
-    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
+    <${SessionList} ix=${ix} projects=${projects} error=${error} current=${current} place=${place} nest=${nest} edit=${edit} archive=${archive} archiveAll=${archiveAll} onFind=${() => setFinding(true)} passkeys=${route.name === 'passkeys'}
       banner=${offering ? html`<${PasskeyOffer} onDone=${stopOffering} />` : null} />
     <main class="chat" id="chat">
       <section class="empty" id="empty" hidden=${view !== 'list'}>

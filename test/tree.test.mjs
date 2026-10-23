@@ -549,3 +549,36 @@ test('a menu, a form and anything modal each come before a ring on a header or a
   assert.equal(target({ form: true, ringedOther: true, current: 'b' }), null);
   assert.equal(target({ modal: true, ringedOther: true, current: 'b' }), null);
 });
+
+test('two or more picked rows are archived together, ahead of a ring on a row and the open session', () => {
+  assert.deepEqual(target({ picked: ['a', 'c'], ringed: 'b', current: 'b' }), { ids: ['a', 'c'] });
+  assert.deepEqual(target({ picked: ['a', 'b', 'c'] }), { ids: ['a', 'b', 'c'] });
+});
+
+test('one picked row is archived as an ordinary one, so its note and Undo are the same', () => {
+  assert.deepEqual(target({ picked: ['c'], ringed: 'a', current: 'b' }), { id: 'c' });
+});
+
+test('a picked row that is not listed is dropped, and a selection with none left leaves the ring and the open session in charge', () => {
+  assert.deepEqual(target({ picked: ['a', 'gone', 'c'] }), { ids: ['a', 'c'] });
+  assert.deepEqual(target({ picked: ['gone', 'c'] }), { id: 'c' });
+  assert.deepEqual(target({ picked: ['gone'], ringed: 'a', current: 'b' }), { id: 'a' });
+  assert.deepEqual(target({ picked: [], current: 'b' }), { id: 'b' });
+});
+
+test('the menu of a picked row archives the whole selection, and the menu of any other row archives its own row', () => {
+  assert.deepEqual(target({ menu: { session: 'a' }, picked: ['a', 'b'], current: 'c' }), { ids: ['a', 'b'] });
+  assert.deepEqual(target({ menu: { session: 'a' }, picked: ['a'], current: 'c' }), { id: 'a' });
+  assert.deepEqual(target({ menu: { session: 'c' }, picked: ['a', 'b'] }), { id: 'c' });
+  assert.deepEqual(target({ menu: {}, picked: ['a', 'b'] }), { id: null });
+});
+
+test('a ring on a header or a button still takes the key and archives nothing, selection or not', () => {
+  assert.deepEqual(target({ ringedOther: true, picked: ['a', 'b'], current: 'c' }), { id: null });
+});
+
+test('a form or anything modal keeps the key even with rows picked', () => {
+  assert.equal(target({ form: true, picked: ['a', 'b'] }), null);
+  assert.equal(target({ modal: true, picked: ['a', 'b'] }), null);
+  assert.equal(target({ modal: true, menu: { session: 'a' }, picked: ['a', 'b'] }), null);
+});

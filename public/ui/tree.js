@@ -169,15 +169,19 @@ export function neighbour(ids, id) {
   return at < 0 ? null : ids[at + 1] ?? ids[at - 1] ?? null;
 }
 
-// The session Cmd+A archives: null leaves the key to the browser, { id: null } takes it and archives nothing, { id } archives that one.
-// A modal or a form in the list or the projects sidebar keeps the key, and an open menu names its own row (none for a header's). Then a
-// ring on a row names that row, a ring on anything else in the list or the sidebar names none, and only then the open session counts.
-export function archiveTarget({ modal, menu, form, ringed, ringedOther, current, listed }) {
+// The session Cmd+A archives: null leaves the key to the browser, { id: null } takes it and archives nothing, { id } archives that one
+// and { ids } those. A modal or a form in the list or the projects sidebar keeps the key, and an open menu names its own row (none for a
+// header's), or the whole selection when its row is picked. A ring on anything but a row names none. Then the selection counts, one
+// picked row as { id }, ahead of a ring on a row, and only then the open session.
+export function archiveTarget({ modal, menu, form, ringed, ringedOther, current, listed, picked = [] }) {
   const known = id => id != null && listed(id);
+  const chosen = picked.filter(known);
+  const selection = () => (chosen.length === 1 ? { id: chosen[0] } : { ids: chosen });
   if (modal) return null;
-  if (menu) return { id: known(menu.session) ? menu.session : null };
+  if (menu) return chosen.includes(menu.session) ? selection() : { id: known(menu.session) ? menu.session : null };
   if (form) return null;
   if (ringedOther) return { id: null };
+  if (chosen.length) return selection();
   const id = ringed ?? current;
   return known(id) ? { id } : null;
 }

@@ -84,7 +84,7 @@ export function dragRows(box, { onStart, onOver, onEnd, onMenu }) {
     const at = row.getBoundingClientRect();
     const copy = row.cloneNode(true);
     copy.classList.add('lifted');
-    for (const attr of ['href', 'data-id', 'aria-current', 'data-lifted']) copy.removeAttribute(attr);
+    for (const attr of ['href', 'data-id', 'aria-current', 'data-lifted', 'data-picked']) copy.removeAttribute(attr);
     copy.setAttribute('aria-hidden', 'true');
     copy.style.width = `${at.width}px`;
     document.body.append(copy);

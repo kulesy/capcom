@@ -1,5 +1,6 @@
 // Run with `npm test`. The Ghost look's colours as ghost.css writes them, in the light set and in the dark set laid over it: text keeps 4.5:1
 // and a mark keeps 3:1 on each surface it is drawn on. It needs no page, so it reads the tokens, and the rules that draw the rings and hints, out of the stylesheet text.
+// A picked row's fill is held to the same text ratio in both looks, and told apart from the open row, the hovered row and the list behind it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -24,19 +25,24 @@ const SETS = { light, dark: { ...light, '--ready': standardDark['--ready'], ...t
 const encode = v => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
 const decode = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 
-// An oklch() colour as sRGB channels from 0 to 1, clipped to the gamut and encoded as a screen holds them, with its alpha.
+// oklab channels as sRGB channels from 0 to 1, clipped to the gamut and encoded as a screen holds them.
+function rgbOf([l, a, b]) {
+  const [x, y, z] = [l + 0.3963377774 * a + 0.2158037573 * b, l - 0.1055613458 * a - 0.0638541728 * b, l - 0.0894841775 * a - 1.291485548 * b].map(v => v ** 3);
+  const linear = [4.0767416621 * x - 3.3077115913 * y + 0.2309699292 * z, -1.2684380046 * x + 2.6097574011 * y - 0.3413193965 * z, -0.0041960863 * x - 0.7034186147 * y + 1.707614701 * z];
+  return linear.map(v => encode(Math.min(1, Math.max(0, v))));
+}
+
+// An oklch() colour as its oklab channels, its sRGB channels and its alpha.
 function srgb(text) {
   const match = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+)%)?\)$/.exec(text);
   assert.ok(match, `not an oklch() colour: ${text}`);
   const [l, c, h] = match.slice(1, 4).map(Number);
-  const a = c * Math.cos((h * Math.PI) / 180);
-  const b = c * Math.sin((h * Math.PI) / 180);
-  const [x, y, z] = [l + 0.3963377774 * a + 0.2158037573 * b, l - 0.1055613458 * a - 0.0638541728 * b, l - 0.0894841775 * a - 1.291485548 * b].map(v => v ** 3);
-  const linear = [4.0767416621 * x - 3.3077115913 * y + 0.2309699292 * z, -1.2684380046 * x + 2.6097574011 * y - 0.3413193965 * z, -0.0041960863 * x - 0.7034186147 * y + 1.707614701 * z];
-  return { rgb: linear.map(v => encode(Math.min(1, Math.max(0, v)))), alpha: match[4] === undefined ? 1 : Number(match[4]) / 100 };
+  const lab = [l, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
+  return { lab, rgb: rgbOf(lab), alpha: match[4] === undefined ? 1 : Number(match[4]) / 100 };
 }
 
-// What a value in a rule or a token paints: an oklch() colour, a token by its name or as var(--token), or color-mix(in oklab, <colour> N%, transparent), which is that colour at N% of its alpha.
+// What a value in a rule or a token paints: an oklch() colour, a token by its name or as var(--token), color-mix(in oklab, <colour> N%, transparent), which is that colour at N% of its alpha,
+// or color-mix(in oklab, <colour> N%, <colour>) of two opaque colours.
 function colour(set, text) {
   const value = text.startsWith('--') ? `var(${text})` : text;
   const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
@@ -44,10 +50,18 @@ function colour(set, text) {
     assert.ok(token in set, `${token} is not a token ghost.css or app.css sets`);
     return colour(set, set[token]);
   }
-  const mix = /^color-mix\(in oklab, (.+) ([\d.]+)%, transparent\)$/.exec(value);
-  if (!mix) return srgb(value);
-  const { rgb, alpha } = colour(set, mix[1]);
-  return { rgb, alpha: alpha * Number(mix[2]) / 100 };
+  const fade = /^color-mix\(in oklab, (.+) ([\d.]+)%, transparent\)$/.exec(value);
+  if (fade) {
+    const { alpha, ...rest } = colour(set, fade[1]);
+    return { ...rest, alpha: alpha * Number(fade[2]) / 100 };
+  }
+  const blend = /^color-mix\(in oklab, (var\(--[\w-]+\)|oklch\([^)]*\)) ([\d.]+)%, (var\(--[\w-]+\)|oklch\([^)]*\))\)$/.exec(value);
+  if (!blend) return srgb(value);
+  const [one, other] = [colour(set, blend[1]), colour(set, blend[3])];
+  assert.ok(one.alpha === 1 && other.alpha === 1, `${value} mixes a colour that is not opaque, which this reader does not follow`);
+  const share = Number(blend[2]) / 100;
+  const lab = one.lab.map((v, i) => v * share + other.lab[i] * (1 - share));
+  return { lab, rgb: rgbOf(lab), alpha: 1 };
 }
 
 const luminance = rgb => { const [r, g, b] = rgb.map(decode); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
@@ -189,3 +203,64 @@ for (const mode of ['light', 'dark']) {
     assert.deepEqual(colour(SETS[mode], buttonRing(mode, INVALID_BUTTON)), colour(SETS[mode], '--destructive'));
   });
 }
+
+const DEFAULT_SETS = { light: standard, dark: { ...standard, ...standardDark } };
+const LOOKS = { default: DEFAULT_SETS, ghost: SETS };
+const PICKED = '.row[data-picked]:not([data-over])';
+const PICKED_META = `${PICKED} :is(.row-nest, .row-run, .row-meta)`;
+
+const pickedFill = (look, mode) => winning('background', mode, inApp(PICKED), ...(look === 'ghost' ? [inGhost(PICKED)] : []));
+const pickedMeta = (look, mode) => winning('color', mode, inApp(PICKED_META), ...(look === 'ghost' ? [inGhost(PICKED_META)] : []));
+
+const RING = '.row[data-picked]:focus-visible';
+const pickedRing = (look, mode) => {
+  const shadow = winning('box-shadow', mode, inApp(RING), ...(look === 'ghost' ? [inGhost(RING)] : []));
+  const ring = /^inset 0 0 0 2px (.+)$/.exec(shadow)?.[1];
+  assert.ok(ring, `a picked row's focus is not drawn as a 2px inset ring: ${shadow}`);
+  return ring;
+};
+
+for (const look of Object.keys(LOOKS)) {
+  for (const mode of ['light', 'dark']) {
+    const set = LOOKS[look][mode];
+
+    test(`${look} ${mode}: a picked row's title and meta line keep 4.5:1 on its fill`, () => {
+      const fill = pickedFill(look, mode);
+      assert.deepEqual(misses(set, [['--sidebar-foreground', [fill]], [rule('the meta line', pickedMeta(look, mode)), [fill]]], 4.5), []);
+    });
+
+    test(`${look} ${mode}: a picked row's focus ring keeps 3:1 on its fill`, () => {
+      assert.deepEqual(misses(set, [[rule('the ring', pickedRing(look, mode)), [pickedFill(look, mode)]]], 3), []);
+    });
+
+    test(`${look} ${mode}: a picked row's fill is told apart from the open row and the hovered row, which take the accent, and from the list`, () => {
+      const fill = pickedFill(look, mode);
+      const apart = surface => ratio(set, fill, surface);
+      assert.ok(apart('--sidebar-accent') >= 1.3, `against the accent fill: ${apart('--sidebar-accent').toFixed(2)}:1`);
+      assert.ok(apart('--sidebar') >= 1.3, `against the list: ${apart('--sidebar').toFixed(2)}:1`);
+    });
+  }
+}
+
+const pickedRunning = (look, mode) => winning('--running', mode, inApp(PICKED), ...(look === 'ghost' ? [inGhost(PICKED)] : []));
+
+for (const mode of ['light', 'dark']) {
+  test(`default ${mode}: a running row's dot keeps 3:1 on a picked row's fill`, () => {
+    const fill = pickedFill('default', mode);
+    assert.deepEqual(misses(LOOKS.default[mode], [[rule('the running dot', pickedRunning('default', mode)), [fill]]], 3), []);
+  });
+
+  test(`ghost ${mode}: a running row's dot, the eye or its socket, keeps 3:1 on a picked row's fill`, () => {
+    const fill = pickedFill('ghost', mode);
+    const [eye, socket] = ['--eye', '--socket'].map(ink => ratio(SETS[mode], ink, fill));
+    assert.ok(Math.max(eye, socket) >= 3, `the eye is ${eye.toFixed(2)}:1 and its socket ${socket.toFixed(2)}:1`);
+  });
+}
+
+test('a picked row\'s fill is read through color-mix() of two tokens, and a mix of a colour that is not opaque is refused', () => {
+  const set = { '--a': 'oklch(0.2 0 0)', '--b': 'oklch(1 0 0)', '--c': 'oklch(0.5 0 0 / 50%)' };
+  assert.deepEqual(colour(set, 'color-mix(in oklab, var(--a) 100%, var(--b))'), colour(set, '--a'));
+  assert.deepEqual(colour(set, 'color-mix(in oklab, var(--a) 0%, var(--b))'), colour(set, '--b'));
+  assert.ok(Math.abs(colour(set, 'color-mix(in oklab, var(--a) 50%, var(--b))').lab[0] - 0.6) < 1e-9);
+  assert.throws(() => colour(set, 'color-mix(in oklab, var(--c) 50%, var(--b))'), /not opaque/);
+});
