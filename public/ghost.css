@@ -247,7 +247,18 @@
   text-transform: uppercase;
 }
 
-[data-look="ghost"] .shell { overflow: visible; fill: var(--shell); }
+[data-look="ghost"] .shell { overflow: visible; }
+
+[data-look="ghost"] .shell-plate { fill: var(--shell); }
+
+[data-look="ghost"] .shell-socket { fill: var(--socket); }
+
+[data-look="ghost"] .shell-eye { fill: var(--eye); }
+
+[data-look="ghost"] .shell-glow {
+  fill: color-mix(in oklab, var(--eye) 55%, transparent);
+  opacity: 0;
+}
 
 [data-look="ghost"] .shell-turn {
   transform-box: view-box;
@@ -288,6 +299,8 @@
   height: 5.5rem;
 }
 
+[data-look="ghost"] .emblem-shell .shell-glow { opacity: 0.35; }
+
 [data-look="ghost"] .emblem-shadow {
   position: absolute;
   top: 6.25rem;
@@ -309,11 +322,15 @@
 
   [data-look="ghost"] .shell-spin .shell-plate { animation: shell-open 1800ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
 
+  [data-look="ghost"] .shell-spin .shell-glow { animation: shell-glow 1800ms ease-in-out infinite; }
+
   [data-look="ghost"] .emblem-shell { animation: emblem-float 6000ms ease-in-out infinite; }
 
   [data-look="ghost"] .emblem-shell .shell-turn { animation: emblem-turn 12000ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
 
   [data-look="ghost"] .emblem-shell .shell-plate { animation: emblem-open 12000ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-glow { animation: emblem-glow 12000ms ease-in-out infinite; }
 
   [data-look="ghost"] .emblem-shadow { animation: emblem-shadow 6000ms ease-in-out infinite; }
 
@@ -331,6 +348,11 @@
     0%, 4% { transform: translateY(0); }
     26%, 60% { transform: translateY(-1.8px); }
     84%, 100% { transform: translateY(0); }
+  }
+
+  @keyframes shell-glow {
+    0%, 6%, 88%, 100% { opacity: 0; }
+    30%, 60% { opacity: 1; }
   }
 
   @keyframes emblem-float {
@@ -352,5 +374,10 @@
     0%, 0.6% { transform: translateY(0); }
     3.9%, 9% { transform: translateY(-1.8px); }
     12.6%, 100% { transform: translateY(0); }
+  }
+
+  @keyframes emblem-glow {
+    0%, 0.9%, 13.2%, 100% { opacity: 0.35; }
+    4.5%, 9% { opacity: 1; }
   }
 }
