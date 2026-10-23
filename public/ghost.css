@@ -36,7 +36,7 @@
   --eye-ink: oklch(0.45 0 0);
   --eye-glow: var(--eye-ink);
   --socket: oklch(0.25 0 0);
-  --core: oklch(0.25 0 0 / 32%);
+  --core: oklch(0.25 0 0 / 13%);
   --shell: oklch(0.215 0 0);
   --edge-light: oklch(1 0 0 / 75%);
 }
@@ -79,7 +79,7 @@
     --eye-ink: oklch(0.82 0 0);
     --eye-glow: var(--eye);
     --socket: oklch(0.15 0 0);
-    --core: oklch(0 0 0 / 55%);
+    --core: oklch(0 0 0 / 42%);
     --shell: oklch(0.955 0 0);
     --edge-light: oklch(1 0 0 / 9%);
   }
@@ -327,15 +327,15 @@
 @media (prefers-reduced-motion: no-preference) {
   [data-look="ghost"] :is(.lamp[data-state="working"], .row-dot[data-dot="running"]) { animation: lamp-breathe 1800ms ease-in-out infinite; }
 
-  [data-look="ghost"] .shell-spin .shell-turn { animation: shell-turn 1800ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+  [data-look="ghost"] .shell-spin .shell-turn { animation: shell-turn 2200ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
 
-  [data-look="ghost"] .shell-spin .shell-plate { animation: shell-open 1800ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+  [data-look="ghost"] .shell-spin .shell-plate { animation: shell-open 2200ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
 
-  [data-look="ghost"] .shell-spin .shell-glow { animation: shell-glow 1800ms ease-in-out infinite; }
+  [data-look="ghost"] .shell-spin .shell-glow { animation: shell-glow 2200ms ease-in-out infinite; }
 
-  [data-look="ghost"] .shell-spin .shell-core { animation: shell-core 1800ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+  [data-look="ghost"] .shell-spin .shell-core { animation: shell-core 2200ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
 
-  [data-look="ghost"] .shell-spin .shell-turn > :nth-child(even) .shell-plate { animation-delay: 90ms; }
+  [data-look="ghost"] .shell-spin .shell-turn > :nth-child(even) .shell-plate { animation-delay: 80ms; }
 
   [data-look="ghost"] .emblem-shell { animation: emblem-float 6000ms ease-in-out infinite; }
 
@@ -347,7 +347,7 @@
 
   [data-look="ghost"] .emblem-shell .shell-core { animation: emblem-core 12000ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
 
-  [data-look="ghost"] .emblem-shell .shell-turn > :nth-child(even) .shell-plate { animation-delay: 90ms; }
+  [data-look="ghost"] .emblem-shell .shell-turn > :nth-child(even) .shell-plate { animation-delay: 80ms; }
 
   [data-look="ghost"] .emblem-shadow { animation: emblem-shadow 6000ms ease-in-out infinite; }
 
@@ -362,8 +362,8 @@
   }
 
   @keyframes shell-open {
-    0%, 4% { transform: translateY(0); }
-    26%, 60% { transform: translateY(-3.2px); }
+    0%, 15% { transform: translateY(0); }
+    30%, 56% { transform: translateY(-6px); }
     84%, 100% { transform: translateY(0); }
   }
 
@@ -373,8 +373,9 @@
   }
 
   @keyframes shell-core {
-    0%, 16%, 74%, 100% { opacity: 0; transform: scale(0.6); }
+    0%, 16% { opacity: 0; transform: scale(0); }
     34%, 58% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(0); }
   }
 
   @keyframes emblem-float {
@@ -388,23 +389,24 @@
   }
 
   @keyframes emblem-turn {
-    0%, 2.7% { transform: rotate(0deg); }
-    9.9%, 100% { transform: rotate(180deg); }
+    0%, 3.3% { transform: rotate(0deg); }
+    12.1%, 100% { transform: rotate(180deg); }
   }
 
   @keyframes emblem-open {
-    0%, 0.6% { transform: translateY(0); }
-    3.9%, 9% { transform: translateY(-3.2px); }
-    12.6%, 100% { transform: translateY(0); }
+    0%, 2.75% { transform: translateY(0); }
+    5.5%, 10.27% { transform: translateY(-6px); }
+    15.4%, 100% { transform: translateY(0); }
   }
 
   @keyframes emblem-glow {
-    0%, 0.9%, 13.2%, 100% { opacity: 0.35; }
-    4.5%, 9% { opacity: 1; }
+    0%, 1.1%, 16.13%, 100% { opacity: 0.35; }
+    5.5%, 11% { opacity: 1; }
   }
 
   @keyframes emblem-core {
-    0%, 2.4%, 11.1%, 100% { opacity: 0; transform: scale(0.6); }
-    5.1%, 8.7% { opacity: 1; transform: scale(1); }
+    0%, 2.93% { opacity: 0; transform: scale(0); }
+    6.23%, 10.63% { opacity: 1; transform: scale(1); }
+    18.33%, 100% { opacity: 0; transform: scale(0); }
   }
 }
