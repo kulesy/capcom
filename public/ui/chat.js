@@ -8,12 +8,14 @@ import { Holds } from './holds.js';
 import { useDocumentTitle, useFields, useStore } from './hooks.js';
 import { html, memo, useCallback, useEffect, useLayoutEffect, useRef } from './html.js';
 import { draw, icons } from './menu.js';
-import { Panel } from './panel.js';
-import { panelOf, panels, togglePanel } from './panel-state.js';
+import { Panel, useShownTab } from './panel.js';
+import { toggleTab } from './panel-state.js';
 import { runFromClick } from './run.js';
 import { QuoteDock, useQuoting } from './quote.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
+import { subsButtonName, subsOffered, subsStatus } from './sub-panel-rules.js';
+import { LIST_TREE, sessionIndex } from './subs.js';
 import { runnableBlock } from './terminal-rules.js';
 import { toast } from './toast.js';
 import { Transcript } from './transcript.js';
@@ -21,14 +23,43 @@ import { Transcript } from './transcript.js';
 export const Back = () => html`<a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Sessions</a>`;
 
 function TerminalButton({ ctrl }) {
-  const open = useStore(panels, s => panelOf(s, ctrl.id).open);
-  return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${open} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => togglePanel(ctrl.id, e.currentTarget, open)}>${draw(icons.terminal, 'icon')}</button>`;
+  const shown = useShownTab(ctrl);
+  return html`<button class="btn" id="terminalButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label="Terminal" aria-expanded=${shown === 'terminal'} aria-controls="panel" data-tip="Terminal" data-tip-key=${keyHint('Ctrl', '`')} onClick=${e => toggleTab(ctrl.id, 'terminal', e.currentTarget, shown)}>${draw(icons.terminal, 'icon')}</button>`;
+}
+
+// Its name carries the count and what waits on the owner, since the mark on it is colour alone.
+function SubsButton({ ctrl }) {
+  const ix = useStore(sessionIndex, s => s.ix);
+  const shown = useShownTab(ctrl);
+  const status = subsStatus(ix, ctrl.id);
+  const name = subsButtonName(status);
+  return html`<button class="btn" id="subsButton" type="button" data-variant="ghost" data-size="icon-sm" aria-label=${name} aria-expanded=${shown === 'subs'} aria-controls="panel" data-tip=${name} onClick=${e => toggleTab(ctrl.id, 'subs', e.currentTarget, shown)}>${draw(LIST_TREE, 'icon')}${status.needs ? html`<span class="subs-mark" aria-hidden="true"></span>` : null}</button>`;
+}
+
+// Ctrl+` shows the terminal, switches to it or closes the panel, as the Terminal button does. It has its own component so a tab change
+// draws this and not the whole chat.
+function PanelKeys({ ctrl }) {
+  const shown = useShownTab(ctrl);
+  const latest = useRef(shown);
+  latest.current = shown;
+  useEffect(() => {
+    const onKey = e => {
+      if (shortcut(e) !== 'terminal' || !ctrl.store.get().terminal) return;
+      e.preventDefault();
+      const here = document.activeElement;
+      toggleTab(ctrl.id, 'terminal', here === document.body ? null : here, latest.current);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [ctrl]);
+  return null;
 }
 
 // `kind` names the chat in place of its folder and branch, as a group's session does.
 function ChatHead({ ctrl, kind }) {
   const { session, status, outside, terminal } = useFields(ctrl.store, 'session', 'status', 'outside', 'terminal');
   const draft = !!ctrl.draft;
+  const subs = useStore(sessionIndex, s => subsOffered(s.ix, ctrl.id));
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
@@ -42,7 +73,7 @@ function ChatHead({ ctrl, kind }) {
       <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
       <p class="chat-meta" id="meta">${meta}</p>
     </div>
-    ${terminal ? html`<div class="chat-tools"><${TerminalButton} ctrl=${ctrl} />${lamp}</div>` : lamp}
+    ${terminal || subs ? html`<div class="chat-tools">${subs ? html`<${SubsButton} ctrl=${ctrl} />` : null}${terminal ? html`<${TerminalButton} ctrl=${ctrl} />` : null}${lamp}</div>` : lamp}
   </header>`;
 }
 
@@ -91,16 +122,6 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     const { session } = ctrl.store.get();
     if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
   }, [ctrl, title, named]);
-  useEffect(() => {
-    const onKey = e => {
-      if (shortcut(e) !== 'terminal' || !ctrl.store.get().terminal) return;
-      e.preventDefault();
-      const here = document.activeElement;
-      togglePanel(ctrl.id, here === document.body ? null : here, panelOf(panels.get(), ctrl.id).open);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [ctrl]);
   return html`<section class="session" id="session" ref=${pane} data-terminal=${terminal ? '' : undefined} onClick=${onBlock}>
     <${ChatHead} ctrl=${ctrl} kind=${meta} />
     ${aside}
@@ -113,5 +134,6 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
       <${Composer} ctrl=${ctrl} />
     </div>
     <${Panel} ctrl=${ctrl} />
+    <${PanelKeys} ctrl=${ctrl} />
   </section>`;
 }, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside);

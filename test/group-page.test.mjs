@@ -1,5 +1,7 @@
 // Run with `npm test`. A group's session in the real page: the button on the group's header, the chat it opens with the status of the group over its
 // transcript, the archived part read only when it is opened, and what the page says when the server cannot run group sessions or has no such group.
+// The status over the transcript is what a server that cannot summarise sessions gets, so those tests run against one. A server that can
+// has it in the Sub sessions tab, which test/sub-status-page.test.mjs covers.
 // It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,10 +22,12 @@ const skip = chromium ? false : notFound();
 const timeout = 30_000;
 let app;
 let older;
+let unsummarised;
 let browser;
 
-// The server behind a proxy that leaves out what the list says of group sessions, as a server that started before they existed does.
-function withoutFeatures(target) {
+// The server behind a proxy that leaves out what the list says of its features, or only the `left` ones, as a server that started before they
+// existed does.
+function withoutFeatures(target, left = null) {
   const proxy = http.createServer((req, res) => {
     const forward = http.request({ host: 'localhost', port: target.port, method: req.method, path: req.url, headers: req.headers }, reply => {
       if (!req.url.startsWith('/api/sessions')) {
@@ -34,8 +38,9 @@ function withoutFeatures(target) {
       const chunks = [];
       reply.on('data', chunk => chunks.push(chunk));
       reply.on('end', () => {
-        const { features, ...index } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        const body = JSON.stringify(index);
+        const whole = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        const { features, ...index } = whole;
+        const body = JSON.stringify(left && features ? { ...index, features: Object.fromEntries(Object.entries(features).filter(([name]) => !left.includes(name))) } : left ? whole : index);
         res.writeHead(reply.statusCode, { ...reply.headers, 'content-length': Buffer.byteLength(body) });
         res.end(body);
       });
@@ -52,12 +57,14 @@ before(async () => {
   if (skip) return;
   app = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   older = await withoutFeatures(app);
+  unsummarised = await withoutFeatures(app, ['subStatus']);
   browser = await launch(chromium);
 });
 
 after(async () => {
   await browser?.close();
   await older?.close();
+  await unsummarised?.close();
 });
 
 const LOGIN = `!!document.querySelector('#password')`;
@@ -121,7 +128,7 @@ test('a server that does not say it can run group sessions has no such button, a
 });
 
 test('the button opens the group\'s session, headed Group session, with the status of the group over the transcript', { skip, timeout }, async t => {
-  const page = await appPage(t);
+  const page = await appPage(t, unsummarised.origin);
   await page.until(`!!document.querySelector('.bar.has-chat .chat-open')`);
   await page.click('.bar.has-chat .chat-open');
   await page.until(`!!document.querySelector('.group-status .status-sum')`);
@@ -136,7 +143,7 @@ test('the button opens the group\'s session, headed Group session, with the stat
 });
 
 test('the archived sessions are read from the server only when the idle and archived part is opened, and each is a link to its session', { skip, timeout }, async t => {
-  const page = await appPage(t, app.origin, '#/g/cg-work');
+  const page = await appPage(t, unsummarised.origin, '#/g/cg-work');
   await page.until(`!!document.querySelector('.group-status .status-rest')`);
   assert.equal(await archivedReads(page), 0);
   assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.status-rest > span')].map(el => el.textContent)`), ['Idle and archived', '2']);
@@ -149,7 +156,7 @@ test('the archived sessions are read from the server only when the idle and arch
 });
 
 test('the folds are kept for the group in this browser, so a page opened again has them as they were left', { skip, timeout }, async t => {
-  const page = await appPage(t, app.origin, '#/g/cg-work');
+  const page = await appPage(t, unsummarised.origin, '#/g/cg-work');
   await page.until(`!!document.querySelector('.group-status .status-rest')`);
   await page.click('.status-rest');
   await page.until(`!!document.querySelector('.group-status .status-heading + .status-rows') && document.querySelectorAll('.group-status .status-row').length === 3`);
@@ -166,7 +173,7 @@ test('the folds are kept for the group in this browser, so a page opened again h
 });
 
 test('a link to the group\'s own session opens the group, and a member\'s link leaves it for the member', { skip, timeout }, async t => {
-  const page = await appPage(t, app.origin, `#/s/${WORK}`);
+  const page = await appPage(t, unsummarised.origin, `#/s/${WORK}`);
   await page.until(`location.hash === '#/g/cg-work' && !!document.querySelector('.group-status')`);
   await page.click('.status-row');
   await page.until(`location.hash === '#/s/recent' && !document.querySelector('.group-status')`);

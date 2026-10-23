@@ -2,14 +2,16 @@
 // and tab are kept for the 100 newest chats, the width is one for all of them, and both are kept in localStorage.
 import { local } from './storage.js';
 import { createStore } from './store.js';
-import { PANEL } from './terminal-rules.js';
+import { PANEL, tabPress } from './terminal-rules.js';
 
 const KEPT = 100;
 
 export const CLOSED = Object.freeze({ open: false, tab: 'terminal' });
 
-const valid = saved => Object.fromEntries(Object.entries(saved && typeof saved === 'object' ? saved : {})
-  .filter(([, v]) => v && typeof v.open === 'boolean' && (v.tab === 'terminal' || v.tab === 'file'))
+const TABS = ['subs', 'terminal', 'file'];
+
+export const valid = saved => Object.fromEntries(Object.entries(saved && typeof saved === 'object' ? saved : {})
+  .filter(([, v]) => v && typeof v.open === 'boolean' && TABS.includes(v.tab))
   .map(([id, v]) => [id, { open: v.open, tab: v.tab }])
   .slice(-KEPT));
 
@@ -45,9 +47,13 @@ export function showPanel(id, tab, from) {
 
 export const hidePanel = id => put(id, { open: false });
 
-export function togglePanel(id, from, shown) {
-  if (shown) hidePanel(id);
-  else showPanel(id, panels.get().byId[id]?.tab ?? 'terminal', from);
+// Opens the chat's panel on `tab` and leaves the focus where it is, as a panel that opens by itself must.
+export const openQuietly = (id, tab) => put(id, { open: true, tab });
+
+// What a header button or shortcut for `tab` does. `shown` is the tab on show, or null while the panel is closed.
+export function toggleTab(id, tab, from, shown) {
+  if (tabPress(shown, tab) === 'close') hidePanel(id);
+  else showPanel(id, tab, from);
 }
 
 export const selectTab = (id, tab) => put(id, { tab });

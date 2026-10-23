@@ -5,8 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   appendChunks, bangMode, carriedText, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, inputTarget, joinBash, KEEP, landedRuns, lastRunning,
-  leaveBang, mergeOutput, PANEL, panelMode, panelTabs, pendingBangs, pinAfter, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabShown, textOf, took,
-  upsertRun, clampWidth, widestPanel, widthByKey, runStanding, runState,
+  leaveBang, mergeOutput, opensByDefault, PANEL, panelMode, panelName, panelTabs, pendingBangs, pinAfter, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabPress,
+  tabShown, textOf, took, upsertRun, clampWidth, widestPanel, widthByKey, runStanding, runState,
 } from '../public/ui/terminal-rules.js';
 
 const run = (id, extra = {}) => ({ id, key: id, command: 'ls', cwd: '/h/x', source: 'panel', startedAt: 1000, endedAt: null, exitCode: null, signal: null, stopped: false, running: true, truncated: false, delivered: null, output: [], pending: false, ...extra });
@@ -390,7 +390,11 @@ test('the resize handle\'s keys move the edge: left widens, right narrows, Shift
   assert.equal(widthByKey('ArrowUp', false, 400, 1000), null);
 });
 
-test('the panel offers the terminal when the server has one and the file while one is open, and shows the tab asked for if it can', () => {
+test('the panel offers the sub sessions first, the terminal when the server has one and the file while one is open, and shows the tab asked for if it can', () => {
+  assert.deepEqual(panelTabs({ subs: true, terminal: true, file: true }), ['subs', 'terminal', 'file']);
+  assert.deepEqual(panelTabs({ subs: true, terminal: false, file: false }), ['subs']);
+  assert.deepEqual(panelTabs({ subs: true, terminal: false, file: true }), ['subs', 'file']);
+  assert.deepEqual(panelTabs({ subs: false, terminal: true, file: true }), ['terminal', 'file']);
   assert.deepEqual(panelTabs({ terminal: true, file: true }), ['terminal', 'file']);
   assert.deepEqual(panelTabs({ terminal: true, file: false }), ['terminal']);
   assert.deepEqual(panelTabs({ terminal: false, file: true }), ['file']);
@@ -399,6 +403,35 @@ test('the panel offers the terminal when the server has one and the file while o
   assert.equal(tabShown('file', ['terminal']), 'terminal', 'a closed file leaves the terminal');
   assert.equal(tabShown('terminal', ['file']), 'file');
   assert.equal(tabShown('terminal', []), null);
+  assert.equal(tabShown('terminal', ['subs', 'terminal']), 'terminal');
+  assert.equal(tabShown('file', ['subs', 'terminal']), 'subs', 'a closed file leaves the first tab when there is no terminal');
+});
+
+test('the panel is named for the tabs it holds', () => {
+  assert.equal(panelName(['subs', 'terminal', 'file']), 'Sub sessions, terminal and file');
+  assert.equal(panelName(['subs', 'terminal']), 'Sub sessions and terminal');
+  assert.equal(panelName(['terminal', 'file']), 'Terminal and file');
+  assert.equal(panelName(['subs']), 'Sub sessions');
+  assert.equal(panelName(['file']), 'File');
+  assert.equal(panelName([]), '');
+});
+
+test('a header button or Ctrl+` closes the panel only when its own tab is on show, and otherwise shows that tab', () => {
+  assert.equal(tabPress(null, 'subs'), 'show', 'closed, it opens on the tab');
+  assert.equal(tabPress('terminal', 'subs'), 'show', 'open on another tab, it switches');
+  assert.equal(tabPress('file', 'terminal'), 'show');
+  assert.equal(tabPress('subs', 'subs'), 'close');
+  assert.equal(tabPress('terminal', 'terminal'), 'close');
+});
+
+test('the panel opens by itself only for a chat that offers the sub sessions, has nothing saved, and has room beside the chat', () => {
+  const ready = { saved: false, offered: true, mode: 'side' };
+  assert.equal(opensByDefault(ready), true);
+  assert.equal(opensByDefault({ ...ready, saved: true }), false, 'a panel the owner opened or closed is left as it was');
+  assert.equal(opensByDefault({ ...ready, offered: false }), false);
+  assert.equal(opensByDefault({ ...ready, mode: 'over' }), false, 'a panel that would cover the chat waits to be asked for');
+  assert.equal(opensByDefault({ saved: false, offered: true, mode: panelMode(PANEL.overBelow - 1) }), false);
+  assert.equal(opensByDefault({ saved: false, offered: true, mode: panelMode(PANEL.overBelow) }), true);
 });
 
 test('the arrows move between tabs and wrap, Home and End go to the ends, and any other key is not a tab key', () => {

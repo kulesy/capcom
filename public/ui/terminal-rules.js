@@ -98,8 +98,24 @@ export function widthByKey(key, shift, width, sessionWidth) {
   return next === undefined ? null : clampWidth(next, sessionWidth);
 }
 
-// The tabs a panel offers: the terminal when the server has one, and the file while one is open.
-export const panelTabs = ({ terminal, file }) => [...(terminal ? ['terminal'] : []), ...(file ? ['file'] : [])];
+export const TAB_LABEL = { subs: 'Sub sessions', terminal: 'Terminal', file: 'File' };
+
+// The tabs a panel offers, Sub sessions first: it when the chat has sub sessions to show, the terminal when the server has one, and the file while one is open.
+export const panelTabs = ({ subs, terminal, file }) => [...(subs ? ['subs'] : []), ...(terminal ? ['terminal'] : []), ...(file ? ['file'] : [])];
+
+// What names the panel to a screen reader: the tabs it holds, as "Sub sessions, terminal and file".
+export function panelName(tabs) {
+  const names = tabs.map((tab, n) => (n ? TAB_LABEL[tab].toLowerCase() : TAB_LABEL[tab]));
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] ?? '';
+}
+
+// What a header button for `tab` does: it closes the panel when that tab is on show, and otherwise opens the panel on it or switches to it.
+// `shown` is the tab on show, or null while the panel is closed.
+export const tabPress = (shown, tab) => (shown === tab ? 'close' : 'show');
+
+// Whether a chat's panel opens by itself on the Sub sessions tab: only when the chat offers that tab, nothing is saved for the chat (so a
+// panel the owner closed stays closed) and the session is wide enough for the panel to sit beside the chat.
+export const opensByDefault = ({ saved, offered, mode }) => offered && !saved && mode === 'side';
 
 // The tab on show: the one asked for if the panel offers it, else the first it does, else none.
 export const tabShown = (tab, tabs) => (tabs.includes(tab) ? tab : tabs[0] ?? null);

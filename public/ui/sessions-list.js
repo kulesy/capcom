@@ -21,6 +21,7 @@ import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
+import { familyNote } from './sub-panel-rules.js';
 import { say } from './toast.js';
 import { archiveTarget, findRow, LOOSE, LOOSE_NAMES, looseHome, moveTargets, neighbour, nestTargets, nextStop, rootOf, sessionTargets, stayAbove, TITLE_MAX, withKids } from './tree.js';
 
@@ -33,7 +34,8 @@ const sessionHash = id => `#/s/${encodeURIComponent(id)}`;
 // A working row's time sits there too, from `turnStart`, which stampTurns puts on this page's clock. The mark is the server's `dot`.
 // Where the session is and when it last ran: a mouse reads it in the row's tooltip and a touch screen, which has none, on a second line.
 // The line stays in the row for a screen reader either way, so the CSS only hides it from the eye.
-function RowLink({ r, title = r.title, current, lifted, marked, picked, drop, over }) {
+// `dot` stands in for the row's own mark, as a folded family's does.
+function RowLink({ r, title = r.title, dot = r.dot, current, lifted, marked, picked, drop, over }) {
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
@@ -43,7 +45,7 @@ function RowLink({ r, title = r.title, current, lifted, marked, picked, drop, ov
   return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}
     data-drop=${drop ? NEST + r.id : null} data-drop-middle=${drop ? '' : null} data-over=${over || null} aria-current=${current === r.id ? 'page' : null}
     data-tip=${detail || null} data-tip-side="right" data-tip-delay="700">
-    ${r.dot ? html`<span class="row-dot" data-dot=${r.dot} aria-hidden="true">${r.dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
+    ${dot ? html`<span class="row-dot" data-dot=${dot} aria-hidden="true">${dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}
     <span class="row-title">${title || UNTITLED}</span>${picked ? html`<span class="sr">, selected</span>` : null}
     ${over ? html`<span class="row-nest">Nest here</span>` : timed ? html`<span class="row-run" aria-hidden="true">${duration(Date.now() - r.turnStart)}</span>` : null}
     ${detail ? html`<span class="row-meta">${where ? html`<span class="row-where">${where}</span>` : null}${at ? html`<time class="row-time">${where ? ' · ' : ''}${at}</time>` : null}</span>` : null}</a>`;
@@ -118,13 +120,15 @@ function Routine({ g, rowProps, open, onToggle, tree }) {
 // A session with others nested under it. Its row opens it, and the arrow at its end folds the nested ones in and out underneath.
 // While one of them is carried (`holds`), their list takes a drop as a nest under this session, so letting go anywhere in it leaves
 // the carried session where it is, instead of falling through to the section and taking it out.
+// Folded, the row takes the mark of the most urgent session under it when that outranks its own, and the arrow says what is under it.
 function Family({ r, rowProps, holds, open, onToggle, tree }) {
   const count = r.children.length;
-  const nested = `${count} nested session${count > 1 ? 's' : ''}`;
+  const note = open ? null : familyNote(r);
+  const nested = note?.label ?? `${count} nested session${count > 1 ? 's' : ''}`;
   const renaming = tree.renaming === r.id;
   const list = `family-${r.id}`;
   return html`<li class="has-fold">
-    ${renaming ? tree.sessionForm(r) : html`<${RowLink} r=${r} ...${rowProps(r)} /><${RowMore} r=${r} tree=${tree} />`}
+    ${renaming ? tree.sessionForm(r) : html`<${RowLink} r=${r} dot=${note?.dot} ...${rowProps(r)} /><${RowMore} r=${r} tree=${tree} />`}
     ${renaming ? null : html`<${FoldButton} label=${nested} open=${open} controls=${list} onClick=${() => onToggle(r.id)} />`}
     ${open ? html`<ul class="sub-rows" id=${list} aria-label=${`Nested under ${r.title || UNTITLED}`} data-drop=${holds ? NEST + r.id : null}>${r.children.map(c => html`<${Row} key=${c.id} r=${c} ...${rowProps(c)} tree=${tree} />`)}</ul>` : null}
   </li>`;

@@ -43,7 +43,7 @@ export function descendantsOf(rows, id) {
 const BUCKET_ORDER = BUCKETS.map(b => b.key);
 
 // The place in the panel's order of the most urgent session among a line and everything under it.
-const placeOf = (node, now) => Math.min(BUCKET_ORDER.indexOf(bucketOf(node.row, now)), ...(node.subs ?? []).map(sub => placeOf(sub, now)));
+export const placeOf = (node, now) => Math.min(BUCKET_ORDER.indexOf(bucketOf(node.row, now)), ...(node.subs ?? []).map(sub => placeOf(sub, now)));
 
 // Lines are { row, subs }. Those that need you come first, then those working, recent and idle, judged by the most urgent session in the
 // line and under it, and in each part the newest goes first and a tie goes by id.

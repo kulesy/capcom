@@ -320,7 +320,7 @@ test('deleting the last group of a view puts the focus on the + button', { skip,
 test('deleting a group whose chat is open leaves the chat for the list, and a group whose chat is not open leaves the page where it is', { skip, timeout }, async t => {
   const s = await furnished();
   const page = await appPage(t, s.origin, { hash: '#/g/cg-b' });
-  await page.until(`location.hash === '#/g/cg-b' && !!document.querySelector('.group-status')`);
+  await page.until(`location.hash === '#/g/cg-b' && !!document.querySelector('.subs')`);
   await rightClick(page, 'Notes');
   await choose(page, 'Delete group');
   await page.until(`!!document.querySelector('[data-slot="alert-dialog-content"]')`);
@@ -333,7 +333,7 @@ test('deleting a group whose chat is open leaves the chat for the list, and a gr
   await page.until(`!!document.querySelector('[data-slot="alert-dialog-content"]')`);
   await page.click('[data-slot="alert-dialog-action"]');
   await page.until(`document.querySelectorAll('${GROUP_HEADS} .name').length === 1`);
-  await page.until(`location.hash === '#/' && !document.querySelector('.group-status')`);
+  await page.until(`location.hash === '#/' && !document.querySelector('.subs')`);
   assert.deepEqual(await names(page), ['Reviewing']);
   await page.until(`${FOCUSED} === 'Reviewing'`);
   assert.deepEqual(page.problems, []);

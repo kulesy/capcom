@@ -1,0 +1,92 @@
+# Roll a session's sub session status up to every parent, from the transcripts, with no model calls
+
+- Status: Accepted
+- Deciders: Eli
+- Date: 2026-10-23
+- Tags: sessions, sub-sessions, nesting, groups, side-panel, summaries, tools, permissions
+
+## Context and Problem Statement
+
+A session can have sessions nested under it, to any depth: side chats, forks, and sessions started from a chip. The owner runs many of them at once. To learn how a family is going he opens each session in turn. A session three levels down that waits for his approval is invisible from the top, and a folded family in the sidebar shows nothing of what is under it. A group already has a status panel for its sessions, but an ordinary chat that fans work out has none.
+
+He asked for the status of the sessions below a chat to roll up into that chat: what each one last said, what needs him, and the same at every level. He also wanted the chat's own model to see the sessions below it. What does the status say, where does it come from, what does it cost, and how does it reach the page and the model?
+
+## Decision Drivers
+
+- Reading status must cost no tokens. The model never polls, and no model is asked to summarise.
+- Status has to show where the owner already looks: the chat's header and side panel, the group's chat and the sidebar.
+- A session must see only the sessions below it, at any depth, and never a sibling, a parent or another family.
+- A message from a sub session is information and never permission. Passing status up must not start a turn in a parent, because a turn can act.
+- The page is read from disk on every request, so the new UI goes live before the server restarts. It has to work, as before, against the old server.
+- A group's chat has one way to show status, and an ordinary chat should have the same one.
+- Fetch only what is drawn. A family of 100 sessions must not cost 100 reads on every refresh.
+- No new dependencies and no build step ([Node's standard library and plain browser files](20261007-no-dependencies-no-build-step.md), [Preact with htm](20261015-preact-htm-front-end.md)).
+
+## Considered Options
+
+1. Read each session's latest reply from its transcript when asked, and roll the counts up in the page and in the tools
+2. Ask a model to summarise each session
+3. Have each sub session send its status to its parent as a message
+
+## Decision Outcome
+
+Chosen option: "Read each session's latest reply from its transcript when asked, and roll the counts up in the page and in the tools", because it costs a file read and nothing else, never starts a turn, and gives the page and the model the same facts.
+
+- **Summaries.** `lib/summaries.mjs` reads a session's transcript backwards from its last whole line, in chunks that double up to 2 MB, and takes the newest assistant message with text. It gives `line`, the first sentence of that reply as plain text with code blocks skipped, cut to 160 characters, `reply`, the reply cut to 4,000 characters, and `at`, when it was said or null. A session that has said nothing has empty text and a null `at`. No model is called. A summary is kept per session until the transcript's size or modified time changes, and the 500 newest are kept. The transcript index can be seconds behind, so the file itself is asked.
+- **Route.** `GET api/summaries?ids=a,b,c` is behind the same sign-in as the other routes. It answers `{ summaries: { <id>: { line, at, pending } } }`, and each answer also has `reply` with `detail=1`. It takes 1 to 60 distinct ids. Blank ids are dropped, none is a 400 ("Name the sessions in ids."), and more than 60 is a 400 ("Ask for at most 60 sessions at a time."). An id that is no session, or is a group's chat, is left out with no word, so the answer tells nothing about it. An archived session is answered. `pending` is what the session waits on, from the live chat in the server's memory: each is the tool's name and a one-line summary of what it would do, cut to 80 and 200 characters. It carries no request id, input or rule, and is empty when the server has no chat for the session.
+- **Flag.** `GET api/sessions` carries `features.subStatus`. A server that started before this change cannot send it, and the page treats the feature as absent.
+- **Rules.** `public/ui/sub-rules.js` works from the flat list of rows, where a row's `via` names the nearest session it shows under. It finds every session below one at any depth, orders lines (needs the owner first, then working, recent and idle, the newest first, by the most urgent session in a line and under it), and rolls up the sessions below a session: the total, how many wait on the owner, how many work, and the most urgent mark. Archived sessions are left out of the counts. A session waits on the owner when its state is waiting. The roll-up line reads "3 sub sessions, 2 waiting on you, 1 working". The page and the tools import this one file, so they count the same way, and node tests it with no page.
+- **Tools.** Every ordinary chat is given `list_sub_sessions` and `read_sub_session` by the `capcom` server (`lib/subs.mjs`, listed to a chat that is no group's). `list_sub_sessions` lists the sessions below the chat as a tree, up to 200 (100 by default), the ones that need the owner first, each with its roll-up and the first sentence of its latest reply. It lists archived sessions only with `include_archived`. `read_sub_session` reads the end of one session below the chat, at any depth and archived ones included: its last messages and tool calls, up to 60 items (20 by default), and what it waits on. Any id that is not below the chat, whether a sibling, a parent, another family's session or no session, gets the same one-sentence refusal, so the answer tells nothing about it. Each call looks the list up again. A group's chat keeps its own three tools and gets neither of these.
+- **Reads need no card.** Both tools only read, so the runner allows them with no card, in every mode, for an ordinary chat alone. The CLI's own tools and `start_group_session` keep their cards, and no sub session tool can approve, deny, stop, archive, message or start anything.
+- **No turn in a parent.** Nothing pushes status up. A parent learns what is below it when the owner opens the tab, or when the model calls a tool, and a sub session's reply is read as information and never as a message the parent must act on.
+- **Tab.** The chat's side panel gets a first tab, "Sub sessions", drawn from the list the page already loads every 15 seconds (`public/ui/subs.js`). A chat has it when the server sends `features.subStatus` and at least one row shows under it (`via` names the chat). A group's own chat always has it. The panel's name for a screen reader lists its tabs, as "Sub sessions, terminal and file".
+- **Opening.** A chat with sub sessions opens the panel on the tab by itself, once. That happens only with nothing saved for the chat and room for the panel beside the chat, so a phone and a narrow window wait to be asked. It does not take the focus from the prompt box. Once the owner has opened or closed the panel, the chat remembers it, as it remembers the terminal.
+- **Header button.** A button beside the Terminal button, shown only while the tab is offered, opens the panel on the tab, switches to it from another tab, and closes the panel when the tab is already on show. The Terminal button and Ctrl+` follow the same rule for the terminal tab. The button's name carries the count and what waits, as "Sub sessions: 3, 1 waiting on you", and a mark in the awaiting colour shows while any session below, at any depth, waits on the owner.
+- **Lines.** Each line has the session's mark as a sidebar row draws it, its title as a link to the session, when it last moved, the first sentence of its latest reply (two lines at most), and its roll-up with "waiting on you" in the awaiting colour. A waiting line also says what it waits for, as "Waiting for you to approve Bash: npm test", or "Waiting for your answer" for a question. Lines are grouped under Needs you, Working and Recent activity, with the idle ones folded behind a toggle as a group's panel folds them, and a summary line at the top.
+- **Opening a line.** A disclosure button on each line shows the session's latest reply in full, in a box that scrolls, and the sessions under it as nested lines of the same kind. The reply is drawn with the markdown renderer and marked as a document, as a file in the panel is, so its code blocks have Copy and no Run. Run in another session's reply would run its command in this chat's terminal.
+- **Fetching.** The page asks for the summaries of the lines it draws and no others: the top lines, and the lines inside each line that is open, in one request for each change. It splits a request over 60 ids. A line is read again when its last activity or its state changes, since what it waits on goes with its state, and a small cache keyed by id and that stamp keeps the rest. A tab that is not on show asks for nothing. The reply for an open line is a second request with `detail=1` for that session alone. A failed request is tried again on the next refresh of the list, not at once. The rules for which ids are stale and how to word a wait are in `public/ui/sub-panel-rules.js`, and node tests them.
+- **Group's chat.** With `features.subStatus` the group's status moves from above the transcript to the same tab, which is the only tab of a group's chat since it has no terminal. The lines are the group's own sessions, each with its family, placed by the most urgent session in the family, and each opens as any line does. The fold for the idle and the archived, the archived list that is read only when the fold is opened, and the empty-state sentence stay at the bottom. The panel opens by default on a wide screen, and the header button opens it on a phone. A server without the flag keeps the status above the transcript, as it was.
+- **Folded family.** When a family is folded and the most urgent mark among the sessions under its head is more urgent than the head's own, the head's row shows that mark, and the fold button's name and tip read, for example, "4 nested sessions, 1 waiting on you". This needs only the list, so it works against the old server too. A family that is open shows each row's own mark.
+- **Look.** The lines use the sidebar's marks and the group status's tokens and `.status-*` rules, with their own rules in `public/group.css` and the panel's tab look from `app.css`. Buttons and links on the tab are set to at least 44px on a touch screen, and the header buttons reach it with a larger hit area. Checked in headless Chromium at 1280px and 390px, in light and dark, under the Ghost look. Not checked on a real phone or in Safari, and the tab strip with three tabs at the panel's narrowest width scrolls sideways, which was not looked at.
+
+### Consequences
+
+- ✅ Status costs a read of a file and spends no tokens, and a parent's turn is never started by a child.
+- ✅ The roll-up counts every level once, and the page and the tools count it the same way.
+- ✅ The owner sees from the header, the panel or the sidebar that something below a chat waits, and what it waits for, without opening it.
+- ✅ A chat's model can list and read the sessions below it and nothing else, with no card for the reads.
+- ✅ A group's chat and an ordinary chat show status in one place, and a server that cannot summarise sessions looks as it did.
+- ❌ The first sentence is a crude summary. A reply that opens with a greeting reads as the greeting.
+- ❌ A summary is what the session last said, so a session in a long tool run says nothing new until it replies.
+- ❌ What a session waits on comes from the server's live chat. A session the server has no chat for shows "waiting on you" with no detail.
+- ❌ A reply written between two refreshes of the list shows up to 15 seconds late, since a line is read again when the list says the session moved.
+- ❌ A request reads the end of up to 60 transcripts, up to 2 MB each. A cold cache on a large family is the slowest case, and nobody timed it.
+- ❌ A sub session's transcript is read by the chat above it, through the tools. A transcript can steer the chat that reads it, so the tools' reads rest on the instructions and on every card that can act staying in place. Nothing was tried to steer a chat this way.
+
+## Pros and Cons of the Options
+
+### Read each session's latest reply from its transcript when asked, and roll the counts up in the page and in the tools
+
+- ✅ No tokens, no new process and no new file kept.
+- ✅ One set of rules for the page and the tools.
+- ❌ The first sentence of a reply is a thin summary of the work.
+
+### Ask a model to summarise each session
+
+- ✅ A summary that reads the whole session.
+- ❌ It spends tokens on every refresh, or goes stale between them.
+- ❌ A model reading another session's transcript is steerable by it.
+
+### Have each sub session send its status to its parent as a message
+
+- ✅ The parent's model knows at once.
+- ❌ It starts a turn in the parent for each message, and a turn can act.
+- ❌ It spends tokens each time, and a parent that is idle or closed never hears.
+
+## Links
+
+- [Nest sessions under a parent, and follow the links Desktop records](20261022-nest-sessions-under-a-parent.md), whose families this rolls up and whose folded family now shows the family's mark
+- [Give each group a session of its own, with the group's status drawn above its chat](20261023-a-session-for-each-group.md), whose status moves to the Sub sessions tab when the server supports it
+- [Serve Desktop-style tools from Capcom's own MCP server](20261007-own-mcp-server-for-desktop-style-tools.md), whose server now lists `list_sub_sessions` and `read_sub_session` to an ordinary chat
+- [Run terminal commands on pipes with no PTY, and run `!` commands in GhostShell](20261023-terminal-without-a-pty.md), whose side panel gains the first tab
+- [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md), whose marks the lines and the folded family use
