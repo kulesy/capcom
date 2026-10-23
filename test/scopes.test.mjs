@@ -243,3 +243,25 @@ test('another view is waiting when a session nested in it needs you', () => {
   assert.equal(othersWaiting(ix, WEB), true);
   assert.equal(othersWaiting(ix, APP), false);
 });
+
+test('a group\'s own session is in no list, but it lights its view\'s lamp while it works or waits, and moves with the group', () => {
+  const grouped = (state, project = WEB) => ({ ...withGroups({ ...group('cg-a', project, [row('a-1')]), session: { id: 'chat-a', state } }), routines: [], started: [], ungrouped: [], other: [] });
+  assert.equal(lampOf(grouped('waiting'), WEB), 'waiting');
+  assert.equal(lampOf(grouped('working'), WEB), 'working');
+  assert.equal(lampOf(grouped('idle'), WEB), null);
+  assert.equal(lampOf(grouped('waiting'), APP), null, 'a project does not light for its neighbour\'s group');
+  assert.equal(lampOf(grouped('waiting', null), HOME_VIEW), 'waiting');
+  const both = { ...grouped('working'), groups: [{ ...group('cg-a', WEB, [row('a-1', 'waiting')]), session: { id: 'chat-a', state: 'working' } }] };
+  assert.equal(lampOf(both, WEB), 'waiting', 'waiting beats the group\'s own working');
+  assert.equal(othersWaiting(grouped('waiting'), HOME_VIEW), true);
+  assert.equal(othersWaiting(grouped('waiting'), WEB), false);
+});
+
+test('the view that holds a group\'s own session is the view of its group, and a group with none holds nothing', () => {
+  const ix = withGroups({ ...group('cg-a', WEB, [row('a-1')]), session: { id: 'chat-a', state: 'idle' } }, { ...group('cg-b', null, []), session: { id: 'chat-b', state: 'idle' } }, { ...group('cg-c', APP, []), session: null });
+  assert.equal(holder(ix, 'chat-a'), WEB);
+  assert.equal(holder(ix, 'chat-b'), HOME_VIEW);
+  assert.equal(holder(ix, 'a-1'), WEB);
+  assert.equal(holder(ix, 'chat-c'), NO_VIEW);
+  assert.equal(holder(ix, undefined), NO_VIEW);
+});
