@@ -1,4 +1,5 @@
 import { md } from '../md.mjs';
+import { closeFile, openFile } from './file-view.js';
 import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
@@ -64,14 +65,14 @@ function WidgetWait({ ctrl, work }) {
 }
 
 // The thinking and the reply as they are written, the place held for a widget, and the line that says what Claude is doing.
-function Live({ ctrl, box }) {
+function Live({ ctrl, box, fileUrl }) {
   const { live, think, work, turnStart, outside, outsideStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart', 'outside', 'outsideStart');
   const turn = useStore(ctrl.store, turnOf);
   const names = useStore(ctrl.store, s => s.session?.connectors);
   const other = turn === 'outside';
   useStick(box);
   return html`${think ? html`<${LiveThink} think=${think} />` : null}
-    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live) : '' }}></div>
+    <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, fileUrl) : '' }}></div>
     <${WidgetWait} ctrl=${ctrl} work=${work} />
     <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
 }
@@ -79,9 +80,11 @@ function Live({ ctrl, box }) {
 export function Transcript({ ctrl }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
-  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session } = useFields(
-    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session',
+  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session, fileLinks } = useFields(
+    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session', 'fileLinks',
   );
+  // Until the server says it serves linked files, a path in a reply stays text.
+  const fileUrl = fileLinks ? ctrl.fileUrl : null;
   const rows = useMemo(() => display(items), [items]);
   const turn = useStore(ctrl.store, turnOf);
   const [away, setAway] = useState(false);
@@ -140,17 +143,26 @@ export function Transcript({ ctrl }) {
   }, [ctrl]);
   useEffect(() => closeViewer, []);
 
+  // A plain click on a file link opens it here. A click with a modifier is left to the browser, so it opens the file in a new tab or window.
+  const openLink = e => {
+    const link = e.target.closest?.('a[data-file]');
+    if (!link || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openFile({ id: ctrl.id, path: link.dataset.file, line: link.dataset.line ? Number(link.dataset.line) : null, from: link });
+  };
+  useEffect(() => closeFile, []);
+
   // A message still on its way into the thread begins the next turn, so the group above it belongs to the last one.
   const live = !!turn && !sending.length;
   return html`<div class="scroller">
-    <div class="transcript" id="transcript" ref=${box} role="region" aria-label="Messages" tabindex="0">
+    <div class="transcript" id="transcript" ref=${box} role="region" aria-label="Messages" tabindex="0" onClick=${openLink}>
       ${ctrl.draft ? html`<p class="new-hint" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
-        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} />`)}
+        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} />`)}
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} onImage=${viewImage} />`)}
       </ol>
-      <${Live} ctrl=${ctrl} box=${box} />
+      <${Live} ctrl=${ctrl} box=${box} fileUrl=${fileUrl} />
     </div>
     <button class="btn scroll-end" data-variant="outline" data-size="icon-sm" data-active=${away} type="button" inert=${!away} aria-label="Scroll to end" data-tip="Scroll to end" onClick=${toEnd}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v11.5M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>`;

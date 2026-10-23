@@ -46,13 +46,13 @@ const SystemNotice = memo(function SystemNotice({ n }) {
 const sameRows = (a, b) => a.length === b.length && a.every((t, n) => t === b[n]);
 
 // One block of thinking: the start of it on the summary line, and all of it under that.
-export function Thought({ text, name, open, bodyRef }) {
+export function Thought({ text, name, open, bodyRef, fileUrl }) {
   return html`<details open=${open}><summary><span class="think-name">${name}</span><span class="think-sum">${preview(text)}</span></summary>
-    <div class="think-text" ref=${bodyRef} dangerouslySetInnerHTML=${{ __html: md(text) }}></div></details>`;
+    <div class="think-text" ref=${bodyRef} dangerouslySetInnerHTML=${{ __html: md(text, fileUrl) }}></div></details>`;
 }
 
-const ThinkRow = memo(function ThinkRow({ t }) {
-  return html`<li class="think"><${Thought} text=${t.text} name="Thought" /></li>`;
+const ThinkRow = memo(function ThinkRow({ t, fileUrl }) {
+  return html`<li class="think"><${Thought} text=${t.text} name="Thought" fileUrl=${fileUrl} /></li>`;
 });
 
 // Shows a text and, when it changes, fades the old one out above the new one, which fades in. The old text sits out of flow so a
@@ -74,7 +74,7 @@ function Swap({ text, fade = true }) {
 // moving lamps. Anything else about it is as when it is finished. The step fades in over the step before it and the summary over the
 // last step, but not over the summary the group showed before it was known to be running: a chat opens on its rows before its
 // status arrives, and that summary would flash and fade for no reason.
-const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors, running }) {
+const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors, running, fileUrl }) {
   const g = summarize(rows);
   const began = running ? groupStart(rows) : null;
   useClock(began !== null, began);
@@ -83,9 +83,9 @@ const ToolGroup = memo(function ToolGroup({ rows, imageUrl, onImage, connectors,
   was.current = running;
   return html`<li class="tool-group" data-status=${g.status} data-running=${running ? '' : undefined}><details data-k=${`g:${rows[0].key}`}><summary><span class="group-sum">${running ? html`<span class="step-lamps" aria-hidden="true"><span></span><span></span><span></span><span></span></span>` : null}<${Swap} text=${running ? step(rows, connectors) : g.title} fade=${!starting} /></span>
     <span class="group-meta">${g.edited ? html`<span class="add">+${g.added}</span> <span class="del">-${g.removed}</span>` : null}<span class="tool-status">${began === null ? g.note : duration(Date.now() - began)}</span></span></summary>
-    <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} />` : html`<${ToolRow} key=${r.key} t=${r} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`))}</ul></details>
+    <ul class="group-tools">${rows.map(r => (r.kind === 'thinking' ? html`<${ThinkRow} key=${r.key} t=${r} fileUrl=${fileUrl} />` : html`<${ToolRow} key=${r.key} t=${r} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`))}</ul></details>
     <${ToolPictures} shots=${toolShots(rows, connectors)} url=${imageUrl} onOpen=${onImage} /></li>`;
-}, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.running === b.running && sameRows(a.rows, b.rows));
+}, (a, b) => a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.running === b.running && a.fileUrl === b.fileUrl && sameRows(a.rows, b.rows));
 
 // A chip from Capcom's own tool or from Desktop's, so chips in resumed Desktop sessions can be started here too.
 function ChipCard({ t, chip, cwd, onChip }) {
@@ -123,14 +123,14 @@ function Thumbs({ images, url, onOpen }) {
   })}</div>`;
 }
 
-const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running
+const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running }) {
+export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl }) {
   if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length ? html`<${Thumbs} images=${i.images} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? html`<div class="bubble">${lf(i.text)}</div>` : null}</li>`;
-  if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text) }}></li>`;
+  if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;
     if (/__mark_chapter$/.test(i.name)) return html`<li class="chapter"><span>${i.input?.title || 'Chapter'}</span></li>`;
@@ -138,8 +138,8 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onI
     if (/__dismiss_task$/.test(i.name)) return html`<li hidden></li>`;
     return html`<${ToolRow} t=${i} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} />`;
   }
-  if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} />`;
-  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} running=${running} />`;
+  if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} fileUrl=${fileUrl} />`;
+  if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} running=${running} fileUrl=${fileUrl} />`;
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;

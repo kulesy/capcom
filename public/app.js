@@ -1,6 +1,7 @@
 import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
+import { FileViewHost } from './ui/file-view.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
@@ -256,6 +257,7 @@ function App() {
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
   <${ViewerHost} />
+  <${FileViewHost} />
   <${AskHost} />
   <${ToastHost} />
 <//>`;

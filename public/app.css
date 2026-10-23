@@ -1792,6 +1792,8 @@ button.thumb {
 
 .msg.claude a { font-weight: 500; text-underline-offset: 4px; }
 
+.file-link { overflow-wrap: anywhere; }
+
 .msg code, .tool code {
   font: 0.8125rem/1.5 var(--font-mono);
   background: var(--muted);
@@ -3053,6 +3055,148 @@ html.viewing, html.viewing body { overflow: hidden; }
 }
 
 .viewer-note[role="alert"] { color: var(--destructive); }
+
+[data-slot="dialog-content"][data-part="file-view"] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+@media (min-width: 40rem) {
+  [data-slot="dialog-content"][data-part="file-view"] { max-width: min(64rem, calc(100% - 2rem)); }
+}
+
+[data-slot="dialog-content"][data-part="file-view"] > [data-slot="dialog-close"] { top: 1.75rem; right: 1rem; }
+
+.file-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.5rem;
+  padding: 0.75rem 3.25rem 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-title { flex: 1; min-width: 0; }
+
+.file-name, .file-path, .file-size {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name { font-size: 0.875rem; font-weight: 600; line-height: 1.25rem; }
+
+.file-path, .file-size { font-size: 0.75rem; line-height: 1rem; color: var(--muted-foreground); }
+
+.file-path { font-family: var(--font-mono); }
+
+.file-actions { display: flex; flex: none; gap: 0.5rem; }
+
+.file-body {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.file-body[data-tall] { flex: none; height: min(44rem, calc(100dvh - 9rem)); }
+
+.file-body[data-kind="pdf"] { overflow: hidden; }
+
+.file-body:focus-visible {
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+
+.file-pdf { display: block; width: 100%; height: 100%; border: 0; background: var(--muted); }
+
+.file-lines { padding: 0.75rem 0; font: 0.8125rem/1.5 var(--font-mono); tab-size: 4; }
+
+.file-line { display: grid; grid-template-columns: calc(var(--digits) * 1ch + 1.75rem) minmax(0, 1fr); }
+
+.file-no {
+  padding-inline: 1rem 0.75rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.file-text { min-height: 1.5em; padding-right: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.file-line[data-hit] { background: color-mix(in oklab, var(--foreground) 8%, transparent); }
+
+.file-line[data-hit] .file-no { color: var(--foreground); }
+
+.file-doc { margin-inline: auto; padding: 1.5rem 1rem; }
+
+.file-end {
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.file-note {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.file-body[data-tall] > .file-note { padding-block: 4rem; }
+
+.file-note[role="alert"] { color: var(--destructive); }
+
+.file-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+
+.file-kind { margin: 0; font-size: 1rem; font-weight: 500; line-height: 1.5rem; }
+
+.file-sub { margin: 0 0 0.75rem; font-size: 0.875rem; line-height: 1.25rem; color: var(--muted-foreground); }
+
+.file-sub:last-child { margin-bottom: 0; }
+
+@media (max-width: 40rem) {
+  [data-slot="dialog-content"][data-part="file-view"] {
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    border: 0;
+    border-radius: 0;
+    translate: none;
+  }
+
+  [data-slot="dialog-content"][data-part="file-view"] > [data-slot="dialog-close"] {
+    top: calc(env(safe-area-inset-top) + 1.75rem);
+    right: calc(env(safe-area-inset-right) + 1rem);
+  }
+
+  .file-body, .file-body[data-tall] { flex: 1 1 auto; height: auto; }
+}
 
 .gate {
   display: grid;

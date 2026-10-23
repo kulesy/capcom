@@ -1,0 +1,314 @@
+// Run with `npm test`. The files a reply links to, over HTTP against the real server: a file opens only if the chat's own replies or thoughts
+// link to it as written, and what opens is shown as text or bytes and never as a page that can run.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { linksOf, MAX_FILE_BYTES, MAX_TEXT_BYTES } from '../lib/files.mjs';
+import { as, request, signIn, start } from './harness.mjs';
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+const TEXT_TYPE = 'text/plain; charset=utf-8';
+const SANDBOX = "sandbox; default-src 'none'";
+
+const entry = (type, content, extra = {}) => ({ type, uuid: `e${Math.random().toString(36).slice(2)}`, message: { id: `m${Math.random().toString(36).slice(2)}`, role: type, content }, ...extra });
+const said = text => entry('assistant', [{ type: 'text', text }]);
+const thought = thinking => entry('assistant', [{ type: 'thinking', thinking }]);
+const asked = text => entry('user', text);
+const lines = entries => entries.map(e => `${JSON.stringify(e)}\n`).join('');
+
+// The server's bytes, which the test harness's own request would decode as text.
+function bytes(s, token, url) {
+  return new Promise((resolve, reject) => {
+    http.get({ host: '127.0.0.1', port: s.port, path: url, headers: { host: `localhost:${s.port}`, ...as(token) } }, res => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+    }).on('error', reject);
+  });
+}
+
+let fixture = null;
+
+// One server and one chat, whose replies link to every file below, shared by the tests. They run one at a time.
+function setup() {
+  fixture ||= (async () => {
+    const s = await start();
+    const dir = fs.mkdtempSync(path.join(s.home, 'linked-'));
+    const at = name => path.join(dir, name);
+    const write = (name, content) => fs.writeFileSync(at(name), content);
+    write('note.txt', 'line one\nline two\nline three\n');
+    write('doc.md', '# Heading\n\nSome *words*.\n');
+    write('pic.png', PNG);
+    write('doc.pdf', '%PDF-1.4\n1 0 obj\n<<>>\nendobj\n');
+    write('blob.bin', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 0xff, 0xfe, 0, 1, 2, 3]));
+    write('page.html', '<!doctype html><script>alert(1)</script><h1>hi</h1>');
+    write('pic.svg', '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>');
+    write('with space.txt', 'spaced\n');
+    write('target.txt', 'the target of a link\n');
+    write('long.txt', 'x'.repeat(99).concat('\n').repeat(15_000));
+    write('empty.txt', '');
+    write('secret.txt', 'never linked\n');
+    write('user-only.txt', 'only the user linked this\n');
+    write('in-tool.txt', 'only a tool result linked this\n');
+    write('fenced.txt', 'only a code block names this\n');
+    write('naïve café.txt', 'a name with letters outside ASCII\n');
+    write('locked.txt', 'cannot be read\n');
+    fs.chmodSync(at('locked.txt'), 0o000);
+    fs.mkdirSync(at('folder'));
+    fs.symlinkSync(at('target.txt'), at('link.txt'));
+    fs.symlinkSync(at('nowhere.txt'), at('dangling.txt'));
+    fs.symlinkSync(at('folder'), at('to-folder'));
+    fs.symlinkSync(at('loop-b'), at('loop-a'));
+    fs.symlinkSync(at('loop-a'), at('loop-b'));
+    execFileSync('mkfifo', [at('pipe')]);
+    const big = fs.openSync(at('big.bin'), 'w');
+    fs.ftruncateSync(big, MAX_FILE_BYTES + 1);
+    fs.closeSync(big);
+    fs.mkdirSync(path.join(s.home, 'notes'));
+    fs.writeFileSync(path.join(s.home, 'notes', 'n.md'), 'from the home folder\n');
+
+    const folder = path.join(s.home, '.claude', 'projects', '-work');
+    fs.mkdirSync(folder, { recursive: true });
+    const transcript = path.join(folder, 'sess-1.jsonl');
+    const link = (label, name) => `[${label}](<${at(name)}>)`;
+    fs.writeFileSync(transcript, lines([
+      asked(`Look at [theirs](<${at('user-only.txt')}>)`),
+      said(['Here they are:', ...['note.txt', 'doc.md', 'pic.png', 'doc.pdf', 'blob.bin', 'page.html', 'pic.svg', 'with space.txt', 'long.txt', 'empty.txt', 'naïve café.txt', 'locked.txt', 'folder', 'link.txt', 'dangling.txt', 'to-folder', 'loop-a', 'pipe', 'big.bin', 'missing.txt'].map(name => `- ${link(name, name)}`)].join('\n')),
+      said(`And [the home one](~/notes/n.md) and [line two](<${at('note.txt')}:2>)\n\n\`\`\`\n${at('fenced.txt')}\n\`\`\``),
+      thought(`I should look at ${link('my thought', 'target.txt')}`),
+      entry('user', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: `[a result](<${at('in-tool.txt')}>)` }]),
+    ]));
+    const { token } = await signIn(s);
+    return { s, token, dir, at, transcript, link };
+  })();
+  return fixture;
+}
+
+const get = async (url, headers) => { const { s, token } = await setup(); return request(s, 'GET', url, { headers: headers ?? as(token) }); };
+const previewOf = async file => get(`/api/sessions/sess-1/preview?path=${encodeURIComponent(file)}`);
+const fileOf = async (file, extra = '') => { const { s, token } = await setup(); return bytes(s, token, `/api/sessions/sess-1/file?path=${encodeURIComponent(file)}${extra}`); };
+const errorOf = res => res.body().error;
+
+test('a signed-out browser is refused both routes, and the messages say the routes exist once it signs in', async () => {
+  const { s, token, at } = await setup();
+  const url = what => `/api/sessions/sess-1/${what}?path=${encodeURIComponent(at('note.txt'))}`;
+  assert.equal((await request(s, 'GET', url('preview'))).status, 401);
+  assert.equal((await request(s, 'GET', url('file'))).status, 401);
+  const messages = await request(s, 'GET', '/api/sessions/sess-1/messages', { headers: as(token) });
+  assert.equal(messages.status, 200);
+  assert.equal(messages.body().fileLinks, true);
+});
+
+test('a path nothing in the chat links to is refused for both routes, however it is written, and even when the file is there', async () => {
+  const { at } = await setup();
+  const unlinked = [
+    ['a file that exists and is not named at all', at('secret.txt')],
+    ['one the user linked, which is not the chat\'s own text', at('user-only.txt')],
+    ['one a tool result linked', at('in-tool.txt')],
+    ['one only a code block names', at('fenced.txt')],
+  ];
+  for (const [what, file] of unlinked) {
+    const preview = await previewOf(file);
+    const served = await fileOf(file);
+    assert.equal(preview.status, 403, what);
+    assert.equal(served.status, 403, what);
+    assert.equal(served.body.toString().includes('never linked'), false, what);
+  }
+  assert.match(errorOf(await previewOf(at('secret.txt'))), /does not link to that file/);
+});
+
+test('a path that is not a plain path to a file is refused before anything is read', async () => {
+  const { at } = await setup();
+  const refused = [
+    ['no path at all', ''],
+    ['a relative path', 'note.txt'],
+    ['a path with ..', `${at('folder')}/../note.txt`],
+    ['a path with a line on it', `${at('note.txt')}:2`],
+    ['a root', '/'],
+    ['a trailing slash', `${at('folder')}/`],
+    ['a file URL', `file://${at('note.txt')}`],
+  ];
+  const { s, token } = await setup();
+  for (const [what, file] of refused) {
+    for (const what2 of ['preview', 'file']) {
+      const res = await request(s, 'GET', `/api/sessions/sess-1/${what2}?path=${encodeURIComponent(file)}`, { headers: as(token) });
+      assert.equal(res.status, 400, `${what} ${what2}`);
+    }
+  }
+  const none = await request(s, 'GET', '/api/sessions/sess-1/preview', { headers: as(token) });
+  assert.equal(none.status, 400);
+  assert.equal(errorOf(none), 'Which file?');
+  assert.equal((await request(s, 'GET', '/api/sessions/no-such-chat/preview?path=%2Fx', { headers: as(token) })).status, 404);
+});
+
+test('a linked text file is read as text, and the preview names it, sizes it and says what kind it is', async () => {
+  const { at } = await setup();
+  const res = await previewOf(at('note.txt'));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers['cache-control'], 'no-store');
+  const preview = res.body();
+  assert.deepEqual({ ...preview, real: undefined }, { name: 'note.txt', path: at('note.txt'), real: undefined, size: 29, kind: 'text', type: TEXT_TYPE, text: 'line one\nline two\nline three\n' });
+  assert.equal(preview.real, fs.realpathSync(at('note.txt')));
+  assert.equal(preview.truncated, undefined);
+});
+
+test('a link with a line on it opens the file by its path, a thought can link a file, and a path with spaces or letters outside ASCII works', async () => {
+  const { at } = await setup();
+  assert.equal((await previewOf(at('note.txt'))).status, 200, 'linked as note.txt:2, and note.txt is the file');
+  assert.equal((await previewOf(at('target.txt'))).body().text, 'the target of a link\n', 'linked only by a thought');
+  assert.equal((await previewOf(at('with space.txt'))).body().text, 'spaced\n');
+  assert.equal((await previewOf(at('naïve café.txt'))).body().text, 'a name with letters outside ASCII\n');
+});
+
+test('each kind of file is told apart by its bytes and its name', async () => {
+  const { at } = await setup();
+  const kinds = {};
+  for (const name of ['note.txt', 'doc.md', 'pic.png', 'doc.pdf', 'blob.bin', 'page.html', 'pic.svg', 'empty.txt']) {
+    const p = (await previewOf(at(name))).body();
+    kinds[name] = [p.kind, p.type];
+  }
+  assert.deepEqual(kinds, {
+    'note.txt': ['text', TEXT_TYPE],
+    'doc.md': ['markdown', TEXT_TYPE],
+    'pic.png': ['image', 'image/png'],
+    'doc.pdf': ['pdf', 'application/pdf'],
+    'blob.bin': ['binary', 'application/octet-stream'],
+    'page.html': ['text', TEXT_TYPE],
+    'pic.svg': ['text', TEXT_TYPE],
+    'empty.txt': ['text', TEXT_TYPE],
+  });
+  assert.equal((await previewOf(at('empty.txt'))).body().text, '');
+  assert.equal((await previewOf(at('pic.png'))).body().text, undefined, 'a picture is not sent as text');
+  assert.equal((await previewOf(at('blob.bin'))).body().text, undefined);
+});
+
+test('a long text file is cut back to its last whole line within a megabyte, and says it was cut', async () => {
+  const { at } = await setup();
+  const preview = (await previewOf(at('long.txt'))).body();
+  assert.equal(preview.size, 15_000 * 100);
+  assert.equal(preview.truncated, true);
+  assert.ok(Buffer.byteLength(preview.text) <= MAX_TEXT_BYTES);
+  assert.ok(Buffer.byteLength(preview.text) > MAX_TEXT_BYTES - 100);
+  assert.equal(preview.text.endsWith('x\n'), true);
+  assert.equal(preview.text.length % 100, 0);
+});
+
+test('a file over the limit is described and never sent, a folder, a pipe and a missing file are refused, and a pipe does not hold the server', { timeout: 20_000 }, async () => {
+  const { at } = await setup();
+  const big = await previewOf(at('big.bin'));
+  assert.equal(big.status, 200);
+  assert.deepEqual([big.body().kind, big.body().tooLarge, big.body().size, big.body().text], ['binary', true, MAX_FILE_BYTES + 1, undefined]);
+  const served = await fileOf(at('big.bin'));
+  assert.equal(served.status, 413);
+  assert.match(JSON.parse(served.body).error, /20 MB/);
+
+  const folder = await previewOf(at('folder'));
+  assert.equal(folder.status, 415);
+  assert.equal(errorOf(folder), 'That is a folder, not a file.');
+  assert.equal((await fileOf(at('folder'))).status, 415);
+  assert.equal((await previewOf(at('to-folder'))).status, 415, 'a link to a folder is a folder');
+
+  const started = Date.now();
+  const pipe = await previewOf(at('pipe'));
+  assert.equal(pipe.status, 415);
+  assert.equal(errorOf(pipe), 'Capcom opens plain files only.');
+  assert.equal((await fileOf(at('pipe'))).status, 415);
+  assert.ok(Date.now() - started < 5000, 'both answered at once');
+  assert.equal((await previewOf(at('empty.txt'))).status, 200, 'and the server still answers');
+
+  const missing = await previewOf(at('missing.txt'));
+  assert.equal(missing.status, 404);
+  assert.equal(errorOf(missing), 'There is no file at that path.');
+  assert.equal((await previewOf(at('dangling.txt'))).status, 404, 'a link to nothing');
+  assert.equal((await previewOf(at('loop-a'))).status, 404, 'links that lead round to themselves');
+});
+
+test('a file the server cannot read is refused with the reason', { skip: process.getuid?.() === 0 && 'root reads everything' }, async () => {
+  const { at } = await setup();
+  const res = await previewOf(at('locked.txt'));
+  assert.equal(res.status, 403);
+  assert.equal(errorOf(res), 'Capcom cannot read that file.');
+});
+
+test('a linked symlink is served from what it points at, and the preview says where that is', async () => {
+  const { at } = await setup();
+  const res = await previewOf(at('link.txt'));
+  assert.equal(res.status, 200);
+  assert.equal(res.body().text, 'the target of a link\n');
+  assert.equal(res.body().name, 'link.txt');
+  assert.equal(res.body().real, fs.realpathSync(at('target.txt')));
+  assert.equal((await fileOf(at('link.txt'))).body.toString(), 'the target of a link\n');
+});
+
+test('a path that starts with ~/ is the signed-in Mac user\'s home folder', async () => {
+  const { s } = await setup();
+  const res = await previewOf('~/notes/n.md');
+  assert.equal(res.status, 200);
+  assert.deepEqual([res.body().kind, res.body().text, res.body().path, res.body().real], ['markdown', 'from the home folder\n', '~/notes/n.md', fs.realpathSync(path.join(s.home, 'notes', 'n.md'))]);
+  assert.equal((await fileOf('~/notes/n.md')).body.toString(), 'from the home folder\n');
+  assert.equal((await previewOf('~/notes/other.md')).status, 403, 'a different path under home is not linked');
+});
+
+test('the bytes of a file go out with the type Capcom decided and the headers that keep them from running', async () => {
+  const { at } = await setup();
+  const text = await fileOf(at('note.txt'));
+  assert.equal(text.status, 200);
+  assert.equal(text.body.toString(), 'line one\nline two\nline three\n');
+  assert.deepEqual({
+    type: text.headers['content-type'], length: text.headers['content-length'], sniff: text.headers['x-content-type-options'], csp: text.headers['content-security-policy'],
+    corp: text.headers['cross-origin-resource-policy'], cache: text.headers['cache-control'], disposition: text.headers['content-disposition'],
+  }, {
+    type: TEXT_TYPE, length: '29', sniff: 'nosniff', csp: SANDBOX, corp: 'same-origin', cache: 'no-store', disposition: 'inline; filename="note.txt"; filename*=UTF-8\'\'note.txt',
+  });
+
+  for (const name of ['page.html', 'pic.svg', 'blob.bin']) {
+    const res = await fileOf(at(name));
+    assert.equal(res.headers['content-type'], name === 'blob.bin' ? 'application/octet-stream' : TEXT_TYPE, name);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff', name);
+    assert.equal(res.headers['content-security-policy'], SANDBOX, name);
+    assert.equal(res.body.equals(fs.readFileSync(at(name))), true, name);
+  }
+
+  const png = await fileOf(at('pic.png'));
+  assert.equal(png.headers['content-type'], 'image/png');
+  assert.equal(png.body.equals(PNG), true);
+
+  const pdf = await fileOf(at('doc.pdf'));
+  assert.equal(pdf.headers['content-type'], 'application/pdf');
+  assert.equal(pdf.headers['x-content-type-options'], 'nosniff');
+  assert.equal(pdf.headers['content-security-policy'], undefined, 'Chrome\'s PDF viewer refuses a sandboxed document');
+  assert.equal(pdf.headers['cross-origin-resource-policy'], 'same-origin');
+
+  const empty = await fileOf(at('empty.txt'));
+  assert.equal(empty.status, 200);
+  assert.deepEqual([empty.headers['content-length'], empty.body.length], ['0', 0]);
+  assert.equal((await fileOf(at('long.txt'))).body.length, 1_500_000, 'a long file is sent whole');
+});
+
+test('a download is an attachment, and a name with letters outside ASCII is sent in both forms', async () => {
+  const { at } = await setup();
+  const plain = await fileOf(at('note.txt'), '&download=1');
+  assert.equal(plain.headers['content-disposition'], 'attachment; filename="note.txt"; filename*=UTF-8\'\'note.txt');
+  const odd = await fileOf(at('naïve café.txt'));
+  assert.equal(odd.headers['content-disposition'], 'inline; filename="na_ve caf_.txt"; filename*=UTF-8\'\'na%C3%AFve%20caf%C3%A9.txt');
+  assert.equal(odd.body.toString(), 'a name with letters outside ASCII\n');
+});
+
+test('a link a reply gains after the first read opens, so the scan follows the transcript as it grows', async () => {
+  const { at, transcript } = await setup();
+  assert.equal((await previewOf(at('secret.txt'))).status, 403);
+  fs.appendFileSync(transcript, lines([said(`Now [the secret](<${at('secret.txt')}>)`)]));
+  const res = await previewOf(at('secret.txt'));
+  assert.equal(res.status, 200);
+  assert.equal(res.body().text, 'never linked\n');
+});
+
+test('the reply a chat is writing now can be opened before it is saved, and a chat with nothing saved opens nothing else', () => {
+  const linked = linksOf(null, 'Here is [one](</tmp/live one.txt:4>) and /tmp/two.txt, but not `ls /tmp/three.txt`.');
+  assert.deepEqual(['/tmp/live one.txt', '/tmp/two.txt', '/tmp/three.txt', '/tmp/live one.txt:4'].map(linked), [true, true, false, false]);
+  assert.equal(linksOf(null)('/tmp/two.txt'), false);
+});

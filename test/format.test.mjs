@@ -1,7 +1,7 @@
 // Run with `npm test`. Small text helpers the page uses, which need no browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chromeTool, duration, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tickIn, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
+import { chromeTool, duration, fileSize, fullToolLabel, grouped, groupHolds, holdCause, holdEnd, preview, serverLabel, thousands, tickIn, tokenCount, toolLabel, toolSource, windowSize } from '../public/ui/format.js';
 
 const MAILBOX = '0f8a1c2e-1111-4a2b-9c3d-123456789abc';
 const CALENDAR = '6a1b2c3d-2222-4e5f-8a9b-0c1d2e3f4a5b';
@@ -271,4 +271,10 @@ test('a group that has just taken another message is the newest, so it is the la
   const { groups, hidden } = groupHolds(list, h => h.cause, 3);
   assert.deepEqual(groups.map(g => [g.from, g.ids]), [['C', ['m2']], ['D', ['m3']], ['A', ['m0', 'm4']]]);
   assert.equal(hidden, 1, 'only B is left out');
+});
+
+test('a file size reads in bytes, then KB, then MB, and rounds up to the next unit rather than reading 1024 of the last', () => {
+  assert.deepEqual([0, 1, 900, 1023].map(fileSize), ['0 bytes', '1 byte', '900 bytes', '1023 bytes']);
+  assert.deepEqual([1024, 1536, 10_239, 10_240, 12_345, 1_048_000].map(fileSize), ['1 KB', '1.5 KB', '10 KB', '10 KB', '12 KB', '1023 KB']);
+  assert.deepEqual([1_048_576 - 1, 1_048_576, 3_565_158, 20 * 1024 * 1024].map(fileSize), ['1 MB', '1 MB', '3.4 MB', '20 MB']);
 });

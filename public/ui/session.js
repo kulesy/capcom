@@ -45,7 +45,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // Until a new session starts, the box holds its settings here; the ones left alone follow the folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
-    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false,
+    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images }] : [], notice: '', starting: false, loadingEarlier: false,
@@ -92,7 +92,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const r = await api(`api/sessions/${enc(id)}/messages`);
       if (closed) return;
-      store.set(s => ({ session: r.session || s.session }));
+      store.set(s => ({ session: r.session || s.session, fileLinks: r.fileLinks === true }));
       const thread = absorb({ items: [], orphans: new Map() }, r.items);
       const chips = await loadChips();
       if (closed) return;
@@ -385,9 +385,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   // Where the page loads an image from, given the ref the transcript put on it.
   const imageUrl = ref => `api/sessions/${enc(id)}/images/${enc(ref)}`;
+  const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
     id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl, fileUrl,
   };
 }

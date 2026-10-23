@@ -125,6 +125,15 @@ export function windowSize(n) {
 
 export const grouped = n => n.toLocaleString('en-US');
 
+// A file's size in the unit that keeps it short: 1 byte, 900 bytes, 1.5 KB, 12 KB, 3.4 MB.
+export function fileSize(n) {
+  if (n < 1024) return plural(n, 'byte');
+  const kb = n / 1024;
+  if (Math.round(kb) < 1024) return `${+kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+  const mb = kb / 1024;
+  return `${+mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
 export const preview = text => String(text).replace(/[*`]+/g, '').replace(/^#+\s*/gm, '').replace(/\s+/g, ' ').trim().slice(0, 160);
 
 const HOLD_CAUSES = {

@@ -5,11 +5,13 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pipeline } from 'node:stream';
 import { cfg, ROOT } from './lib/config.mjs';
 import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
+import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -794,7 +796,8 @@ async function api(req, res, u) {
   if (req.method === 'GET' && action === 'messages') {
     const row = findRow(id);
     const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};
-    return send(res, 200, { ...readMessages(id, u.searchParams), session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
+    // fileLinks tells the page that the file routes exist, so a page newer than this server draws no links that would 404.
+    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
@@ -814,6 +817,23 @@ async function api(req, res, u) {
     // NOTE: [18 Oct 2026] EK - Vary: Cookie, so the browser reuses its copy only while it holds the cookie it fetched it with. Sign-out's
     // Clear-Site-Data deletes the copy in Chrome and Firefox, but Safari 27 ignores it, and no browser acts on it at a plain http address.
     return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', vary: 'Cookie', 'x-content-type-options': 'nosniff' });
+  }
+  // A file a reply or a thought in the chat links to, as its text or its bytes. lib/files.mjs holds the gate.
+  if (req.method === 'GET' && (action === 'preview' || action === 'file') && !parts[4]) {
+    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const chat = getChat(id);
+    if (!t && !chat) return send(res, 404, { error: NO_SESSION });
+    const linked = linksOf(t, chat?.live);
+    const wanted = u.searchParams.get('path');
+    try {
+      if (action === 'preview') return send(res, 200, previewFile(wanted, linked));
+      const file = serveFile(wanted, linked, u.searchParams.get('download') === '1');
+      res.writeHead(200, file.headers);
+      if (!file.stream) return res.end();
+      return pipeline(file.stream, res, () => {});
+    } catch (e) {
+      return send(res, e.status || 500, { error: e.message });
+    }
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   const body = JSON.parse(await readBody(req, action === 'send' ? MAX_BODY_BYTES : undefined) || '{}');
