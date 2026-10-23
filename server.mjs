@@ -17,6 +17,8 @@ import { linksOf, previewFile, serveFile } from './lib/files.mjs';
 import { ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
+import { pendingLines } from './lib/subs.mjs';
+import { makeSummaries } from './lib/summaries.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
@@ -39,6 +41,7 @@ const layout = makeLayout(cfg.stateDir);
 const marks = makeMarks(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
+const summaries = makeSummaries({ transcriptFor });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -293,7 +296,7 @@ function settingsFor(id, row) {
 
 async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
   const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips });
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips, subs: subCtx });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
@@ -307,6 +310,24 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   }
   if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
+}
+
+// ---- sub sessions --------------------------------------------------------------------------------
+
+// What a chat is waiting on for the owner's say-so.
+const pendingOf = id => getChat(id)?.status().pending ?? [];
+
+// What an ordinary chat reaches the sessions under it through. Each call looks the index up again, so a session archived or nested since is seen
+// as it is now. Every row is in the index whether archived or not, and `via` skips the archived ones unless they are asked for.
+function subCtx(sessionId) {
+  return {
+    lookup({ archived }) {
+      const { rows } = buildIndex({ archived });
+      return { self: rows.get(sessionId) ?? null, rows: [...rows.values()].filter(r => archived || !r.archived) };
+    },
+    pending: pendingOf,
+    summary: (id, cwd) => summaries.get(id, cwd),
+  };
 }
 
 // ---- group sessions ------------------------------------------------------------------------------
@@ -332,7 +353,7 @@ function groupCtx(groupId) {
       const { rows } = buildIndex({ archived: true });
       return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
     },
-    pending: id => getChat(id)?.status().pending ?? [],
+    pending: pendingOf,
     async start({ cwd, prompt, title }) {
       const id = await newSession({ cwd, text: prompt, title });
       return { id, placed: placeInGroup(id, groupId) };
@@ -507,7 +528,7 @@ function ensureChat(id, row, { mode } = {}) {
     instructions: () => guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title),
     fresh: () => !hasTranscript(id),
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group, subs: groupId ? undefined : subCtx });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
@@ -938,6 +959,23 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   }
 }
 
+const MAX_SUMMARY_IDS = 60;
+
+// GET api/summaries?ids=a,b,c answers for each id that is a session: the first sentence of its latest reply, when it was said, and what it waits on.
+// With detail=1 each also has the reply itself. An id that is no session, or is a group's chat, is left out without a word.
+function summariesApi(res, u) {
+  const ids = [...new Set((u.searchParams.get('ids') ?? '').split(',').map(id => id.trim()).filter(Boolean))];
+  if (!ids.length) return send(res, 400, { error: 'Name the sessions in ids.' });
+  if (ids.length > MAX_SUMMARY_IDS) return send(res, 400, { error: `Ask for at most ${MAX_SUMMARY_IDS} sessions at a time.` });
+  const detail = u.searchParams.get('detail') === '1';
+  const { rows } = buildIndex({ archived: true });
+  const found = ids.filter(id => rows.has(id)).map(id => {
+    const said = summaries.get(id, rows.get(id).cwd);
+    return [id, { line: said?.line ?? '', at: said?.at ?? null, pending: pendingLines(pendingOf(id)), ...(detail && { reply: said?.reply ?? '' }) }];
+  });
+  return send(res, 200, { summaries: Object.fromEntries(found) });
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -967,9 +1005,10 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, deleting and ordering groups, and adding, editing and deleting routines.
-    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true, routineEdits: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, deleting and ordering groups, adding, editing and deleting routines, and sub session summaries.
+    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true, routineEdits: true, subStatus: true } });
   }
+  if (req.method === 'GET' && u.pathname === '/api/summaries') return summariesApi(res, u);
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
