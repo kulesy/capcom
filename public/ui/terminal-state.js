@@ -13,8 +13,11 @@ export function createTerminal({ id, enabled, call = api }) {
   const store = createStore({ ready: false, cwd: '', home: '', runs: [], input: '', error: '', announce: '' });
   const route = tail => `api/sessions/${enc(id)}/terminal${tail}`;
   let sequence = 0;
+  let said = 0;
   const fail = err => store.set({ error: err.message });
   const known = runId => store.get().runs.find(r => r.id === runId);
+  // A status line is read again only when its words change, so every other one ends in an invisible mark.
+  const spoken = text => text + (++said % 2 ? '' : '\u200b');
 
   function apply(event) {
     if (event.type === 'state') {
@@ -23,7 +26,7 @@ export function createTerminal({ id, enabled, call = api }) {
       const was = known(event.run.id) ?? store.get().runs.find(r => r.pending && r.command === event.run.command && r.source === event.run.source);
       store.set(s => ({
         runs: upsertRun(s.runs, event.run),
-        ...(was?.running && !event.run.running && { announce: endedAloud(event.run) }),
+        ...(was?.running && !event.run.running && { announce: spoken(endedAloud(event.run)) }),
       }));
     } else if (event.type === 'output') {
       store.set(s => ({ runs: s.runs.map(r => (r.id === event.run ? { ...r, output: appendChunks(r.output, event.chunks) } : r)) }));
@@ -79,7 +82,7 @@ export function createTerminal({ id, enabled, call = api }) {
   }
 
   const setInput = text => store.set({ input: text });
-  const dismissError = () => store.set({ error: '' });
+  const report = error => store.set({ error });
 
-  return { store, apply, run, stop, input, clear, setInput, dismissError };
+  return { id, store, apply, run, stop, input, clear, setInput, report };
 }

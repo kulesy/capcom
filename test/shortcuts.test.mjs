@@ -51,6 +51,18 @@ test('Ctrl+N starts a session in a tab, in the app and in full screen', () => {
   }
 });
 
+test('Ctrl+` shows or hides the terminal in a tab and in the app, on any layout, and Cmd+` and Alt+Ctrl+` do not', () => {
+  for (mode of ['browser', 'standalone', 'fullscreen']) {
+    assert.equal(shortcut(press('`', CTRL)), 'terminal', mode);
+    assert.equal(shortcut({ ...press('Dead', CTRL), code: 'Backquote' }), 'terminal', `${mode}, a layout where the key is a dead key`);
+  }
+  assert.equal(shortcut(press('`', CMD)), null);
+  assert.equal(shortcut(press('`', { ctrlKey: true, metaKey: true })), null);
+  assert.equal(shortcut(press('`', { ctrlKey: true, altKey: true })), null);
+  assert.equal(shortcut(press('`', { ctrlKey: true, shiftKey: true })), null, 'Ctrl+Shift+` is VS Code\'s new terminal and is left alone');
+  assert.equal(shortcut(press('`')), null);
+});
+
 test('Cmd+N starts a session only in the app, so a tab and a full-screen window keep their New Window', () => {
   mode = 'standalone';
   assert.equal(shortcut(press('n', CMD)), 'new');

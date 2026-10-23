@@ -142,6 +142,20 @@ test('the server\'s run event that comes before its answer takes the place of th
   });
 });
 
+test('a run that ends before the server answers the request that started it stays ended', async () => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  await withServer({ answer: async () => { await held; return reply({ run: summary({ id: 'r3', command: 'echo hi' }) }); } }, async () => {
+    const { chat, stream } = await openChat('t-fast');
+    const asking = chat.term.run('echo hi', 'panel');
+    stream.emit('terminal', { type: 'run', run: summary({ id: 'r3', running: false, exitCode: 0, endedAt: 1040 }) });
+    release();
+    await asking;
+    assert.deepEqual(runs(chat).map(r => [r.id, r.running, r.exitCode]), [['r3', false, 0]], 'the answer is older than the event, so it does not start the run again');
+    chat.close();
+  });
+});
+
 test('a run the server refuses leaves no row, and the answer is the server\'s own words', async () => {
   await withServer({ answer: () => reply({ error: 'Too many commands are running.' }, 429) }, async () => {
     const { chat } = await openChat('t-limit');

@@ -4,8 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  appendChunks, bangMode, endedAloud, ending, hasHiddenCharacters, historyOf, inHome, joinBash, KEEP, landedRuns, lastRunning,
-  leaveBang, mergeOutput, pendingBangs, recall, replaceRuns, runnableBlock, runOfItem, textOf, took, upsertRun,
+  appendChunks, bangMode, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, joinBash, KEEP, landedRuns, lastRunning,
+  leaveBang, mergeOutput, PANEL, panelMode, panelTabs, pendingBangs, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabShown, textOf, took,
+  upsertRun, clampWidth, widestPanel, widthByKey, runStanding, runState,
 } from '../public/ui/terminal-rules.js';
 
 const run = (id, extra = {}) => ({ id, key: id, command: 'ls', cwd: '/h/x', source: 'panel', startedAt: 1000, endedAt: null, exitCode: null, signal: null, stopped: false, running: true, truncated: false, delivered: null, output: [], pending: false, ...extra });
@@ -159,6 +160,11 @@ test('a summary of a run the page holds updates it and keeps the output it has',
   assert.deepEqual(now.output, [out('a\nb\n')]);
 });
 
+test('an older summary of a run that has ended does not make it run again', () => {
+  const ended = run('r1', { running: false, exitCode: 0, endedAt: 2000 });
+  assert.equal(upsertRun([ended], run('r1')).at(0), ended);
+});
+
 test('a summary of a run the page does not know takes the place of the run drawn while the server was asked', () => {
   const waiting = run('local-1', { pending: true, command: 'sleep 30', source: 'panel' });
   const other = run('local-2', { pending: true, command: 'sleep 30', source: 'bang' });
@@ -201,6 +207,14 @@ test('the home folder is written ~ only where the path starts with it', () => {
   assert.equal(inHome('/tmp/Users/eli/x', '/Users/eli'), '/tmp/Users/eli/x');
   assert.equal(inHome('/tmp/x', ''), '/tmp/x');
   assert.equal(inHome('', '/Users/eli'), '');
+});
+
+test('a run\'s prompt names the last folder of where it ran, with the home folder as ~ and the root as /', () => {
+  assert.equal(folderOf('/Users/eli/code/app', '/Users/eli'), 'app');
+  assert.equal(folderOf('/Users/eli', '/Users/eli'), '~');
+  assert.equal(folderOf('/Users/eli/code/app/', '/Users/eli'), 'app');
+  assert.equal(folderOf('/', '/Users/eli'), '/');
+  assert.equal(folderOf('', '/Users/eli'), '');
 });
 
 test('a run\'s time is in tenths of a second under ten seconds and in whole units after that', () => {
@@ -279,4 +293,69 @@ test('the run a bash item came from is the latest ! run with its command that be
   assert.equal(runOfItem(runs, item(2500)).id, 'a');
   assert.equal(runOfItem(runs, item(-10_000)), null);
   assert.equal(runOfItem(runs, { kind: 'bash', command: 'pwd', at: new Date(6000).toISOString() }), null);
+});
+
+test('the panel sits beside the chat when the session has room for both, and covers it when it does not', () => {
+  assert.equal(panelMode(PANEL.overBelow), 'side');
+  assert.equal(panelMode(PANEL.overBelow - 1), 'over');
+  assert.equal(panelMode(390), 'over');
+  assert.equal(panelMode(1200), 'side');
+  assert.ok(PANEL.min + PANEL.chatMin <= PANEL.overBelow, 'the smallest session that has a side panel fits the smallest panel and the smallest chat');
+});
+
+test('the width is kept between the smallest panel and what leaves the chat its room, and an unreadable one is the default', () => {
+  assert.equal(clampWidth(448, 1000), 448);
+  assert.equal(clampWidth(100, 1000), PANEL.min);
+  assert.equal(clampWidth(900, 1000), 1000 - PANEL.chatMin);
+  assert.equal(clampWidth(undefined, 1000), PANEL.fallback);
+  assert.equal(clampWidth('wide', 1000), PANEL.fallback);
+  assert.equal(clampWidth(400.6, 1000), 401);
+  assert.equal(widestPanel(500), PANEL.min, 'a session too narrow for both still gets the smallest panel');
+});
+
+test('the resize handle\'s keys move the edge: left widens, right narrows, Shift steps further, Home and End go to the ends', () => {
+  assert.equal(widthByKey('ArrowLeft', false, 400, 1000), 400 + PANEL.step);
+  assert.equal(widthByKey('ArrowRight', false, 400, 1000), 400 - PANEL.step);
+  assert.equal(widthByKey('ArrowLeft', true, 400, 1000), 400 + PANEL.bigStep);
+  assert.equal(widthByKey('Home', false, 400, 1000), PANEL.min);
+  assert.equal(widthByKey('End', false, 400, 1000), 1000 - PANEL.chatMin);
+  assert.equal(widthByKey('ArrowLeft', true, 650, 1000), 1000 - PANEL.chatMin, 'a step stops at the widest');
+  assert.equal(widthByKey('ArrowRight', true, 300, 1000), PANEL.min, 'and at the narrowest');
+  assert.equal(widthByKey('a', false, 400, 1000), null);
+  assert.equal(widthByKey('ArrowUp', false, 400, 1000), null);
+});
+
+test('the panel offers the terminal when the server has one and the file while one is open, and shows the tab asked for if it can', () => {
+  assert.deepEqual(panelTabs({ terminal: true, file: true }), ['terminal', 'file']);
+  assert.deepEqual(panelTabs({ terminal: true, file: false }), ['terminal']);
+  assert.deepEqual(panelTabs({ terminal: false, file: true }), ['file']);
+  assert.deepEqual(panelTabs({ terminal: false, file: false }), []);
+  assert.equal(tabShown('file', ['terminal', 'file']), 'file');
+  assert.equal(tabShown('file', ['terminal']), 'terminal', 'a closed file leaves the terminal');
+  assert.equal(tabShown('terminal', ['file']), 'file');
+  assert.equal(tabShown('terminal', []), null);
+});
+
+test('the arrows move between tabs and wrap, Home and End go to the ends, and any other key is not a tab key', () => {
+  const tabs = ['terminal', 'file'];
+  assert.equal(tabByKey('ArrowRight', 'terminal', tabs), 'file');
+  assert.equal(tabByKey('ArrowRight', 'file', tabs), 'terminal');
+  assert.equal(tabByKey('ArrowLeft', 'terminal', tabs), 'file');
+  assert.equal(tabByKey('Home', 'file', tabs), 'terminal');
+  assert.equal(tabByKey('End', 'terminal', tabs), 'file');
+  assert.equal(tabByKey('Enter', 'terminal', tabs), null);
+  assert.equal(tabByKey('ArrowRight', 'gone', tabs), null);
+});
+
+test('a run is running, stopped, ok on exit 0, or failed, and its footer says how long and what became of its result', () => {
+  assert.equal(runState(run('a')), 'running');
+  assert.equal(runState(run('a', { running: false, stopped: true })), 'stopped');
+  assert.equal(runState(run('a', { running: false, signal: 'SIGTERM' })), 'stopped');
+  assert.equal(runState(run('a', { running: false, exitCode: 0 })), 'ok');
+  assert.equal(runState(run('a', { running: false, exitCode: 2 })), 'failed');
+  assert.equal(runStanding(run('a', { pending: true })), 'Starting');
+  assert.equal(runStanding(run('a', { startedAt: 1000 }), 3500), 'Running 2.5s');
+  assert.equal(runStanding(run('a', { running: false, exitCode: 0, startedAt: 1000, endedAt: 1400 })), 'Exit 0 · 0.4s');
+  assert.equal(runStanding(run('a', { running: false, exitCode: 1, startedAt: 0, endedAt: 75_000, truncated: true, delivered: 'sent' })), 'Exit 1 · 1m 15s · Output cut · Sent to Claude');
+  assert.equal(runStanding(run('a', { running: false, stopped: true, startedAt: 0, endedAt: 2000, delivered: 'held' })), 'Stopped · 2.0s · Added to your next message');
 });

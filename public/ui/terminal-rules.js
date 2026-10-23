@@ -59,6 +59,40 @@ export function bangMode({ text, terminal, draft }) {
 // The text with command mode left: the "!" and the spaces after it go, and the command stays as a message.
 export const leaveBang = text => (text.startsWith('!') ? text.slice(1).trimStart() : text);
 
+// ---- the side panel ---------------------------------------------------------------------------------------
+
+// Pixels. The panel is at least `min` wide and leaves the chat at least `chatMin`, and a session narrower than `overBelow` has no room
+// for both, so the panel covers the chat there.
+export const PANEL = { min: 288, fallback: 448, chatMin: 320, overBelow: 704, step: 16, bigStep: 64 };
+
+export const panelMode = sessionWidth => (sessionWidth < PANEL.overBelow ? 'over' : 'side');
+
+// The widest the panel can be in a session `sessionWidth` wide.
+export const widestPanel = sessionWidth => Math.max(PANEL.min, sessionWidth - PANEL.chatMin);
+
+export const clampWidth = (want, sessionWidth) => Math.round(Math.min(Math.max(Number(want) || PANEL.fallback, PANEL.min), widestPanel(sessionWidth)));
+
+// The width a key gives the resize handle, or null when the key is not one of its keys. The panel is on the right, so moving the edge
+// left (the left arrow) makes it wider, and Shift takes a bigger step.
+export function widthByKey(key, shift, width, sessionWidth) {
+  const step = shift ? PANEL.bigStep : PANEL.step;
+  const next = { ArrowLeft: width + step, ArrowRight: width - step, Home: PANEL.min, End: widestPanel(sessionWidth) }[key];
+  return next === undefined ? null : clampWidth(next, sessionWidth);
+}
+
+// The tabs a panel offers: the terminal when the server has one, and the file while one is open.
+export const panelTabs = ({ terminal, file }) => [...(terminal ? ['terminal'] : []), ...(file ? ['file'] : [])];
+
+// The tab on show: the one asked for if the panel offers it, else the first it does, else none.
+export const tabShown = (tab, tabs) => (tabs.includes(tab) ? tab : tabs[0] ?? null);
+
+// The tab a key moves to, with the arrows wrapping and Home and End going to the ends, or null when the key is not a tab key.
+export function tabByKey(key, tab, tabs) {
+  const at = tabs.indexOf(tab);
+  const next = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[key];
+  return next === undefined || at < 0 ? null : tabs[(next + tabs.length) % tabs.length];
+}
+
 // ---- the panel's input history ---------------------------------------------------------------------------
 
 const HISTORY = 200;
@@ -128,6 +162,8 @@ export function upsertRun(runs, incoming) {
   const known = runs.findIndex(r => r.id === incoming.id);
   if (known >= 0) {
     const held = runs[known];
+    // The answer to the request that started a run can arrive after the event that says it ended, and is then the older account.
+    if (!held.running && incoming.running) return runs;
     const next = runs.slice();
     next[known] = { ...held, ...incoming, key: held.key, pending: false, output: mergeOutput(held.output, incoming.output) };
     return next;
@@ -165,6 +201,13 @@ export function inHome(path, home) {
   return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
+// The last folder of a path, which is how a run's prompt names where it ran, with the home folder as ~ and the root as /.
+export function folderOf(path, home) {
+  if (!path) return '';
+  if (path === home) return '~';
+  return path.replace(/\/+$/, '').split('/').pop() || '/';
+}
+
 // How long a run took: tenths of a second up to ten seconds, then whole seconds, minutes and hours.
 export function took(ms) {
   if (!(ms >= 0)) return '';
@@ -180,6 +223,16 @@ export function ending(run) {
   if (run.stopped) return 'Stopped';
   if (run.signal) return `Ended by ${run.signal}`;
   return `Exit ${run.exitCode ?? '?'}`;
+}
+
+// The state a run is in, which colours its footer: running, stopped, finished with exit 0, or failed.
+export const runState = run => (run.running ? 'running' : run.stopped || run.signal ? 'stopped' : run.exitCode === 0 ? 'ok' : 'failed');
+
+// How a run stands, in the words its footer uses: how long it has run, or how it ended and how long it took and what became of its result.
+export function runStanding(run, now = Date.now()) {
+  if (run.pending) return 'Starting';
+  if (run.running) return `Running ${took(now - run.startedAt)}`;
+  return [ending(run), took(run.endedAt - run.startedAt), run.truncated && 'Output cut', deliveredWords(run.delivered)].filter(Boolean).join(' · ');
 }
 
 // What the panel says aloud when a run ends, since the output itself is not read out as it arrives.
