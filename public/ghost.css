@@ -36,6 +36,7 @@
   --eye-ink: oklch(0.45 0 0);
   --eye-glow: var(--eye-ink);
   --socket: oklch(0.25 0 0);
+  --core: oklch(0.25 0 0 / 32%);
   --shell: oklch(0.215 0 0);
   --edge-light: oklch(1 0 0 / 75%);
 }
@@ -78,6 +79,7 @@
     --eye-ink: oklch(0.82 0 0);
     --eye-glow: var(--eye);
     --socket: oklch(0.15 0 0);
+    --core: oklch(0 0 0 / 55%);
     --shell: oklch(0.955 0 0);
     --edge-light: oklch(1 0 0 / 9%);
   }
@@ -255,6 +257,13 @@
 
 [data-look="ghost"] .shell-eye { fill: var(--eye); }
 
+[data-look="ghost"] .shell-core {
+  fill: var(--core);
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
 [data-look="ghost"] .shell-glow {
   fill: color-mix(in oklab, var(--eye) 55%, transparent);
   opacity: 0;
@@ -324,6 +333,10 @@
 
   [data-look="ghost"] .shell-spin .shell-glow { animation: shell-glow 1800ms ease-in-out infinite; }
 
+  [data-look="ghost"] .shell-spin .shell-core { animation: shell-core 1800ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+
+  [data-look="ghost"] .shell-spin .shell-turn > :nth-child(even) .shell-plate { animation-delay: 90ms; }
+
   [data-look="ghost"] .emblem-shell { animation: emblem-float 6000ms ease-in-out infinite; }
 
   [data-look="ghost"] .emblem-shell .shell-turn { animation: emblem-turn 12000ms cubic-bezier(0.65, 0, 0.35, 1) infinite; }
@@ -331,6 +344,10 @@
   [data-look="ghost"] .emblem-shell .shell-plate { animation: emblem-open 12000ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
 
   [data-look="ghost"] .emblem-shell .shell-glow { animation: emblem-glow 12000ms ease-in-out infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-core { animation: emblem-core 12000ms cubic-bezier(0.25, 1, 0.5, 1) infinite; }
+
+  [data-look="ghost"] .emblem-shell .shell-turn > :nth-child(even) .shell-plate { animation-delay: 90ms; }
 
   [data-look="ghost"] .emblem-shadow { animation: emblem-shadow 6000ms ease-in-out infinite; }
 
@@ -346,13 +363,18 @@
 
   @keyframes shell-open {
     0%, 4% { transform: translateY(0); }
-    26%, 60% { transform: translateY(-1.8px); }
+    26%, 60% { transform: translateY(-3.2px); }
     84%, 100% { transform: translateY(0); }
   }
 
   @keyframes shell-glow {
     0%, 6%, 88%, 100% { opacity: 0; }
     30%, 60% { opacity: 1; }
+  }
+
+  @keyframes shell-core {
+    0%, 16%, 74%, 100% { opacity: 0; transform: scale(0.6); }
+    34%, 58% { opacity: 1; transform: scale(1); }
   }
 
   @keyframes emblem-float {
@@ -372,12 +394,17 @@
 
   @keyframes emblem-open {
     0%, 0.6% { transform: translateY(0); }
-    3.9%, 9% { transform: translateY(-1.8px); }
+    3.9%, 9% { transform: translateY(-3.2px); }
     12.6%, 100% { transform: translateY(0); }
   }
 
   @keyframes emblem-glow {
     0%, 0.9%, 13.2%, 100% { opacity: 0.35; }
     4.5%, 9% { opacity: 1; }
+  }
+
+  @keyframes emblem-core {
+    0%, 2.4%, 11.1%, 100% { opacity: 0; transform: scale(0.6); }
+    5.1%, 8.7% { opacity: 1; transform: scale(1); }
   }
 }
