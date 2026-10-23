@@ -85,6 +85,8 @@
 <link rel="modulepreload" href="ui/spotlight.js">
 <link rel="modulepreload" href="ui/webauthn.js">
 <link rel="modulepreload" href="ui/passkeys.js">
+<link rel="modulepreload" href="ui/routine-rules.js">
+<link rel="modulepreload" href="ui/routines.js">
 <link rel="modulepreload" href="ui/renew.js">
 </head>
 <body>
@@ -103,7 +105,10 @@
     </header>
     <div class="sections"><p class="quiet pad">Loading sessions</p></div>
     <footer class="list-foot">
-      <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys">Passkeys</a>
+      <div class="foot-links">
+        <a class="btn" data-variant="ghost" data-size="sm" href="#/routines">Routines</a>
+        <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys">Passkeys</a>
+      </div>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
   </nav>

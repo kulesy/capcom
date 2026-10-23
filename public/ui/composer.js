@@ -16,7 +16,7 @@ import { messageFor } from './quote-rules.js';
 import { bangMode, leaveBang } from './terminal-rules.js';
 import { openViewer } from './viewer.js';
 
-const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
+export const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 // NOTE: [16 Oct 2026] EK - Grammarly's extension leaves a field alone when it carries these attributes.
 // Without them it puts its own buttons inside the message box.
 export const NO_GRAMMARLY = { 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' };

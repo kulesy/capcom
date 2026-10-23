@@ -185,11 +185,13 @@ test('with no project All leaves the Projects section out, with words typed or n
 
 test('the Routines chip lists the latest run of each routine with its number of runs, and the words filter by title or routine', () => {
   const ix = list();
-  const [only] = sectionsFor('routines', ix, [], '', NEW);
-  assert.equal(only.title, 'Routines');
-  assert.deepEqual(only.items.map(it => [it.key, it.r.runs]), [['run-3', 2]]);
-  assert.deepEqual(ids(sectionsFor('routines', ix, [], 'nightly', NEW)[0]), ['run-3']);
-  assert.deepEqual(ids(sectionsFor('routines', ix, [], 'weekly', NEW)[0]), []);
+  const [manage, runs] = sectionsFor('routines', ix, [], '', NEW);
+  assert.deepEqual(ids(manage), ['manage-routines']);
+  assert.equal(runs.title, 'Routines');
+  assert.deepEqual(runs.items.map(it => [it.key, it.r.runs]), [['run-3', 2]]);
+  assert.deepEqual(sectionsFor('routines', ix, [], 'nightly', NEW).map(ids), [['run-3']]);
+  assert.deepEqual(sectionsFor('routines', ix, [], 'weekly', NEW).map(ids), [[]]);
+  assert.deepEqual(sectionsFor('routines', ix, [], 'manage', NEW).map(ids), [['manage-routines'], []]);
 });
 
 test('the Archived chip keeps most recently archived first with nothing typed and ranks top level before nested once words are typed', () => {

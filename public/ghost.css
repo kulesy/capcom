@@ -89,7 +89,7 @@
   :root[data-look="ghost"] { --radius: 0.4375rem; }
 
   [data-look="ghost"] :where(
-    .btn, .badge:is(.count, .scope-count), .input, .input-group, .problem, [data-sonner-toast][data-styled="true"],
+    .btn, .badge:is(.count, .scope-count), .input, .input-group, .problem, .routines-banner, [data-sonner-toast][data-styled="true"],
     .group-head, .more, .fold, .menu, .menu-item, [data-slot="dialog-content"], [data-slot="alert-dialog-content"],
     .row, .group[data-drop], .drop-hint, [data-slot="empty"], [data-slot="empty-icon"][data-variant="icon"], .scope,
     .bubble, .thumb, .thumbs .thumb img, .file-card, .file-glyph, .msg code, .tool code, .msg pre.code, .table,

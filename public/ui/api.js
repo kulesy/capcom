@@ -6,8 +6,9 @@ async function answer(r) {
   return data;
 }
 
-export const api = async (path, body) => answer(await fetch(path, body === undefined ? { cache: 'no-store' } : {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+// A call with a body is a POST unless `method` says otherwise, such as PATCH. DELETE sends no body, so it is `api(path, undefined, 'DELETE')`.
+export const api = async (path, body, method) => answer(await fetch(path, body === undefined && !method ? { cache: 'no-store' } : {
+  method: method ?? 'POST', ...(body !== undefined && { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
 }));
 
 // The file itself is the body, and the browser sends its type. The name travels in a header, because the body has no room for it.

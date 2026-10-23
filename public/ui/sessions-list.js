@@ -15,6 +15,8 @@ import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, prune, sessions, stayAfter, step, stopDetail, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
+import { routineFor, supportsRoutineEdits } from './routine-rules.js';
+import { ManageRoutines, routineItems } from './routines.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
 import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
@@ -76,22 +78,23 @@ const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty
 
 // The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
 // The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, when its header has the
-// button that opens the group's own session.
-function Head({ id, name, count, open, toggle, menu, chat, current, tree }) {
+// button that opens the group's own session, and `extra` another small button of the same kind.
+function Head({ id, name, count, open, toggle, menu, chat, extra, current, tree }) {
   const pop = (button, point, entry) => tree.pop(id, menu, button, { point, entry });
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
-  return html`<div class=${['bar', menu && 'has-menu', chat && 'has-chat'].filter(Boolean).join(' ')} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
+  return html`<div class=${['bar', menu && 'has-menu', (chat || extra) && 'has-chat'].filter(Boolean).join(' ')} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
     <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
     ${chat ? html`<${GroupChatButton} group=${chat} current=${current === chat.session?.id} />` : null}
+    ${extra}
   </div>`;
 }
 
-function Section({ id, name, count, collapsed, toggle, drop, over, menu, chat, current, tree, children }) {
+function Section({ id, name, count, collapsed, toggle, drop, over, menu, chat, extra, current, tree, children }) {
   const open = !collapsed[id];
   return html`<section class="group" data-drop=${drop ? id : null} data-over=${over || null}>
-    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} current=${current} tree=${tree} />
+    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} extra=${extra} current=${current} tree=${tree} />
     ${open && children ? html`<ul class="rows">${children}</ul>` : null}</section>`;
 }
 
@@ -130,7 +133,7 @@ function Family({ r, rowProps, holds, open, onToggle, tree }) {
 // While a row is dragged, every section that can take it is shown, so an empty Pinned or group is still a place to drop it.
 // A group always shows, empty or not, so one that was just made can be found and filled.
 // Over a row, the row is the target and no section is. The carried row and the ones nested under it dim, and take no drop.
-function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, drag, tree, picked, newKey }) {
+function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, openRoutines, toggleRoutine, routinesOpen, drag, tree, picked, newKey }) {
   const carried = drag && findRow(ix, drag.id);
   const together = new Set(carried ? [carried.id, ...(carried.children ?? []).map(c => c.id)] : []);
   const nesting = drag?.over?.startsWith(NEST) ? drag.over.slice(NEST.length) : null;
@@ -141,9 +144,9 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const rows = list => list.map(r => (r.children
     ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${carried?.parent === r.id} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
     : html`<${Row} key=${r.id} r=${r} ...${rowProps(r)} tree=${tree} />`));
-  const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null } = {}) => {
+  const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null, extra = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
-    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} chat=${chat} current=${current} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
+    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} chat=${chat} extra=${extra} current=${current} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
   };
   const home = view === HOME_VIEW;
   const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g), chat: supportsGroups(ix) ? g : null });
@@ -151,7 +154,7 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const groups = groupsIn(ix, view);
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;
   const parts = [
-    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false }),
+    home && section('routines', 'Routines', ix.routines, ix.routines.map(g => html`<${Fragment} key=${g.name}><${Routine} g=${g} rowProps=${rowProps} open=${openRoutines.has(g.name)} onToggle=${toggleRoutine} tree=${tree} /><//>`), { drop: false, extra: html`<${ManageRoutines} current=${routinesOpen} />` }),
     section('pinned', 'Pinned', ix.pinned, rows(ix.pinned)),
     ...groups.map(group),
     adding && tree.groupForm(project),
@@ -217,7 +220,7 @@ const STOP_DETAIL = "Archiving stops Claude's turn and denies any approval it is
 // refused because one was running and `stop` was false. `archiveAll(ids, archived, { stop })` does that for several, one after another,
 // and resolves with { done, stopped, failed }: the ids it took, how many were running chats it stopped, and { id, message, running } for
 // each it refused.
-export function SessionList({ ix, projects, error, current, place, nest, edit, archive, archiveAll, onFind, passkeys, banner }) {
+export function SessionList({ ix, projects, error, current, place, nest, edit, archive, archiveAll, onFind, passkeys, routines, routinesOpen, refreshRoutines, banner }) {
   const [collapsed, setCollapsed] = useLocal('collapsed', {});
   const [folded, setFolded] = useLocal('folded', {});
   const { view } = projects;
@@ -558,6 +561,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const tail = lastProject >= 0 ? entries.splice(lastProject + 1) : [];
     if (tail.length) entries.push({ group: 'Home', items: tail });
     const places = entries.flatMap((entry, n) => (n && (entry.group || entries[n - 1].group) ? [{ separator: true }, entry] : [entry]));
+    const routine = routineFor(ix, routines, id);
     setShown({
       id: ++opened.current,
       key: 'row',
@@ -567,6 +571,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       entry,
       label: `Actions for ${title}`,
       items: [
+        ...(routine ? [...routineItems(routine, { editable: supportsRoutineEdits(ix), refresh: refreshRoutines, back: () => box.current.querySelector(rowOf(id)) }), { separator: true }] : []),
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
         ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
@@ -824,7 +829,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     ${topForm}
     <div class="sections" id="sections" ref=${box} onDblClick=${renameAt} onClick=${clickRow} onMouseDown=${pressRow} onPointerDown=${e => { pointer.current = e.pointerType; }}>
       ${ix
-        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} drag=${drag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
+        ? html`<${Sections} ix=${ix} view=${view} current=${current} collapsed=${collapsed} toggle=${toggle} folded=${folded} toggleFold=${toggleFold} openRoutines=${openRoutines} toggleRoutine=${toggleRoutine} routinesOpen=${routinesOpen} drag=${drag} tree=${tree} picked=${new Set(pick.ids)} newKey=${keyHint(mod, 'N')} />`
         : html`<p class="quiet pad">${error ? `Could not load sessions: ${error}` : 'Loading sessions'}</p>`}
     </div>
     <span class="sr" role="status">${pick.ids.length ? `${pick.ids.length} selected` : ''}</span>
@@ -836,7 +841,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       </div>`
       : null}
     <footer class="list-foot">
-      <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
+      <div class="foot-links">
+        <a class="btn" data-variant="ghost" data-size="sm" href="#/routines" aria-current=${routinesOpen ? 'page' : null}>Routines</a>
+        <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
+      </div>
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />

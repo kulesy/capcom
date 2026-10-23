@@ -25,7 +25,7 @@ const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 
 // What an item says about itself. The hover is on the item, so it stays selected while the pointer is over its Unarchive button.
 function Words({ it }) {
   if (it.action) {
-    return html`<span data-part="hit-icon" aria-hidden="true">${draw(icons.messageSquarePlus)}</span><span data-part="hit-title">${it.action}</span><span data-slot="command-shortcut">${it.hint}</span>`;
+    return html`<span data-part="hit-icon" aria-hidden="true">${draw(icons[it.icon] ?? icons.messageSquarePlus)}</span><span data-part="hit-title">${it.action}</span>${it.hint ? html`<span data-slot="command-shortcut">${it.hint}</span>` : null}`;
   }
   if (it.view) {
     const { view: v } = it;
@@ -113,6 +113,7 @@ function Palette({ ix, archive, onShow, onClose }) {
     }
     onClose();
     if (it.key === 'new') newSession();
+    else if (it.action) location.hash = it.hash;
     else {
       focusNextComposer();
       location.hash = `#/s/${encodeURIComponent(it.r.id)}`;
