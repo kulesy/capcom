@@ -13,7 +13,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
-import { ensureGroupDir, groupDir, guideFor } from './lib/groups.mjs';
+import { ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -567,10 +567,10 @@ function events(req, res, id) {
   writeMark(() => marks.opened(id, Date.now()));
   // Sessions running in Desktop or a terminal only show up as a growing file, so the file is watched too.
   let size = transcriptFor(id)?.size ?? -1;
-  // A group's session has no file until its first message, which a chat of ours sends, so nothing is looked for before that.
-  const unstarted = !!findRow(id)?.groupSession;
+  // A group's session has no file until its first message, which a chat of ours sends, so the index is not rescanned for one while no chat of ours runs it.
+  const groupChat = !!findRow(id)?.groupSession;
   const watch = setInterval(() => {
-    const t = transcriptFor(id) || (unstarted && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
+    const t = transcriptFor(id) || (groupChat && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
     if (!t) return;
     let now;
     try { now = fs.statSync(t.file).size; } catch { return; }
@@ -861,13 +861,25 @@ async function api(req, res, u) {
     const text = known?.prompt || prompt;
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const from = findRow(sessionId);
+    // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
+    const groupId = findRow(known?.sessionId || sessionId)?.groupSession || from?.groupSession;
     const home = from?.cwd;
-    const folder = known?.cwd || cwd || home;
+    // A group's session has no folder to fall back on: its own is private, and a chip must never start there.
+    const folder = known?.cwd || cwd || (groupId ? '' : home);
+    if (groupId && !folder) return send(res, 400, { error: 'This chip names no folder, and a group\'s session has none of its own. Ask it to suggest the task again with a folder.' });
     if (!text || !folder || !fs.existsSync(folder)) return send(res, 400, { error: 'This chip has no prompt or folder to start from.' });
-    if (folder !== home && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
-    const id = await newSession({ cwd: folder, text, title: known?.title || title });
+    let start = folder;
+    if (groupId) {
+      try {
+        start = workFolder(folder, cfg.stateDir);
+      } catch (e) {
+        return send(res, e.refusal ? 400 : 500, { error: e.refusal ? e.message : 'Could not check that folder.' });
+      }
+    }
+    if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
+    const id = await newSession({ cwd: start, text, title: known?.title || title });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead.
-    if (from?.groupSession) placeInGroup(id, from.groupSession);
+    if (groupId) placeInGroup(id, groupId);
     return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);

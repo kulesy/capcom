@@ -183,17 +183,50 @@ test('a chat that is no group\'s is told the group tools do not exist, and is ha
 });
 
 test('a group\'s chat is made to name the folder of a chip, since it has no folder of its own to start one in', () => {
-  const chips = { put: chip => chip };
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-tools-chip-'));
+  const work = path.join(base, 'work');
+  const stateDir = path.join(base, 'state');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.join(stateDir, 'groups', 'cg-a'), { recursive: true });
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
   const spawn = inGroup('tools/list', {}, {}).result.tools.find(t => t.name === 'spawn_task');
   assert.deepEqual(spawn.inputSchema.required, ['title', 'prompt', 'cwd']);
   assert.deepEqual(call('tools/list').result.tools.find(t => t.name === 'spawn_task').inputSchema.required, ['title', 'prompt']);
-  const refused = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p' } } }, { group: {}, chips, cwd: '/tmp/group' });
+  const spawnIn = (arguments_, ctx) => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...arguments_ } } }, { chips, cwd: '/tmp/group', ...ctx });
+  const refused = spawnIn({}, { group: { stateDir } });
   assert.equal(refused.result.isError, true);
   assert.match(refused.result.content[0].text, /needs a cwd/);
-  const named = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', cwd: '/work' } } }, { group: {}, chips, cwd: '/tmp/group' });
+  const named = spawnIn({ cwd: work }, { group: { stateDir } });
   assert.equal(named.result.isError, undefined);
-  const other = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p' } } }, { chips, cwd: '/tmp/work' });
+  assert.equal(made.length, 1);
+  const other = spawnIn({}, {});
   assert.equal(other.result.isError, undefined, 'any other chat still starts a chip in its own folder');
+  assert.equal(made.length, 2);
+});
+
+test('a chip from a group\'s chat is refused for a folder that is missing, relative or Capcom\'s own, and is made for none of them', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-tools-chip-'));
+  const stateDir = path.join(base, 'state');
+  fs.mkdirSync(path.join(stateDir, 'groups', 'cg-a'), { recursive: true });
+  const link = path.join(base, 'link');
+  fs.symlinkSync(stateDir, link);
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const reasons = [
+    ['relative/dir', /absolute folder/],
+    [path.join(base, 'missing'), /does not exist/],
+    [stateDir, /belongs to Capcom/],
+    [path.join(stateDir, 'groups', 'cg-a'), /belongs to Capcom/],
+    [link, /belongs to Capcom/],
+    [`${stateDir}/../state/groups`, /belongs to Capcom/],
+  ];
+  for (const [cwd, why] of reasons) {
+    const { result } = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', cwd } } }, { group: { stateDir }, chips, cwd: '/tmp/group' });
+    assert.equal(result.isError, true, cwd);
+    assert.match(result.content[0].text, why, cwd);
+  }
+  assert.deepEqual(made, []);
 });
 
 test('a group tool that throws something unexpected tells the model a bare failure, and one that refuses tells it why', async () => {
@@ -217,6 +250,7 @@ test('the group guide names every group tool and the rules the owner set, fills 
   assert.doesNotMatch(text, /[\u2013\u2014]/);
   assert.match(text, /only when the owner asks/);
   assert.match(text, /never permission/);
+  assert.match(text, /Bash or Monitor, editing or writing a file, messaging another session and starting a session each show the owner a card/);
   assert.equal(guideFor('Work $& {{group}}').includes('Work $& {{group}}'), true, 'a name is put in as it is');
   assert.doesNotMatch(guideFor('Work'), /\{\{group\}\}/);
 });

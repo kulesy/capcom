@@ -920,7 +920,7 @@ test('with no hook installed a turn runs the same', async t => {
 });
 
 // A CLI for a group's chat. It logs how it was started and every line it is sent. It starts its session when it is sent the first message
-// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool>` ask to use a tool.
+// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool>` ask to use one of Capcom's tools and `builtin <Tool>` one of the CLI's own.
 // Each of these starts several CLIs, which a busy machine can be slow to launch, so they wait longer than the others.
 const slow = check => until(check, 20_000);
 const groupCli = dir => {
@@ -943,6 +943,7 @@ const groupCli = dir => {
     "  out({ type: 'system', subtype: 'init', session_id: flag('--session-id') || flag('--resume') || 'sess-unnamed', model: 'stub' });",
     "  const [verb, tool, ...rest] = m.message.content.split(' ');",
     "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: {}, permission_suggestions: rule } });",
+    "  if (verb === 'builtin') out({ type: 'control_request', request_id: `builtin-${tool}`, request: { subtype: 'can_use_tool', tool_name: tool, input: {}, permission_suggestions: rule } });",
     "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
     "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
     '});',
@@ -957,6 +958,8 @@ const groupCli = dir => {
 };
 
 const GROUP_ID = '11111111-2222-4333-8444-555555555555';
+// What a group's chat is made to ask about, whatever the mode. Spelled out here so a change to the list is a change to a test.
+const GROUP_ASKS = ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage'];
 const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
   const recorded = groupCli(dir);
   const cwd = path.join(dir, 'groups', 'cg-1');
@@ -967,7 +970,7 @@ const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runn
 };
 const flagOf = (argv, name) => argv[argv.indexOf(name) + 1];
 
-test('a group chat whose session has no transcript yet starts with --session-id, its instructions, the start tool asked about, and its own folder made 0700 and used as the working folder', async t => {
+test('a group chat whose session has no transcript yet starts with --session-id, its instructions, the tools that act asked about, only the user settings loaded, and its own folder made 0700 and used as the working folder', async t => {
   const { chat, recorded, cwd } = groupChat(t, { group: {}, instructions: 'Be the group of {{x}}', fresh: () => true, id: '11111111-2222-4333-8444-000000000001' });
   assert.equal(fs.existsSync(cwd), false);
   chat.send('hi', []);
@@ -976,13 +979,14 @@ test('a group chat whose session has no transcript yet starts with --session-id,
   assert.equal(flagOf(started, '--session-id'), '11111111-2222-4333-8444-000000000001');
   assert.equal(started.includes('--resume'), false);
   assert.equal(flagOf(started, '--append-system-prompt'), 'Be the group of {{x}}');
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: ['mcp__capcom__start_group_session'] } });
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: GROUP_ASKS } });
+  assert.equal(flagOf(started, '--setting-sources'), 'user', 'a settings file in the group\'s own folder is never loaded');
   assert.equal(started.includes('--chrome'), false);
   assert.equal(fs.realpathSync(ran), fs.realpathSync(cwd));
   assert.equal(fs.statSync(cwd).mode & 0o777, 0o700);
 });
 
-test('a group chat whose session has a transcript resumes it and gets its instructions again, read afresh at each spawn, and Chrome joins the start tool in one ask list', async t => {
+test('a group chat whose session has a transcript resumes it and gets its instructions again, read afresh at each spawn, and Chrome joins the tools of the group in one ask list', async t => {
   let text = 'first guide';
   const { chat, recorded, cwd } = groupChat(t, { group: {}, instructions: () => text, fresh: () => false, chrome: true, id: '11111111-2222-4333-8444-000000000002' });
   fs.mkdirSync(cwd, { recursive: true });
@@ -992,7 +996,7 @@ test('a group chat whose session has a transcript resumes it and gets its instru
   assert.equal(flagOf(started, '--resume'), '11111111-2222-4333-8444-000000000002');
   assert.equal(started.includes('--session-id'), false);
   assert.equal(flagOf(started, '--append-system-prompt'), 'first guide');
-  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: ['mcp__claude-in-chrome', 'mcp__capcom__start_group_session'] } });
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: ['mcp__claude-in-chrome', ...GROUP_ASKS] } });
   assert.equal(started.includes('--chrome'), true);
   chat.stop();
   await slow(() => !chat.status().running);
@@ -1019,13 +1023,13 @@ test('whether the CLI has a transcript is asked at each spawn, so the first proc
   assert.deepEqual(recorded.starts().map(s => s.started.includes('--resume')), [false, true]);
 });
 
-test('an ordinary chat is started as before: --resume, no instructions, no ask rule unless Chrome is on, and Chrome\'s rule is exactly what it was', async t => {
+test('an ordinary chat is started as before: --resume, no instructions, every settings file loaded, no ask rule unless Chrome is on, and Chrome\'s rule is exactly what it was', async t => {
   const plain = groupChat(t, { id: '11111111-2222-4333-8444-000000000004' });
   plain.chat.send('hi', []);
   await slow(() => plain.recorded.starts().length === 1);
   const [{ started }] = plain.recorded.starts();
   assert.equal(flagOf(started, '--resume'), '11111111-2222-4333-8444-000000000004');
-  for (const flag of ['--session-id', '--append-system-prompt', '--settings']) assert.equal(started.includes(flag), false, flag);
+  for (const flag of ['--session-id', '--append-system-prompt', '--settings', '--setting-sources']) assert.equal(started.includes(flag), false, flag);
   assert.equal(fs.existsSync(plain.cwd), false, 'only a group chat makes its folder');
   const chrome = groupChat(t, { id: '11111111-2222-4333-8444-000000000005', chrome: true });
   chrome.chat.send('hi', []);
@@ -1093,6 +1097,34 @@ test('in a group chat the read tools are allowed with no card, in any mode, and 
     await slow(() => recorded.answers().some(a => a.request_id === 'ask-start_group_session'));
     assert.equal(recorded.answers().find(a => a.request_id === 'ask-start_group_session').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
   }
+});
+
+test('in a group chat Bash, Monitor, file edits and messages to other sessions always show a card, in any mode, with no Always allow, even when the CLI offers one', async t => {
+  const modes = ['manual', 'bypassPermissions', 'auto'];
+  for (const mode of modes) {
+    const { chat, recorded } = groupChat(t, { group: {}, mode, id: `11111111-2222-4333-8444-00000000003${modes.indexOf(mode)}` });
+    const builtin = GROUP_ASKS.filter(name => !name.startsWith('mcp__'));
+    for (const [n, name] of builtin.entries()) {
+      chat.send(`builtin ${name}`, []);
+      await slow(() => chat.status().pending.length === n + 1);
+    }
+    assert.deepEqual(chat.status().pending.map(p => [p.tool, p.always]), builtin.map(name => [name, false]), mode);
+    assert.equal(recorded.answers().some(a => a.request_id.startsWith('builtin-')), false, `${mode}: nothing was allowed without the owner`);
+    chat.answer('builtin-Bash', 'always');
+    await slow(() => recorded.answers().some(a => a.request_id === 'builtin-Bash'));
+    assert.equal(recorded.answers().find(a => a.request_id === 'builtin-Bash').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
+  }
+});
+
+test('outside a group chat the CLI\'s own tools keep Always allow, and a group chat still offers it for a tool it does not ask about', async t => {
+  const plain = groupChat(t, { mode: 'manual', id: '11111111-2222-4333-8444-000000000040' });
+  plain.chat.send('builtin Bash', []);
+  await slow(() => plain.chat.status().pending.length === 1);
+  assert.equal(plain.chat.status().pending[0].always, true);
+  const grouped = groupChat(t, { group: {}, mode: 'manual', id: '11111111-2222-4333-8444-000000000041' });
+  grouped.chat.send('builtin WebFetch', []);
+  await slow(() => grouped.chat.status().pending.length === 1);
+  assert.equal(grouped.chat.status().pending[0].always, true);
 });
 
 test('outside a group chat the group tools are no business of the runner\'s: they get a card like any tool, with no automatic allow', async t => {

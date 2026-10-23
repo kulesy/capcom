@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
 
@@ -81,7 +82,8 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   assert.equal(flagOf(started, '--session-id'), id);
   assert.equal(started.includes('--resume'), false);
   assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in Capcom\./);
-  assert.ok(JSON.parse(flagOf(started, '--settings')).permissions.ask.includes('mcp__capcom__start_group_session'));
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.equal(flagOf(started, '--setting-sources'), 'user');
   assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
 
   const mode = flagOf(started, '--permission-mode');
@@ -90,8 +92,8 @@ test('the first message to a group\'s session starts the CLI with --session-id, 
   await until(() => startsOf(s).length === 2);
   const ordinary = startsOf(s)[1].started;
   assert.equal(flagOf(ordinary, '--permission-mode'), mode, 'it starts in the mode a new session in its folder gets');
-  for (const flag of ['--session-id', '--append-system-prompt']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
-  assert.equal(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.includes('mcp__capcom__start_group_session'), false);
+  for (const flag of ['--session-id', '--append-system-prompt', '--setting-sources']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
+  assert.deepEqual(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.filter(rule => rule !== 'mcp__claude-in-chrome'), []);
 
   const again = await restart(s);
   const second = await signIn(again);
@@ -224,6 +226,57 @@ test('a chip made by a group\'s session starts its session in that group, and a 
   const fromLoose = await post(plain.s, plain.token, '/api/chips/start', { sessionId: 'loose', toolUseId: 'toolu_loose', title: 'Follow up', prompt: 'begin a session', cwd: plain.s.home });
   assert.equal(fromLoose.status, 200, fromLoose.text);
   assert.equal(onDisk(plain.s).assignments['begun-by-the-fake'], undefined);
+});
+
+// A chip's folder is text the model chose, so a group's chat can name one in Capcom's state folder, where its tokens are.
+const caseBlind = fs.existsSync(os.tmpdir().toUpperCase());
+
+test('a chip made by a group\'s session is refused when it names no folder, a folder in Capcom\'s state folder or no confirmed folder, and starts nothing', async () => {
+  const { s, token } = await booked({ chips: [{ sessionId: WORK, toolUseId: 'toolu_bare', prompt: 'begin a session' }] });
+  const own = path.join(s.state, 'groups', 'cg-work');
+  fs.mkdirSync(own, { recursive: true });
+  const link = path.join(s.home, 'link-to-state');
+  fs.symlinkSync(s.state, link);
+  const start = (toolUseId, json) => post(s, token, '/api/chips/start', { sessionId: WORK, toolUseId, title: 'Follow up', prompt: 'begin a session', ...json });
+  const inState = [s.state, own, link, path.join(link, 'groups'), `${s.state}/../${path.basename(s.state)}/groups`];
+  if (caseBlind) inState.push(s.state.toUpperCase(), own.toUpperCase());
+  for (const [n, cwd] of inState.entries()) {
+    const res = await start(`toolu_state${n}`, { cwd, confirmCwd: cwd });
+    assert.deepEqual([res.status, res.body().error], [400, 'That folder belongs to Capcom. Pick the folder the work is in.'], cwd);
+  }
+  const bare = await start('toolu_none', {});
+  assert.deepEqual([bare.status, bare.body().error], [400, 'This chip names no folder, and a group\'s session has none of its own. Ask it to suggest the task again with a folder.']);
+  const stored = await start('toolu_bare', {});
+  assert.equal(stored.status, 400, 'a chip the tool stored without a folder is no different');
+  const ask = await start('toolu_ask', { cwd: s.home });
+  assert.match(ask.body().error, /Check the folder on the card/, 'the folder must be confirmed even though it is not the group\'s own');
+  const elsewhere = await post(s, token, '/api/chips/start', { sessionId: 'loose', toolUseId: 'toolu_bare', title: 'Follow up', prompt: 'begin a session' });
+  assert.equal(elsewhere.status, 400, 'naming another session does not lift the rule, as the chip belongs to the group\'s session');
+  assert.deepEqual(startsOf(s), [], 'nothing was started');
+  assert.deepEqual((await get(s, token, `/api/sessions/${WORK}/chips`)).chips.map(c => c.status), ['open'], 'the stored chip is still open');
+});
+
+test('a chip made by a group\'s session starts in the folder as the disk names it, once that folder is confirmed', async () => {
+  const { s, token } = await booked();
+  const folder = fs.mkdtempSync(path.join(s.home, 'work-'));
+  const res = await post(s, token, '/api/chips/start', { sessionId: WORK, toolUseId: 'toolu_ok', title: 'Follow up', prompt: 'begin a session', cwd: `${folder}/../${path.basename(folder)}`, confirmCwd: `${folder}/../${path.basename(folder)}` });
+  assert.equal(res.status, 200, res.text);
+  await until(() => startsOf(s).length === 1);
+  assert.equal(startsOf(s)[0].cwd, fs.realpathSync.native(folder));
+});
+
+test('spawn_task in a group\'s chat refuses a folder in Capcom\'s state folder, and makes no chip', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+  for (const cwd of [s.state, path.join(s.state, 'groups', 'cg-work')]) {
+    const reply = await callTool(s, token, WORK, 'spawn_task', { title: 'Follow up', prompt: 'begin a session', cwd });
+    assert.equal(reply.result.isError, true, cwd);
+    assert.match(textOf(reply), /belongs to Capcom/, cwd);
+  }
+  assert.deepEqual((await get(s, token, `/api/sessions/${WORK}/chips`)).chips, []);
+  const ok = await callTool(s, token, WORK, 'spawn_task', { title: 'Follow up', prompt: 'begin a session', cwd: s.home });
+  assert.match(textOf(ok), /^Chip created/);
 });
 
 test('a group deleted by hand while its chat runs takes its tools with it', async () => {
