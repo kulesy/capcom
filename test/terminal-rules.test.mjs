@@ -4,8 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  appendChunks, bangMode, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, joinBash, KEEP, landedRuns, lastRunning,
-  leaveBang, mergeOutput, PANEL, panelMode, panelTabs, pendingBangs, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabShown, textOf, took,
+  appendChunks, bangMode, carriedText, endedAloud, ending, folderOf, hasHiddenCharacters, historyOf, inHome, inputTarget, joinBash, KEEP, landedRuns, lastRunning,
+  leaveBang, mergeOutput, PANEL, panelMode, panelTabs, pendingBangs, pinAfter, recall, replaceRuns, runnableBlock, runOfItem, tabByKey, tabShown, textOf, took,
   upsertRun, clampWidth, widestPanel, widthByKey, runStanding, runState,
 } from '../public/ui/terminal-rules.js';
 
@@ -110,6 +110,15 @@ test('a new session\'s box and a server with no terminal are never in command mo
   assert.equal(bangMode({ text: '!ls', terminal: false, draft: false }), null);
   assert.equal(bangMode({ text: '!ls', terminal: undefined, draft: false }), null);
   assert.equal(bangMode({ text: undefined, terminal: true, draft: false }), null);
+});
+
+test('a message draft goes with you to the next chat, and a command draft does not', () => {
+  assert.equal(carriedText('remember to check the logs'), 'remember to check the logs');
+  assert.equal(carriedText('line one\nline two'), 'line one\nline two');
+  assert.equal(carriedText(''), '');
+  assert.equal(carriedText('!git reset --hard'), '');
+  assert.equal(carriedText('!'), '');
+  assert.equal(carriedText(' !ls'), ' !ls', 'a space first is a message, as it is for the prompt box');
 });
 
 test('leaving command mode takes the ! and the spaces after it away and keeps the rest', () => {
@@ -217,6 +226,32 @@ test('the run that input and Ctrl+C are for is the newest one the server says is
   assert.equal(lastRunning([run('a'), run('b', { running: false }), run('c', { pending: true })]).id, 'a');
   assert.equal(lastRunning([run('a', { running: false })]), null);
   assert.equal(lastRunning([]), null);
+});
+
+test('an empty input follows the newest running run, and the first text typed pins it to the run it shows then', () => {
+  const runs = [run('a'), run('b')];
+  assert.deepEqual(inputTarget(runs, null), { run: runs[1], ended: false });
+  assert.deepEqual(inputTarget([run('a', { running: false })], null), { run: null, ended: false });
+  assert.deepEqual(pinAfter(null, runs, 'h'), { run: 'b' });
+  assert.deepEqual(pinAfter(null, [run('a', { running: false })], 'h'), { run: null }, 'shown no run, so pinned to none');
+  assert.deepEqual(pinAfter({ run: 'a' }, runs, 'he'), { run: 'a' }, 'more text keeps the pin');
+  assert.equal(pinAfter({ run: 'a' }, runs, ''), null, 'an empty box lets go');
+});
+
+test('a run that starts while the owner is typing does not take his Enter or Ctrl+C', () => {
+  const typedToA = pinAfter(null, [run('a')], 'yes');
+  const withNewer = [run('a'), run('b')];
+  assert.deepEqual(inputTarget(withNewer, typedToA), { run: withNewer[0], ended: false }, 'a newer run leaves the input on the run it showed');
+  const typedAsCommand = pinAfter(null, [], 'ls -la');
+  assert.deepEqual(inputTarget(withNewer, typedAsCommand), { run: null, ended: false }, 'text typed as a command stays one, so Ctrl+C clears it and Enter runs it');
+});
+
+test('text for a run that has ended is for nothing, and is not run as a command', () => {
+  const pinned = { run: 'a' };
+  assert.deepEqual(inputTarget([run('a', { running: false }), run('b')], pinned), { run: null, ended: true });
+  assert.deepEqual(inputTarget([run('b')], pinned), { run: null, ended: true }, 'a run cleared away has ended too');
+  assert.deepEqual(inputTarget([run('a', { running: false })], pinned), { run: null, ended: true });
+  assert.deepEqual(inputTarget([run('a')], pinned), { run: run('a'), ended: false });
 });
 
 test('the home folder is written ~ only where the path starts with it', () => {

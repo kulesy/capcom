@@ -8,7 +8,7 @@ import { html, memo, useEffect, useLayoutEffect, useRef } from './html.js';
 import { draw, icons } from './menu.js';
 import { Output } from './output.js';
 import { panels } from './panel-state.js';
-import { folderOf, historyOf, inHome, lastRunning, recall, runStanding, runState } from './terminal-rules.js';
+import { folderOf, historyOf, inHome, inputTarget, recall, runStanding, runState } from './terminal-rules.js';
 import { toast } from './toast.js';
 
 const LINES = 2000;
@@ -41,14 +41,16 @@ const RunBlock = memo(function RunBlock({ run, home, term }) {
 // `onLeave` is where Esc in the input goes: back to the prompt box beside the chat, or off the panel when it covers the chat.
 export function TerminalTab({ ctrl, active, onLeave }) {
   const term = ctrl.term;
-  const { runs, cwd, home, ready, input, error, announce } = useFields(term.store, 'runs', 'cwd', 'home', 'ready', 'input', 'error', 'announce');
+  const { runs, cwd, home, ready, input, sendTo, error, announce } = useFields(term.store, 'runs', 'cwd', 'home', 'ready', 'input', 'sendTo', 'error', 'announce');
   const goto = useStore(panels, s => s.goto);
   const out = useRef(null);
   const area = useRef(null);
   const history = useRef({ at: null, draft: '' });
   const pin = usePin(out);
   useStick(out, pin);
-  const running = lastRunning(runs);
+  const shown = inputTarget(runs, sendTo);
+  // The target at the moment of a key, which a redraw may not have caught up with.
+  const now = () => inputTarget(term.store.get().runs, term.store.get().sendTo);
 
   useLayoutEffect(() => { if (active) out.current.scrollTop = out.current.scrollHeight; }, [active]);
 
@@ -73,10 +75,15 @@ export function TerminalTab({ ctrl, active, onLeave }) {
 
   const submit = async () => {
     const text = area.current.value;
+    const { run, ended } = now();
+    if (ended) {
+      term.report('That command has ended, so nothing was sent. Clear the box to run a command.');
+      return;
+    }
     history.current = { at: null, draft: '' };
-    if (running) {
+    if (run) {
       term.setInput('');
-      await term.input(running.id, `${text}\n`);
+      await term.input(run.id, `${text}\n`);
       return;
     }
     const command = text.trim();
@@ -85,7 +92,7 @@ export function TerminalTab({ ctrl, active, onLeave }) {
     const problem = await term.run(command, 'panel');
     if (problem) {
       term.report(problem);
-      if (!term.store.get().input) term.setInput(text);
+      if (!term.store.get().input) term.setInput(text, { run: null });
     }
   };
 
@@ -103,20 +110,21 @@ export function TerminalTab({ ctrl, active, onLeave }) {
     if (e.key === 'Enter' && !e.shiftKey && fine()) { e.preventDefault(); submit(); return; }
     if (e.key === 'Escape') { e.preventDefault(); onLeave(); return; }
     if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+      const { run } = now();
       if (e.key === 'c' && el.selectionStart === el.selectionEnd) {
         e.preventDefault();
-        if (running) term.stop(running.id);
+        if (run) term.stop(run.id);
         else term.setInput('');
         return;
       }
-      if (e.key === 'd' && !el.value && running) { e.preventDefault(); term.input(running.id, '', true); return; }
+      if (e.key === 'd' && !el.value && run) { e.preventDefault(); term.input(run.id, '', true); return; }
     }
-    if (running || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (shown.run || shown.ended || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === 'ArrowUp' && el.selectionStart === 0 && el.selectionEnd === 0) walk(e, -1);
     else if (e.key === 'ArrowDown' && el.selectionStart === el.value.length) walk(e, 1);
   };
 
-  const first = running?.command.split('\n')[0];
+  const first = shown.run?.command.split('\n')[0];
   return html`<div class="term">
     <div class="term-out" ref=${out} role="region" aria-label="Terminal output" tabindex="0">
       ${runs.length ? runs.map(run => html`<${RunBlock} key=${run.key} run=${run} home=${home} term=${term} />`)
@@ -125,15 +133,15 @@ export function TerminalTab({ ctrl, active, onLeave }) {
     <p class="sr" role="status">${announce}</p>
     ${error ? html`<p class="term-error" role="alert"><span>${error}</span><${Tool} label="Dismiss" icon="x" onClick=${() => term.report('')} /></p>` : null}
     <form class="term-in" onSubmit=${e => { e.preventDefault(); submit(); }}>
-      <label class="term-cwd" for="term-input">${running ? html`<span class="sr">Send to </span>${first}` : html`<span class="sr">Command in </span>${inHome(cwd, home)}`}</label>
+      <label class="term-cwd" for="term-input">${shown.run ? html`<span class="sr">Send to </span>${first}` : shown.ended ? 'That command has ended' : html`<span class="sr">Command in </span>${inHome(cwd, home)}`}</label>
       <div class="term-field">
-        <span class="term-sign" aria-hidden="true">${running ? '>' : '$'}</span>
+        <span class="term-sign" aria-hidden="true">${shown.run || shown.ended ? '>' : '$'}</span>
         <textarea id="term-input" class="term-input" ...${NO_GRAMMARLY} ref=${area} rows="1" value=${input} spellcheck=${false} autocomplete="off" autocapitalize="off" autocorrect="off"
-          placeholder=${running ? 'Send a line to the running command' : 'Run a command'} aria-describedby="term-hint"
+          placeholder=${shown.run ? 'Send a line to the running command' : 'Run a command'} aria-describedby="term-hint"
           onInput=${e => term.setInput(e.currentTarget.value)} onKeyDown=${onKeyDown}></textarea>
-        <button class="btn" type="submit" data-size="icon-sm" aria-label=${running ? 'Send line' : 'Run command'} data-tip=${running ? 'Send line' : 'Run command'} disabled=${!running && !input.trim()}>${draw(icons.play, 'icon')}</button>
+        <button class="btn" type="submit" data-size="icon-sm" aria-label=${shown.run || shown.ended ? 'Send line' : 'Run command'} data-tip=${shown.run || shown.ended ? 'Send line' : 'Run command'} disabled=${shown.ended || (!shown.run && !input.trim())}>${draw(icons.play, 'icon')}</button>
       </div>
-      <p class="term-hint" id="term-hint">${running ? 'Ctrl+C stops it. Ctrl+D ends its input.' : fine() ? 'Enter runs. Shift+Enter adds a line.' : 'Enter adds a line. The button runs it.'}</p>
+      <p class="term-hint" id="term-hint">${shown.run ? 'Ctrl+C stops it. Ctrl+D ends its input.' : shown.ended ? 'Ctrl+C clears the box.' : fine() ? 'Enter runs. Shift+Enter adds a line.' : 'Enter adds a line. The button runs it.'}</p>
     </form>
   </div>`;
 }

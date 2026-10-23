@@ -463,18 +463,23 @@ and an exported variable does not. A full-screen program such as `vim`, `top` or
   and keeps for 10 minutes, so `PATH`, version managers and your own variables are there. GhostShell's own
   settings (`PORT`, `CAPCOM_STATE`) are not. `PAGER` and `GIT_PAGER` are `cat`.
 - **Output.** A command's output shows as it arrives. Stderr is tinted. A command can be sent input while
-  it runs, and Ctrl+C in the panel stops it. Stop ends the command and every job it started. A run keeps
+  it runs, and Ctrl+C in the panel stops it. Text typed in the panel's input goes to the command it showed
+  when you started typing, so a command that starts meanwhile takes nothing, and text for a command that has
+  ended is kept and not run. Stop ends the command and every job it started. A run keeps
   1,000,000 characters and drops the oldest, and the panel keeps the last 100 runs of a session. A session
   runs 8 commands at once and GhostShell 32.
-- **Code blocks.** Every code block has Copy. A block of shell commands also has Run, which runs the block's
-  text in the panel when you click it. Nothing runs without a click.
+- **Code blocks.** Every code block has Copy. A block of shell commands in one of Claude's replies also has Run,
+  which runs the block's text in the panel when you click it, and wraps its long lines so the whole command is
+  in view. A block holding a character you cannot see, such as a zero-width character, a soft hyphen or a line
+  separator, cannot be run. A file open in the panel has Copy only. Nothing runs without a click.
 - **`!` in the prompt box.** Text that starts with `!` runs as a command instead of being sent. GhostShell runs
   it, because the headless CLI GhostShell drives takes `!echo hi` as a prompt and has no shell mode. When the
   command ends, GhostShell sends Claude the command and its output in the CLI's own form (colour codes
   removed, each of output and errors cut to 30,000 characters in the middle), and Claude answers as it
   does in the CLI. With `respondToBashCommands` set to `false` in `~/.claude/settings.json`, GhostShell holds
   the result and sends it with your next message. The transcript shows the command as a block with its
-  output, whether GhostShell, the CLI or Desktop ran it.
+  output, whether GhostShell, the CLI or Desktop ran it. A `!` command you have not run stays behind when you
+  change chat, where a message you have not sent goes with you.
 - **Ending.** GhostShell stops every command when it exits or restarts, and keeps nothing across a restart.
   A GhostShell that is killed outright (SIGKILL) cannot, and leaves its commands running.
 - **Who can run one.** Only a signed-in page can. The routes that start, feed or stop a command

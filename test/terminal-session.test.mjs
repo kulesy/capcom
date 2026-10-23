@@ -278,3 +278,25 @@ test('a refused stop or input leaves the server\'s reason in the panel', async (
     chat.close();
   });
 });
+
+test('the first text typed into the panel pins where Enter goes, a run that starts after it does not take it, and an empty box lets go', async () => {
+  await withServer({}, async () => {
+    const { chat, stream } = await openChat('t-pin');
+    const to = () => chat.term.store.get().sendTo;
+    stream.emit('terminal', { type: 'run', run: summary({ id: 'a' }) });
+    chat.term.setInput('y');
+    assert.deepEqual(to(), { run: 'a' });
+    stream.emit('terminal', { type: 'run', run: summary({ id: 'b' }) });
+    chat.term.setInput('yes');
+    assert.deepEqual(to(), { run: 'a' }, 'the newer run did not take it');
+    chat.term.setInput('');
+    assert.equal(to(), null);
+    chat.term.setInput('n');
+    assert.deepEqual(to(), { run: 'b' }, 'a box that was emptied follows the newest run again');
+    chat.term.setInput('', { run: null });
+    assert.equal(to(), null, 'no text, no pin, whatever it is asked to put back');
+    chat.term.setInput('ls', { run: null });
+    assert.deepEqual(to(), { run: null }, 'text put back after a refused command stays a command');
+    chat.close();
+  });
+});

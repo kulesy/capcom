@@ -5,12 +5,12 @@
 // apply() takes the server's events and never starts anything.
 import { api } from './api.js';
 import { createStore } from './store.js';
-import { appendChunks, endedAloud, replaceRuns, upsertRun } from './terminal-rules.js';
+import { appendChunks, endedAloud, pinAfter, replaceRuns, upsertRun } from './terminal-rules.js';
 
 const enc = encodeURIComponent;
 
 export function createTerminal({ id, enabled, call = api }) {
-  const store = createStore({ ready: false, cwd: '', home: '', runs: [], input: '', error: '', announce: '' });
+  const store = createStore({ ready: false, cwd: '', home: '', runs: [], input: '', sendTo: null, error: '', announce: '' });
   const route = tail => `api/sessions/${enc(id)}/terminal${tail}`;
   let sequence = 0;
   let said = 0;
@@ -38,10 +38,10 @@ export function createTerminal({ id, enabled, call = api }) {
   }
 
   // The run shows at once, before the server has answered, because the first command after the server starts can wait a couple of seconds.
-  // Returns '' once the server has the run, or the server's reason when it refused. The same command from the same source while one is
-  // still starting is a double click, and starts nothing.
+  // Returns '' once the server has the run, or the server's reason when it refused.
   async function run(command, source) {
     if (!enabled()) return 'This session has no terminal.';
+    // The same command from the same source while one is still starting is a double click.
     if (store.get().runs.some(r => r.pending && r.command === command && r.source === source)) return '';
     const key = `local-${++sequence}`;
     const waiting = {
@@ -83,7 +83,8 @@ export function createTerminal({ id, enabled, call = api }) {
     } catch (err) { fail(err); }
   }
 
-  const setInput = text => store.set({ input: text });
+  // `to` is given only to put back text that was taken out, which goes back to where it was headed.
+  const setInput = (text, to) => store.set(s => ({ input: text, sendTo: pinAfter(to ?? s.sendTo, s.runs, text) }));
   const report = error => store.set({ error });
 
   return { id, store, apply, run, stop, input, clear, setInput, report };

@@ -2,7 +2,7 @@
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
-import { attach, attached, detach, detachFile, draftText, pastedFiles, setDraftText, uploads } from './draft.js';
+import { attach, attached, carryDraft, detach, detachFile, pastedFiles, setDraftText, uploads } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
 import { FileFace } from './file-card.js';
@@ -85,7 +85,7 @@ export function Composer({ ctrl }) {
   const preparing = useStore(attached, a => a.preparing);
   const takesFiles = useStore(uploads, u => u.limits !== null);
   const uploading = files.some(f => f.uploading);
-  const [text, setLocal] = useState(draftText);
+  const [text, setLocal] = useState(carryDraft);
   const [over, setOver] = useState(false);
   const setText = value => { setDraftText(value); setLocal(value); };
   const draft = !!ctrl.draft;

@@ -3,10 +3,16 @@
 import { api, postFile } from './api.js';
 import { MAX_IMAGES, prepare, TYPES } from './images.js';
 import { createStore } from './store.js';
+import { carriedText } from './terminal-rules.js';
 
 let text = '';
 
-export const draftText = () => text;
+// The text a prompt box that has just opened starts with: the message left by the last one, but never a command.
+export function carryDraft() {
+  text = carriedText(text);
+  return text;
+}
+
 export const setDraftText = value => { text = value; };
 
 // The images and files attached to it. A store, because a file is decoded and scaled, or uploaded, before it shows as sent, and the box that

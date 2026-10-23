@@ -96,8 +96,8 @@ async function chatPage(t, origin = app.origin, { id = ID, blocks = 2 } = {}) {
 
 const visible = (selector, within = '') => `[...document.querySelectorAll(${JSON.stringify(`${within} ${selector}`.trim())})].filter(el => el.getClientRects().length).length`;
 const tag = (page, n) => page.evaluate(`document.querySelectorAll('[data-code=run]')[${n}].id = 'run-${n}'`);
-const type = (page, text) => page.evaluate(`(() => {
-  const box = document.getElementById('text');
+const type = (page, text, id = 'text') => page.evaluate(`(() => {
+  const box = document.getElementById(${JSON.stringify(id)});
   box.focus();
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(text)});
   box.dispatchEvent(new Event('input', { bubbles: true }));
@@ -186,5 +186,61 @@ test('a markdown file in the File tab has Copy on its code blocks and no Run, an
   await page.click('.file-doc [data-code=run]');
   await new Promise(resolve => setTimeout(resolve, 400));
   assert.deepEqual(await runs(DOCS), []);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a command typed after ! stays behind when the chat changes, and a message draft goes with you', async t => {
+  const page = await chatPage(t);
+  const open = (id, title) => page.evaluate(`location.hash = '#/s/${id}'`).then(() => page.until(`document.getElementById('title')?.textContent === ${JSON.stringify(title)} && !!document.getElementById('text')`));
+  await type(page, '!echo left behind');
+  await page.until(`document.getElementById('composer').hasAttribute('data-bang')`);
+  await open(DOCS, 'Docs');
+  await page.until(`document.querySelectorAll('.code-block').length === 2`);
+  assert.equal(await page.evaluate(`document.getElementById('text').value`), '');
+  assert.equal(await page.evaluate(`document.getElementById('composer').hasAttribute('data-bang')`), false);
+  await type(page, 'check the logs later');
+  await open(ID, 'One');
+  assert.equal(await page.evaluate(`document.getElementById('text').value`), 'check the logs later');
+  assert.deepEqual([...await runs(ID), ...await runs(DOCS)].filter(r => r.command.includes('left behind')), []);
+  assert.deepEqual(page.problems, []);
+});
+
+test('text typed to a running command goes to that command when another one starts, and Ctrl+C stops only it', async t => {
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  const start = async command => (await request(app, 'POST', `/api/sessions/${DOCS}/terminal/run`, { headers: { ...as(token), origin: app.origin }, json: { command, source: 'panel' } })).body().run.id;
+  const stop = id => request(app, 'POST', `/api/sessions/${DOCS}/terminal/stop`, { headers: { ...as(token), origin: app.origin }, json: { run: id } });
+  const outputOf = async id => (await runs(DOCS)).find(r => r.id === id).output.map(c => c.text).join('');
+  const ctrlC = () => page.evaluate(`document.getElementById('term-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }))`);
+  const sendsTo = text => page.until(`document.querySelector('.term-cwd').textContent === ${JSON.stringify(text)}`);
+  await page.click('#terminalButton');
+  await page.until(`!!document.getElementById('term-input')`);
+  const first = await start('cat');
+  await sendsTo('Send to cat');
+  await type(page, 'hello', 'term-input');
+  const second = await start('cat -u');
+  await page.until(`document.querySelectorAll('#panel .run[data-state=running]').length === 2`);
+  await sendsTo('Send to cat');
+  await page.press('Enter');
+  await until(async () => (await outputOf(first)).includes('hello'), 15_000);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(await outputOf(second), '', 'the newer command was sent nothing');
+  assert.equal(await page.evaluate(`document.getElementById('term-input').value`), '');
+  await sendsTo('Send to cat -u');
+  await type(page, 'bye', 'term-input');
+  const third = await start('cat -n');
+  await page.until(`document.querySelectorAll('#panel .run[data-state=running]').length === 3`);
+  await ctrlC();
+  await until(async () => (await runs(DOCS)).find(r => r.id === second).running === false, 15_000);
+  assert.equal((await runs(DOCS)).find(r => r.id === third).running, true, 'Ctrl+C stopped only the command the text was for');
+  assert.equal((await runs(DOCS)).find(r => r.id === first).running, true);
+  await page.until(`document.querySelector('.term-cwd').textContent === 'That command has ended'`);
+  const before = (await runs(DOCS)).length;
+  await page.press('Enter');
+  await page.until(`document.querySelector('.term-error')?.textContent.includes('has ended')`);
+  assert.equal(await page.evaluate(`document.getElementById('term-input').value`), 'bye', 'the text is kept');
+  assert.equal((await runs(DOCS)).length, before, 'and is not run as a command');
+  await ctrlC();
+  await page.until(`document.getElementById('term-input').value === ''`);
+  await Promise.all([first, third].map(stop));
   assert.deepEqual(page.problems, []);
 });

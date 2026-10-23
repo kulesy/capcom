@@ -47,17 +47,23 @@ export function runnableBlock(lang, text) {
   return { command, hidden: hasHiddenCharacters(text) };
 }
 
+const startsBang = text => text.startsWith('!');
+
 // The prompt box is in command mode while its text starts with "!". A new session's box has no folder to run in, and a server with no
 // terminal has nowhere to run it, so neither is ever in it. `command` is what follows the "!".
 // NOTE: [23 Oct 2026] EK - Only the prompt box calls this. A widget's button sends its text through ctrl.prompt, so a "!" a widget
 // writes is an ordinary message and never a command.
 export function bangMode({ text, terminal, draft }) {
-  if (!terminal || draft || typeof text !== 'string' || !text.startsWith('!')) return null;
+  if (!terminal || draft || typeof text !== 'string' || !startsBang(text)) return null;
   return { command: text.slice(1).trim() };
 }
 
+// The unsent text a chat opens with when it takes it over from the last one. A message follows you from chat to chat, but a command does
+// not, because Enter would run it in the folder of whichever chat is open.
+export const carriedText = text => (startsBang(text) ? '' : text);
+
 // The text with command mode left: the "!" and the spaces after it go, and the command stays as a message.
-export const leaveBang = text => (text.startsWith('!') ? text.slice(1).trimStart() : text);
+export const leaveBang = text => (startsBang(text) ? text.slice(1).trimStart() : text);
 
 // ---- the side panel ---------------------------------------------------------------------------------------
 
@@ -188,8 +194,23 @@ export function replaceRuns(held, summaries) {
   return [...runs, ...held.filter(r => r.pending)].slice(-RUNS_KEPT);
 }
 
-// The running run that Enter, Ctrl+C and Ctrl+D in the panel's input are for: the newest one the server knows is running.
+// The newest run the server knows is running.
 export const lastRunning = runs => runs.findLast(r => r.running && !r.pending) ?? null;
+
+// ---- where the panel's input sends --------------------------------------------------------------------------
+
+// An empty input follows the newest running run. The first text typed pins it to the run it shows then, or to none, until the box is empty
+// again, so a run that starts from another tab mid-typing does not take an Enter or Ctrl+C meant for something else.
+export const pinAfter = (pin, runs, text) => (text ? pin ?? { run: lastRunning(runs)?.id ?? null } : null);
+
+// Where Enter, Ctrl+C and Ctrl+D in the input go: `run` is the running run, or null when Enter runs a command. `ended` says the pinned run has
+// finished, and the text, which was meant as input to it, is then not run as a command.
+export function inputTarget(runs, pin) {
+  if (!pin) return { run: lastRunning(runs), ended: false };
+  if (pin.run === null) return { run: null, ended: false };
+  const run = runs.find(r => r.id === pin.run && r.running && !r.pending) ?? null;
+  return { run, ended: !run };
+}
 
 // ---- how a run reads ---------------------------------------------------------------------------------------
 
