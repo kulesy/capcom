@@ -12,6 +12,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
+import { groupDir } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -121,8 +122,9 @@ function buildIndex({ archived = false } = {}) {
     rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), sortAt: Math.max(r.sortKey, edgeOf(r.id)), state: stateOf(r.id, t.mtime) });
   }
   const cutoff = now - cfg.otherDays * 86400_000;
+  const groupSessionIds = new Set(own.groups.filter(g => g.session).map(g => g.session));
   for (const t of files.values()) {
-    if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id))) continue;
+    if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id) && !groupSessionIds.has(t.id))) continue;
     const head = readHead(t);
     // NOTE: [15 Oct 2026] EK - A routine's prompt can run past the 64 KB head that readHead reads, so a run Capcom started keeps
     // its routine in started.json, and shows the title it was started with. Without it a long prompt lists outside Routines.
@@ -153,6 +155,15 @@ function buildIndex({ archived = false } = {}) {
     if (title) { r.title = title; r.renamed = true; }
   }
 
+  // A group's session belongs to its group alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
+  // with no transcript yet gets a row from the layout.
+  const groupSessions = new Map();
+  for (const g of own.groups.filter(g => g.session)) {
+    const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
+    rows.delete(g.session);
+    groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id });
+  }
+
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
   const fromChips = chips.links();
   const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
@@ -162,6 +173,9 @@ function buildIndex({ archived = false } = {}) {
     Object.assign(r, { parent, via }, places.get(holder));
   }
   const visible = [...rows.values()].filter(r => archived || !r.archived);
+  // Counted by the place a family gives each row, which is what api/archived?group= lists by.
+  const archivedIn = new Map();
+  for (const r of rows.values()) if (r.archived && r.group) archivedIn.set(r.group, (archivedIn.get(r.group) ?? 0) + 1);
 
   // Each list sorts as the Desktop section it comes from does, and Started here, Ungrouped and Terminal and other all sort as Desktop's
   // loose list does. A list Desktop has no section for goes newest first.
@@ -180,7 +194,8 @@ function buildIndex({ archived = false } = {}) {
   const pinned = sortRows(top.filter(r => r.pinned), sorts.pinned);
   const groups = own.groups.map(g => {
     const sort = groupSort(g.id);
-    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sort, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
+    const session = g.session ? { id: g.session, state: groupSessions.get(g.session).state } : null;
+    return { id: g.id, name: g.name, project: projectIds.has(g.project) ? g.project : null, sort, session, archived: archivedIn.get(g.id) ?? 0, sessions: sortRows(top.filter(r => r.group === g.id && !r.pinned), sort) };
   });
   // A routine's runs go newest first, and the routines go by their latest run.
   const byLatest = comparator(sorts.routines);
@@ -205,12 +220,13 @@ function buildIndex({ archived = false } = {}) {
     other: newest(loose.filter(r => r.source === 'cli')),
     sorts,
     rows,
+    groupSessions,
   };
 }
 
 function findRow(id) {
   const index = buildIndex({ archived: true });
-  return index.rows.get(id) || null;
+  return index.rows.get(id) || index.groupSessions.get(id) || null;
 }
 
 // ---- reading a session ---------------------------------------------------------------------------
@@ -496,8 +512,10 @@ function events(req, res, id) {
   writeMark(() => marks.opened(id, Date.now()));
   // Sessions running in Desktop or a terminal only show up as a growing file, so the file is watched too.
   let size = transcriptFor(id)?.size ?? -1;
+  // A group's session has no file until its first message, which a chat of ours sends, so nothing is looked for before that.
+  const unstarted = !!findRow(id)?.groupSession;
   const watch = setInterval(() => {
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id));
+    const t = transcriptFor(id) || (unstarted && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
     if (!t) return;
     let now;
     try { now = fs.statSync(t.file).size; } catch { return; }
@@ -525,7 +543,9 @@ async function editLayout(req, res, change) {
   if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
   const { id } = body;
   if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Which session?' });
-  if (!findRow(id)) return send(res, 404, { error: NO_SESSION });
+  const row = findRow(id);
+  if (!row) return send(res, 404, { error: NO_SESSION });
+  if (row.groupSession) return send(res, 400, { error: 'A group\'s session stays with its group.' });
   let extra;
   try {
     extra = change(id, body);
@@ -559,12 +579,13 @@ function setArchived(id, archived, stop) {
 // child's parent. The answer carries the parent the list now shows.
 function nest(id, parent) {
   if (parent !== null && typeof parent !== 'string') throw refuse(400, 'Nest it under which session?');
-  const rows = buildIndex().rows;
+  const { rows, groupSessions } = buildIndex();
   if (parent === null) {
     // A null written with no link to override would hide one that Desktop makes later.
     if (linkNow(id) !== null) layout.unnest(id, { group: rows.get(id).group, pinned: rows.get(id).pinned, relink: keepFamily(id, rows) });
     return { parent: null };
   }
+  if (groupSessions.has(parent)) throw refuse(400, 'A group\'s session cannot hold sessions.');
   const target = rows.get(parent);
   if (!target) throw refuse(404, NO_SESSION);
   if (target.archived) throw refuse(400, 'That session is archived.');
@@ -709,7 +730,7 @@ async function api(req, res, u) {
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
-    const { rows, ...index } = buildIndex({ archived: withArchived });
+    const { rows, groupSessions, ...index } = buildIndex({ archived: withArchived });
     // The turns and the marks go onto the rows here and not in buildIndex, which findRow runs for every request.
     const now = Date.now();
     const shared = { desk: loadDesktop(cfg.desktopDir), mine: marks.read(), now };
@@ -731,12 +752,14 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    return send(res, 200, index);
+    // Tells a page that it is talking to a server that knows group sessions, which an older one cannot say.
+    return send(res, 200, { ...index, features: { groupSessions: true } });
   }
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
-  // archived a session, but archiving rewrites its record, so the record's file time stands in.
+  // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's.
   if (req.method === 'GET' && u.pathname === '/api/archived') {
-    const archived = [...buildIndex({ archived: true }).rows.values()].filter(r => r.archived)
+    const only = u.searchParams.get('group');
+    const archived = [...buildIndex({ archived: true }).rows.values()].filter(r => r.archived && (only === null || r.group === only))
       .map(({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt }) => ({ id, title, cwd, branch, routine, state, lastActivityAt, archivedAt, archived: true }))
       .sort((a, b) => b.archivedAt - a.archivedAt);
     return send(res, 200, { archived });
