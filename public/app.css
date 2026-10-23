@@ -275,7 +275,7 @@ button.thumb:focus-visible, .option:focus-visible {
   --btn-fg: var(--primary);
 }
 
-.btn[data-variant="ghost"]:is([aria-expanded="true"], [aria-current="page"], [aria-pressed="true"]) {
+.btn[data-variant="ghost"]:is([aria-expanded="true"], [aria-current="page"]) {
   --btn-bg: var(--accent);
   --btn-bg-hover: var(--accent);
   --btn-fg: var(--accent-foreground);
@@ -3072,8 +3072,6 @@ html.viewing, html.viewing body { overflow: hidden; }
 .gate-card .hint { text-align: center; }
 
 .list-foot .btn { --btn-fg: var(--muted-foreground); }
-
-.list-foot .look { margin-inline-end: auto; }
 
 .offer {
   margin: 0 0.5rem 0.5rem;

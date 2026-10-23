@@ -9,7 +9,6 @@ import { NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
-import { LookSwitch } from './look.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { UNTITLED } from './order.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
@@ -599,7 +598,6 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     </div>
     <footer class="list-foot">
       <a class="btn" data-variant="ghost" data-size="sm" href="#/passkeys" aria-current=${passkeys ? 'page' : null}>Passkeys</a>
-      <${LookSwitch} />
       <form method="post" action="logout"><button class="btn" data-variant="ghost" data-size="sm" type="submit">Sign out</button></form>
     </footer>
     <${Menu} menu=${shown && !shown.rail ? (shown.key === 'add' ? { ...shown, items: addMenu.items } : shown) : null} onClose=${() => setShown(null)} />

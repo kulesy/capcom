@@ -1,5 +1,5 @@
-// Run with `npm test`. The Ghost look's switch in a real page: first public/index.html with the app swapped for the switch alone, where the head sets the root
-// attribute and the theme colours from the stored look before the body and a click flips them with the stored look and no reload, then the real app signed in to the real server.
+// Run with `npm test`. Ghost as the look on every device, in a real page: first public/index.html with no app script, where the root attribute and the theme colours are
+// Ghost's as the head ends whatever the browser has stored, then the real app signed in to the real server.
 // It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,19 +9,12 @@ import { PASSWORD, start } from './harness.mjs';
 
 const INDEX = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const APP = '<script type="module" src="app.js"></script>';
-const STANDARD = ['#ffffff', '#0a0a0a'];
 const GHOST = ['#f6f6f6', '#181818'];
 
 // Read as the head ends, before the body is parsed and before any module can set them.
 const BOOTED = `<script>window.booted = { look: document.documentElement.dataset.look ?? null, colours: [...document.querySelectorAll('meta[name="theme-color"]')].map(meta => meta.content) }</script>`;
-// The boot list is hidden so the switch sits at the top of the window, where a click reaches it.
-const SWITCH = `<style>#boot { display: none }</style>
-<script type="module">
-import { h, render } from 'preact';
-import { LookSwitch } from './ui/look.js';
-render(h(LookSwitch), document.getElementById('root'));
-</script>`;
-const PAGE = INDEX.replace('</head>', () => `${BOOTED}</head>`).replace(APP, () => SWITCH);
+// Without the app script the list in #boot stays as the HTML has it.
+const PAGE = INDEX.replace('</head>', () => `${BOOTED}</head>`).replace(APP, () => '');
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -43,15 +36,18 @@ after(async () => {
   await site?.close();
 });
 
-// A new page with `stored` in capcom.look as it is written to storage, or none for null. Every page shares the browser's storage, so each test sets it first.
+// The script that leaves `stored` in capcom.look as it is written to storage, or none for null.
+const store = stored => stored === null ? `localStorage.removeItem('capcom.look')` : `localStorage.setItem('capcom.look', ${JSON.stringify(stored)})`;
+
+// A new page with `stored` in capcom.look. Every page shares the browser's storage, so each test sets it first.
 async function lookPage(t, stored) {
   const setter = await browser.open(`${site.origin}/storage`);
   await setter.until(`document.readyState === 'complete'`);
-  await setter.evaluate(stored === null ? `localStorage.removeItem('capcom.look')` : `localStorage.setItem('capcom.look', ${JSON.stringify(stored)})`);
+  await setter.evaluate(store(stored));
   await setter.close();
   const page = await browser.open(`${site.origin}/`);
   t.after(() => page.close());
-  await page.until(`document.readyState === 'complete' && !!document.querySelector('#root .look')`);
+  await page.until(`document.readyState === 'complete'`);
   return page;
 }
 
@@ -77,101 +73,68 @@ async function appPage(t) {
   return page;
 }
 
+// A page on the real server that loads with `stored` in capcom.look: one page sets it and the next, opened after, is the one that has it at load.
+async function storedAppPage(t, stored) {
+  const setter = await appPage(t);
+  await setter.evaluate(store(stored));
+  return appPage(t);
+}
+
+const booted = page => page.evaluate('window.booted');
 const shown = page => page.evaluate(`({
   look: document.documentElement.dataset.look ?? null,
-  pressed: document.querySelector('#root .look').getAttribute('aria-pressed'),
   colours: [...document.querySelectorAll('meta[name="theme-color"]')].map(meta => meta.content),
-  stored: localStorage.getItem('capcom.look'),
 })`);
-const booted = page => page.evaluate('window.booted');
-const pressed = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-pressed')`);
 // The width and height the brand mark and the emblem take in the page, which are zero while the standard look hides them.
 const sizes = page => page.evaluate(`['.brand-mark', '.emblem'].map(selector => (r => [r.width, r.height])(document.querySelector(selector).getBoundingClientRect()))`);
+const takeSpace = async page => {
+  for (const [width, height] of await sizes(page)) assert.ok(width > 0 && height > 0, `a shell drawing is ${width} by ${height}`);
+};
 
-test('the test page is index.html with a snapshot at the end of its head and the switch where the app script was', () => {
+test('the test page is index.html with a snapshot at the end of its head and no app script', () => {
   assert.ok(INDEX.includes(APP) && INDEX.includes('</head>'));
-  assert.ok(PAGE.includes(BOOTED) && PAGE.includes(SWITCH) && !PAGE.includes(APP));
+  assert.ok(PAGE.includes(BOOTED) && !PAGE.includes(APP));
 });
 
-test('a stored ghost sets the root attribute and both theme colours as the head ends, and the switch comes up pressed', { skip, timeout }, async t => {
-  const page = await lookPage(t, '"ghost"');
-  assert.deepEqual(await booted(page), { look: 'ghost', colours: GHOST });
-  assert.deepEqual(await shown(page), { look: 'ghost', pressed: 'true', colours: GHOST, stored: '"ghost"' });
-  assert.deepEqual(page.problems, []);
-});
-
-test('with no look stored the root has no attribute, the theme colours are the standard ones and the switch is not pressed', { skip, timeout }, async t => {
-  const page = await lookPage(t, null);
-  assert.deepEqual(await booted(page), { look: null, colours: STANDARD });
-  assert.deepEqual(await shown(page), { look: null, pressed: 'false', colours: STANDARD, stored: null });
-  assert.deepEqual(page.problems, []);
-});
-
-for (const stored of ['"standard"', '"neon"', '"Ghost"', 'ghost', '{', 'true', 'null']) {
-  test(`${stored} stored means the standard look, at boot and once the switch is up`, { skip, timeout }, async t => {
+for (const stored of [null, '"ghost"', '"standard"', '"neon"', '{']) {
+  test(`the root is Ghost and both theme colours are Ghost's as the head ends, with ${stored === null ? 'no look' : stored} stored`, { skip, timeout }, async t => {
     const page = await lookPage(t, stored);
-    assert.deepEqual(await booted(page), { look: null, colours: STANDARD });
-    assert.deepEqual(await shown(page), { look: null, pressed: 'false', colours: STANDARD, stored });
+    assert.deepEqual(await booted(page), { look: 'ghost', colours: GHOST });
+    assert.deepEqual(await shown(page), { look: 'ghost', colours: GHOST });
     assert.deepEqual(page.problems, []);
   });
 }
 
-test('a click turns Ghost on and a second turns it off, each flipping the root attribute, aria-pressed, both theme colours and the stored look with no reload', { skip, timeout }, async t => {
-  const page = await lookPage(t, null);
-  await page.evaluate('window.sameDocument = true');
-  await page.click('#root .look');
-  await page.until(`document.documentElement.dataset.look === 'ghost'`);
-  assert.deepEqual(await shown(page), { look: 'ghost', pressed: 'true', colours: GHOST, stored: '"ghost"' });
-  await page.click('#root .look');
-  await page.until(`!document.documentElement.dataset.look`);
-  assert.deepEqual(await shown(page), { look: null, pressed: 'false', colours: STANDARD, stored: '"standard"' });
-  assert.equal(await page.evaluate('window.sameDocument'), true);
-  assert.deepEqual(page.problems, []);
-});
-
-test('a click from a stored value that is not ghost turns Ghost on, and the next page boots in it', { skip, timeout }, async t => {
-  const page = await lookPage(t, '"neon"');
-  await page.click('#root .look');
-  await page.until(`document.documentElement.dataset.look === 'ghost'`);
-  assert.equal(await page.evaluate(`localStorage.getItem('capcom.look')`), '"ghost"');
-  const next = await browser.open(`${site.origin}/`);
-  t.after(() => next.close());
-  await next.until(`document.readyState === 'complete'`);
-  assert.deepEqual(await booted(next), { look: 'ghost', colours: GHOST });
-  assert.deepEqual(page.problems, []);
-});
-
-test('the boot list holds the brand mark first in the brand and a disabled Ghost button between Passkeys and Sign out', { skip, timeout }, async t => {
+test('the boot list holds the brand mark first in the brand and only Passkeys and Sign out in the footer', { skip, timeout }, async t => {
   const page = await lookPage(t, null);
   assert.deepEqual(await page.evaluate(`[...document.querySelector('#boot .brand').children].map(el => el.className || el.tagName)`), ['brand-mark', 'H1', 'station']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#boot .list-foot .btn')].map(el => [el.textContent, !!el.disabled])`), [['Passkeys', false], ['Ghost', true], ['Sign out', false]]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('#boot .list-foot .btn')].map(el => [el.textContent, !!el.disabled])`), [['Passkeys', false], ['Sign out', false]]);
+  assert.deepEqual(page.problems, []);
 });
 
-for (const [stored, expected] of [['"ghost"', 'true'], [null, 'false'], ['"neon"', 'false']]) {
-  test(`the boot list's Ghost switch reads aria-pressed ${expected} with ${stored === null ? 'no look' : stored} stored`, { skip, timeout }, async t => {
-    const page = await lookPage(t, stored);
-    assert.equal(await pressed(page, '#boot .look'), expected);
+test('the boot list holds a brand mark and an emblem that take space', { skip, timeout }, async t => {
+  const page = await lookPage(t, null);
+  await takeSpace(page);
+  assert.deepEqual(page.problems, []);
+});
+
+for (const stored of [null, '"standard"']) {
+  test(`the real app's root is Ghost and its theme colours are Ghost's once it is up, with ${stored === null ? 'no look' : stored} stored`, { skip, timeout }, async t => {
+    const page = await storedAppPage(t, stored);
+    assert.deepEqual(await shown(page), { look: 'ghost', colours: GHOST });
     assert.deepEqual(page.problems, []);
   });
 }
 
-test('the real list draws the shell as the brand mark first in the brand and an enabled, unpressed Ghost button between Passkeys and Sign out', { skip, timeout }, async t => {
+test('the real list draws the shell as the brand mark first in the brand and only Passkeys and Sign out in the footer', { skip, timeout }, async t => {
   const page = await appPage(t);
   assert.deepEqual(await page.evaluate(`[...document.querySelector('.brand').children].map(el => el.getAttribute('class') ?? el.localName)`), ['shell brand-mark', 'h1', 'station']);
-  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .btn')].map(el => [el.textContent, !!el.disabled, el.getAttribute('aria-pressed')])`), [['Passkeys', false, null], ['Ghost', false, 'false'], ['Sign out', false, null]]);
+  assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.list-foot .btn')].map(el => [el.textContent, !!el.disabled])`), [['Passkeys', false], ['Sign out', false]]);
   assert.deepEqual(page.problems, []);
 });
 
-test('in the real app the brand mark and the emblem take no space in the standard look, take some once Ghost is on, and none again once it is off', { skip, timeout }, async t => {
+test('in the real app the brand mark and the emblem take space', { skip, timeout }, async t => {
   const page = await appPage(t);
-  assert.deepEqual(await sizes(page), [[0, 0], [0, 0]]);
-  await page.click('.list-foot .look');
-  await page.until(`document.documentElement.dataset.look === 'ghost'`);
-  assert.equal(await pressed(page, '.list-foot .look'), 'true');
-  for (const [width, height] of await sizes(page)) assert.ok(width > 0 && height > 0, `a shell drawing is ${width} by ${height}`);
-  await page.click('.list-foot .look');
-  await page.until(`!document.documentElement.dataset.look`);
-  assert.equal(await pressed(page, '.list-foot .look'), 'false');
-  assert.deepEqual(await sizes(page), [[0, 0], [0, 0]]);
+  await takeSpace(page);
   assert.deepEqual(page.problems, []);
 });
