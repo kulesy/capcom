@@ -10,7 +10,7 @@ The detail behind GhostShell, the browser chat client for Claude Code sessions o
 - [Terminal](terminal.md): the terminal panel and `!` commands.
 - [Routines](routines.md): how GhostShell runs Desktop's routines.
 - [Setup](setup.md): the password, starting the server, tests, sign-in, passkeys and installing the app.
-- [Configuration](configuration.md): `config.json`, `config.local.json` and the environment variables.
+- [Configuration](configuration.md): `config.json`, `config.local.json`, the environment variables and Claude accounts.
 - [Always on](always-on.md): the launchd agent and Capcom.app.
 - [Remote access](remote-access.md): reverse proxies, https, cookies, passkeys and request sizes.
 - [The page](front-end.md): Preact, htm, the vendored libraries and the main files.

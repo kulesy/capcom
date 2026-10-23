@@ -2,13 +2,13 @@
 
 The tools GhostShell gives a session: its own `capcom` MCP server, and the Desktop features that are still Desktop only.
 
-GhostShell sessions get the standard Claude Code tools, the claude.ai connectors and the MCP servers in `~/.claude.json`. Desktop serves its own built-in tools from inside the Desktop app, so GhostShell cannot borrow them. It adds its own instead, the same way: a server called `capcom`, declared in the initialize request and answered over the session's stdio (`lib/tools.mjs`).
+GhostShell sessions get the standard Claude Code tools, the claude.ai connectors and the MCP servers in `~/.claude.json`, or in the `.claude.json` of the session's [account](configuration.md#accounts). Desktop serves its own built-in tools from inside the Desktop app, so GhostShell cannot borrow them. It adds its own instead, the same way: a server called `capcom`, declared in the initialize request and answered over the session's stdio (`lib/tools.mjs`).
 
 How sessions start, what they inherit from Desktop and how hand-off works are in [how it works](how-it-works.md#settings-follow-claude-desktop).
 
 ## Chips
 
-The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip).
+The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip) and runs on that session's [account](configuration.md#accounts).
 
 ## Chapters
 
@@ -16,7 +16,7 @@ The `mark_chapter` tool makes chapters, which show as titled dividers.
 
 ## Group sessions
 
-Each group's header has a button that opens the group's own chat at `#/g/<group id>`, and it lights with the chat's mark while that chat works or waits for you. The chat works in a private folder under GhostShell's state folder, shows the group's live status above the transcript, and gets three tools that reach that group alone: `list_group_sessions`, `read_group_session` and `start_group_session`. Starting a session always asks first, in every permission mode. [The decision record](adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
+Each group's header has a button that opens the group's own chat at `#/g/<group id>`, and it lights with the chat's mark while that chat works or waits for you. The chat works in a private folder under GhostShell's state folder, shows the group's live status above the transcript, and gets three tools that reach that group alone: `list_group_sessions`, `read_group_session` and `start_group_session`. Starting a session always asks first, in every permission mode. The chat runs on the [account](configuration.md#accounts) its members are on when you first open it, and the sessions it starts run on that account too. [The decision record](adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
 
 ### The group status
 

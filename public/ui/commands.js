@@ -8,9 +8,9 @@ const FRESH_MS = 60_000;
 const EDGE = 8;
 const asked = new Map();
 
-const keyOf = (what, target) => `${what}:${target.id ? `id:${target.id}` : `cwd:${target.cwd}`}`;
+const keyOf = (what, target) => `${what}:${target.id ? `id:${target.id}` : `cwd:${target.cwd}:${target.account || ''}`}`;
 
-// What the server lists under `what` ('commands' or 'models') for a chat (`{ id }`) or a folder (`{ cwd }`). An answer is reused for a
+// What the server lists under `what` ('commands' or 'models') for a chat (`{ id }`) or a folder (`{ cwd, account }`), as each account has its own. An answer is reused for a
 // minute, and a failed ask is forgotten so the next one asks again.
 function load(what, target) {
   const key = keyOf(what, target);

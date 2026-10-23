@@ -2,7 +2,7 @@
   "port": 4310,
   "claude": "claude",
   "desktopDir": "~/Library/Application Support/Claude",
-  "projectsDir": "~/.claude/projects",
+  "accounts": [{ "name": "Default", "configDir": "~/.claude" }],
   "stateDir": "~/.config/capcom",
   "defaultMode": "manual",
   "desktopHandoff": false,

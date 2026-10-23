@@ -22,7 +22,7 @@ const chevron = () => draw(['m9 18 6-6-6-6'], 'chevron');
 // session is listed with its state from when it was archived, which says nothing now.
 function Member({ r }) {
   const label = r.archived ? '' : DOT_LABEL[r.dot] ?? STATE_LABEL[r.state];
-  const where = [folderName(r.cwd, HOME), r.branch, label].filter(Boolean).join(' · ');
+  const where = [folderName(r.cwd, HOME), r.branch, r.account, label].filter(Boolean).join(' · ');
   return html`<li><a class="status-row" href=${`#/s/${enc(r.id)}`}>
     <span class="status-dot">${r.dot ? html`<span class="row-dot" data-dot=${r.dot} aria-hidden="true">${r.dot === 'error' ? draw(icons.triangleAlert) : null}</span>` : null}</span>
     <span class="status-title">${r.title || UNTITLED}</span>

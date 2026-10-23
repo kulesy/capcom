@@ -42,6 +42,8 @@ Chosen option: "Read the transcripts and Desktop's records, groups and pins", be
 
 **Amended 2026-10-22.** Capcom orders and marks the rows as Desktop does, so it reads more of Desktop's state, all of it read only. From each record it reads `createdAt`, `lastTurnEdgeAt`, `postTurnSummary.status_category`, `error` and `errorAt`. From the config it reads each section's sort (`dframe-code-sections`). From Desktop's Local Storage, a LevelDB folder that Desktop holds open, it reads two keys: the rows Desktop marks unread (`epitaxy-unread-v1`) and the times the owner acknowledged a row (`epitaxy-awaiting-ack-v1`). `lib/leveldb.mjs` reads them with positioned reads of the folder's files, and writes, locks and holds open nothing there. A folder Capcom cannot read leaves the list with no unread marks. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
 
+**Amended 2026-10-23.** The list now reads the transcripts in each configured account's `<configDir>/projects` folder, and skips one that does not exist yet. `projectsDir` in `config.json` is gone. See [Run each session on one Claude account](20261023-a-claude-account-per-kind-of-work.md).
+
 ### Consequences
 
 - ✅ The list shows Desktop's groups and pins, plus sessions that Desktop has no record of.

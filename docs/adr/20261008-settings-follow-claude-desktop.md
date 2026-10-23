@@ -36,6 +36,8 @@ The owner can still change the mode, model and effort for one chat from the prom
 
 **Amended 2026-10-23.** The owner had the folder picker removed, so recent folders are no longer one tap away. A new session always starts in the home folder, and the page asks `api/defaults` for that folder's settings. The server's `api/folders` route stays, but nothing in the page calls it. See [Match Desktop's flow for new sessions, settings, stopping and tool calls](20261014-desktop-like-prompt-box-flow.md).
 
+**Amended 2026-10-23.** `~/.claude/settings.json` above now means the `settings.json` in the config folder of the session's account. Desktop's mode for a folder and its effort still apply to every account, since Desktop has one login. See [Run each session on one Claude account](20261023-a-claude-account-per-kind-of-work.md).
+
 ### Consequences
 
 - ✅ A new session opens with the settings Desktop would give it in that folder.

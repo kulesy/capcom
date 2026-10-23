@@ -58,7 +58,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
-    jump: 0, earlierSeq: 0, context: null,
+    account: '', accounts: [], jump: 0, earlierSeq: 0, context: null,
   });
   const state = store.get;
   // A new session has no id until it starts, so it has no terminal.
@@ -358,13 +358,24 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   // ---- starting a session ------------------------------------------------------------------------------
 
-  // A new session starts the way Desktop would start one in the home folder: its mode there, and its effort.
+  // A new session starts the way Desktop would start one in the home folder: its mode there, and its effort. The account can change again
+  // before the answer comes, so only the answer to the latest ask is used.
+  let defaultsAsked = 0;
   async function loadDefaults() {
+    const mine = ++defaultsAsked;
     try {
-      const d = await api(`api/defaults?cwd=${enc(HOME)}`);
-      if (closed) return;
+      const d = await api(`api/defaults?cwd=${enc(HOME)}${touched.has('account') ? `&account=${enc(state().account)}` : ''}`);
+      if (closed || mine !== defaultsAsked) return;
+      store.set({ accounts: d.accounts || [], account: touched.has('account') ? state().account : d.account || '' });
       patchStatus({ ...(!touched.has('mode') && { mode: d.mode }), ...(!touched.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!touched.has('effort') && { effort: d.effort }) });
     } catch {}
+  }
+
+  // Each account has its own settings, so choosing one asks for the defaults again.
+  function setAccount(account) {
+    touched.add('account');
+    store.set({ account });
+    loadDefaults();
   }
 
   // The first message goes to the new session; the page follows once the list knows about it.
@@ -376,6 +387,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
       const { id: created } = await api('api/new', {
         cwd: HOME, text, mode: s.mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
+        ...(touched.has('account') && { account: state().account }),
       });
       onCreated();
       startedHere = { id: created, text, images, files };
@@ -394,6 +406,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   return {
     id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, startNew, notice, imageUrl, fileUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, setAccount, startNew, notice, imageUrl, fileUrl,
   };
 }

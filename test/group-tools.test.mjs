@@ -25,7 +25,7 @@ const thought = thinking => ({ type: 'assistant', message: { id: `t${Math.random
 
 function transcript(id, entries) {
   fs.writeFileSync(path.join(projects, '-work', `${id}.jsonl`), entries.map(e => `${JSON.stringify(e)}\n`).join(''));
-  indexTranscripts(projects, 0);
+  indexTranscripts([{ configDir: base }], 0);
 }
 
 const member = (id, extra) => ({ id, title: `Session ${id}`, cwd: `/work/${id}`, branch: 'main', state: 'idle', archived: false, lastActivityAt: NOW - 2 * 24 * 60 * MINUTE, ...extra });

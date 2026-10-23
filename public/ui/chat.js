@@ -33,7 +33,7 @@ function ChatHead({ ctrl, kind }) {
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
   const meta = draft
     ? 'Starts Claude Code in your home folder'
-    : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
+    : session ? [...place, status?.account || session.account, settingsLine(status)].filter(Boolean).join('  ') : '';
   const lamp = html`<span class="lamp" id="chatLamp" data-state=${state === 'idle' && outside ? 'working' : state} aria-hidden="true"></span>`;
   return html`<header class="chat-head">
     <${Back} />

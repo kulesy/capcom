@@ -20,7 +20,7 @@ A routine runs in GhostShell only once it is switched on here, so switch it off 
 
 The schedule is a five-field cron in the Mac's time zone, which GhostShell follows if it changes, with the routine's jitter added as a fixed offset, as Desktop does it: `30 7 * * 1-5` with 737 seconds of jitter fires at 07:42:17. GhostShell checks every 30 seconds, and once when it starts.
 
-A routine that is due starts a new session in its folder with its permission mode, model and effort. The first message is Desktop's: the text of `SKILL.md` after its frontmatter, inside the same `<scheduled-task>` wrapper. GhostShell reads the file again at each run, so an edit applies at once.
+A routine that is due starts a new session in its folder with its permission mode, model and effort, on the [account](configuration.md#accounts) its `account` names in `routines.json` or else its folder's. The first message is Desktop's: the text of `SKILL.md` after its frontmatter, inside the same `<scheduled-task>` wrapper. GhostShell reads the file again at each run, so an edit applies at once.
 
 ## Missed runs
 

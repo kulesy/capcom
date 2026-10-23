@@ -67,7 +67,7 @@ export function focusNextComposer() {
 }
 
 export function Composer({ ctrl }) {
-  const { status, starting, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session');
+  const { status, starting, account, accounts, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'account', 'accounts', 'terminal', 'session');
   const images = useStore(attached, a => a.images);
   const files = useStore(attached, a => a.files);
   const preparing = useStore(attached, a => a.preparing);
@@ -100,7 +100,7 @@ export function Composer({ ctrl }) {
   // The / list opens while the first word of the message is being typed, with the caret in it.
   const typed = caret === null ? null : typedCommand(text, caret);
   const query = typed ? typed.query : null;
-  const target = draft ? { cwd: HOME } : { id: ctrl.id };
+  const target = draft ? { cwd: HOME, account: account || undefined } : { id: ctrl.id };
   const { commands, error } = useCommands(target, query !== null && focused);
   const matches = useMemo(() => (commands && query !== null ? matching(commands, query) : []), [commands, query]);
   const open = query !== null && focused && !composing && dismissed !== query && (!commands || matches.length > 0);
@@ -306,6 +306,7 @@ export function Composer({ ctrl }) {
     <div class="composer-bar">
       <div class="composer-left">
         <${Pick} id="mode" label="Permission mode" value=${s.mode || 'manual'} options=${MODES} disabled=${!status} onChange=${ctrl.setMode} />
+        ${draft && accounts.length > 1 ? html`<${Pick} id="account" label="Account" value=${account} options=${accounts.map(name => [name, name])} onChange=${ctrl.setAccount} />` : null}
       </div>
       <div class="composer-right">
         <button class="btn pick" id="model" type="button" data-variant="ghost" data-size="sm" disabled=${!status} aria-label=${buttonLabel(look)} aria-haspopup="menu" aria-expanded=${!!shown}

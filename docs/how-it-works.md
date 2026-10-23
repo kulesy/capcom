@@ -6,7 +6,7 @@ Where sessions come from, how a chat runs, how approvals and settings work, how 
 
 Sessions come from two places, and GhostShell reads both without writing to either.
 
-- Claude Code saves every session as a JSON lines file under `~/.claude/projects`.
+- Claude Code saves every session as a JSON lines file under the `projects` folder of its [account](configuration.md#accounts), `~/.claude/projects` for the default one.
 - Claude Desktop keeps its titles, groups and pins under `~/Library/Application Support/Claude`.
 
 GhostShell reads the titles, the records and the links between sessions each time, and the groups and pins once (see [groups and pins](session-list.md#groups-and-pins) and [nested sessions](session-list.md#nested-sessions)). Those Desktop files are internal and undocumented. When a Desktop update moves them, the list carries on from the session files alone and says so at the top.
@@ -19,7 +19,7 @@ A chat runs the real CLI headless, one process per open chat:
 claude -p --input-format stream-json --output-format stream-json --permission-prompt-tool stdio
 ```
 
-An existing session adds `--resume <id>`. The process uses your normal login, skills, hooks and MCP servers. It stops after 30 idle minutes and starts again on the next message.
+An existing session adds `--resume <id>`. The process uses the login, skills, hooks and MCP servers of the session's account, which for the default account are your normal ones. It stops after 30 idle minutes and starts again on the next message.
 
 The [chat page](chat.md) covers the prompt box, live work and messages between chats.
 
@@ -33,9 +33,9 @@ Approvals arrive from the CLI as permission requests and show as cards above the
 
 A session Desktop knows continues with the permission mode, model and effort Desktop recorded for it. Any other session, and every new one, gets:
 
-- Desktop's mode for that folder, falling back to `permissions.defaultMode` in `~/.claude/settings.json`.
+- Desktop's mode for that folder, falling back to `permissions.defaultMode` in the account's `settings.json` (`~/.claude/settings.json` for the default account).
 - Desktop's effort level.
-- The model from `~/.claude/settings.json`.
+- The model from the account's `settings.json`.
 
 You can change the mode, model, effort and fast mode per chat from the [prompt box](chat.md#the-prompt-box).
 
@@ -43,7 +43,7 @@ You can change the mode, model, effort and fast mode per chat from the [prompt b
 
 Sessions started in GhostShell stay in GhostShell, under "Started here", and do not appear in Desktop's sidebar.
 
-With `desktopHandoff` set to `true` (see [configuration](configuration.md#desktophandoff)), GhostShell hands each new session to Desktop when its first reply finishes. It stops its own process for the session, adds a title to the transcript, and opens Desktop's hand-off link (`claude://resume?session=<id>`). Desktop adds the session to its sidebar and switches its window to it. The next message sent from GhostShell starts the process again.
+With `desktopHandoff` set to `true` (see [configuration](configuration.md#desktophandoff)), GhostShell hands each new session to Desktop when its first reply finishes. It stops its own process for the session, adds a title to the transcript, and opens Desktop's hand-off link (`claude://resume?session=<id>`). Desktop adds the session to its sidebar and switches its window to it. The next message sent from GhostShell starts the process again. Desktop has one login, so GhostShell hands over only sessions on the default account.
 
 ## A session open in both apps
 

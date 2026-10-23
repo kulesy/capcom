@@ -58,7 +58,8 @@ const freePort = () => new Promise(resolve => {
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
 // lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
-// happened. `fields` is merged over the record last, so a key set to undefined is left out of it.
+// happened. `fields` is merged over the record last, so a key set to undefined is left out of it. `account` is the name of the account whose config
+// folder holds the transcript, and none puts it in ~/.claude. A list of names writes one in each.
 // A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are, and so is a session's `remoteMcpServersConfig`, a null included. A record has no such key without it.
 // `parent` is the id of the session Desktop links this one to, as a side chat: the record's `spawnedFrom` names it with `sideSession` true. `spawnedFrom` and
@@ -67,12 +68,18 @@ const freePort = () => new Promise(resolve => {
 // Local Storage, with the ids of the sessions it marks `unread` and the minutes ago it `acked` each id, and writes a key only for what it is given. `marks` is
 // Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`. `chips` are the chips in chips.json, each
 // { sessionId, startedId, status } with the other fields as they are, a `toolUseId` made up when it has none, and `status` open unless it is given.
-function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips }) {
+// `accounts` is the server's list, { name, configDir, folders }, with `~/` meaning the test's home. Each gets its config folder made, unless it is `absent`,
+// as one never logged in has none. `env` is added to the server's environment. The fake CLI takes its transcripts from CLAUDE_CONFIG_DIR, as the real one
+// does, logs it as `configDir`, CLAUDE_SECURESTORAGE_CONFIG_DIR as `secureStorage` and the API key and token variables it was given as `ambient`, when they are set, and sent 'begin a saved session' it names its
+// session as for 'begin a session' and writes the transcript too. A routine's prompt, which opens with <scheduled-task, begins a session as well.
+function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips, accounts, env }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
-  const transcripts = path.join(home, '.claude', 'projects', '-test-folder');
+  const places = (accounts ?? []).map(a => ({ ...a, dir: a.configDir.startsWith('~/') ? path.join(home, a.configDir.slice(2)) : a.configDir }));
+  for (const a of places) if (!a.absent) fs.mkdirSync(a.dir, { recursive: true });
+  const transcriptsOf = name => path.join(name ? places.find(a => a.name === name).dir : path.join(home, '.claude'), 'projects', '-test-folder');
   fs.mkdirSync(records, { recursive: true });
-  fs.mkdirSync(transcripts, { recursive: true });
+  fs.mkdirSync(transcriptsOf(), { recursive: true });
   const now = Date.now();
   const back = minutes => now - minutes * 60_000;
   const sectionScopes = Array.isArray(sections) ? { scope: sections } : sections;
@@ -101,7 +108,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];
-  sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }) => {
+  sessions.forEach(({ account, id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }) => {
     const at = back(ago);
     if (source === 'desktop') {
       const record = path.join(records, `local_${id}.json`);
@@ -118,9 +125,12 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
       }
     }
     if (source === 'capcom') started.push({ id, cwd: home, at, title });
-    const transcript = path.join(transcripts, `${id}.jsonl`);
-    fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
-    fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);
+    for (const name of [].concat(account ?? [undefined])) {
+      fs.mkdirSync(transcriptsOf(name), { recursive: true });
+      const transcript = path.join(transcriptsOf(name), `${id}.jsonl`);
+      fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
+      fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);
+    }
   });
   if (started.length) fs.writeFileSync(path.join(state, 'started.json'), JSON.stringify(started));
   fs.writeFileSync(path.join(state, 'layout.json'), JSON.stringify({
@@ -130,7 +140,8 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     assignments: Object.fromEntries(sessions.filter(s => s.group && !s.pinned).map(s => [s.id, s.group])),
     ...layout,
   }, null, 2));
-  if (!claude) return {};
+  const made = { env: { ...(accounts && { CAPCOM_ACCOUNTS: JSON.stringify(accounts.map(({ name, configDir, folders }) => ({ name, configDir, ...(folders && { folders }) }))) }), ...env } };
+  if (!claude) return made;
   const log = path.join(home, 'claude.log');
   const cli = path.join(home, 'claude');
   const usageFile = path.join(home, 'context-usage.json');
@@ -141,10 +152,12 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "import readline from 'node:readline';",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
-    "note({ started: process.argv.slice(2), cwd: process.cwd() });",
+    "const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(process.env.HOME, '.claude');",
+    "const ambient = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'].filter(name => process.env[name] !== undefined);",
+    "note({ started: process.argv.slice(2), cwd: process.cwd(), configDir: process.env.CLAUDE_CONFIG_DIR, secureStorage: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR, ...(ambient.length && { ambient }) });",
     "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
     "const namedId = process.argv.includes('--session-id') ? process.argv[process.argv.indexOf('--session-id') + 1] : null;",
-    "const projects = path.join(process.env.HOME, '.claude', 'projects');",
+    "const projects = path.join(configDir, 'projects');",
     "const transcriptOf = id => (fs.existsSync(projects) ? fs.readdirSync(projects).map(d => path.join(projects, d, `${id}.jsonl`)).find(f => fs.existsSync(f)) : undefined);",
     // The real CLI exits at once when --session-id names a session that already has a transcript (checked on CLI 2.1.309).
     "if (namedId && transcriptOf(namedId)) { process.stderr.write(`Error: Session ID ${namedId} is already in use.\\n`); process.exit(1); }",
@@ -189,7 +202,11 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
-    "    if (said === 'begin a session' || said.startsWith('@\\\"')) {",
+    "    if (said === 'begin a saved session') {",
+    "      fs.mkdirSync(path.join(projects, '-saved-folder'), { recursive: true });",
+    "      fs.writeFileSync(path.join(projects, '-saved-folder', 'begun-by-the-fake.jsonl'), JSON.stringify({ type: 'user', cwd: process.cwd(), message: { role: 'user', content: m.message.content } }) + '\\n');",
+    "    }",
+    "    if (said === 'begin a session' || said === 'begin a saved session' || said.startsWith('<scheduled-task') || said.startsWith('@\\\"')) {",
     "      say({ type: 'system', subtype: 'init', session_id: namedId || 'begun-by-the-fake', model: 'stub' });",
     "      begun = true;",
     "    }",
@@ -197,7 +214,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "}).on('close', () => { note({ closed: true }); process.exit(0); });",
     '',
   ].join('\n'), { mode: 0o755 });
-  return { cli, log };
+  return { ...made, cli, log };
 }
 
 export async function start(mac) {
@@ -211,7 +228,7 @@ export async function start(mac) {
 
 async function launch(home, state, made) {
   const port = await freePort();
-  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }) };
+  const env = { ...process.env, HOME: home, PORT: String(port), CAPCOM_STATE: state, ...(made.cli && { CAPCOM_CLAUDE: made.cli }), ...made.env };
   const child = spawn(process.execPath, ['server.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });

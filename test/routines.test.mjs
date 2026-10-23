@@ -570,7 +570,7 @@ test('a routines.json that cannot be read stops the check without throwing, and 
 test('the list shows each routine with its next fire in local time, whether it is running, and what is wrong with it', () => {
   const r = rig({ enabled: false });
   const [item] = r.sched.list().routines;
-  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'enabled', 'enabledInDesktop', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'running', 'next', 'problem']);
+  assert.deepEqual(Object.keys(item), ['id', 'title', 'cron', 'jitterSeconds', 'file', 'cwd', 'model', 'effort', 'mode', 'account', 'enabled', 'enabledInDesktop', 'armedAt', 'lastRunAt', 'lastSessionId', 'lastError', 'skipped', 'running', 'next', 'problem']);
   assert.deepEqual([item.id, item.title, item.enabled, item.enabledInDesktop, item.running, item.problem], ['demo', 'Demo routine', false, true, false, null]);
   assert.equal(item.next, '2026-10-16T07:42:17+11:00');
   r.store.update('demo', { cron: 'nonsense' });

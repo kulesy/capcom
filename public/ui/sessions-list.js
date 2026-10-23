@@ -34,7 +34,7 @@ function RowLink({ r, title = r.title, current, lifted, marked, picked, drop, ov
   const timed = r.turnStart != null;
   useClock(timed, r.turnStart);
   const last = when(r.lastActivityAt);
-  const where = [folderName(r.cwd, HOME), r.branch, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const where = [folderName(r.cwd, HOME), r.branch, r.account, DOT_LABEL[r.dot] ?? STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   const at = title === last ? '' : last;
   const detail = [where, at].filter(Boolean).join(' · ');
   return html`<a class="row" href=${sessionHash(r.id)} data-id=${r.id} draggable=${false} data-lifted=${lifted || null} data-menu=${marked || null} data-picked=${picked || null}

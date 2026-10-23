@@ -74,7 +74,7 @@ function Words({ it }) {
       <span data-part="hit-meta">${meta}</span>${v.count === undefined ? null : html`<span data-part="hit-time">${v.count}</span>`}`;
   }
   const { r } = it;
-  const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join(' · ');
+  const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.account, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join(' · ');
   return html`<span class="lamp" data-state=${r.state} aria-hidden="true"></span><span data-part="hit-title">${r.title || UNTITLED}</span>
     ${meta ? html`<span data-part="hit-meta">${meta}</span>` : null}<time data-part="hit-time">${when(r.archived ? r.archivedAt : r.lastActivityAt)}</time>`;
 }

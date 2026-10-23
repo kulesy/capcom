@@ -7,16 +7,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream';
+import { byDir, byName, forFolder, isDefaultDir, makeRecords } from './lib/accounts.mjs';
 import { cfg, ROOT } from './lib/config.mjs';
 import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
-import { ensureGroupDir, groupDir, guideFor, workFolder } from './lib/groups.mjs';
+import { ensureGroupDir, groupDir, guideFor, refusal, workFolder } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
-import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
+import { findTranscripts, indexTranscripts, transcriptFor, unreadableAccounts, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
 import { readImages, MAX_BODY_BYTES } from './lib/images.mjs';
 import { isSlashCommand, makeUploads, MAX_FILE_BYTES, MAX_FILES, withMentions } from './lib/uploads.mjs';
 import { createOutside, STALE_MS } from './lib/outside.mjs';
@@ -37,6 +38,7 @@ const layout = makeLayout(cfg.stateDir);
 const marks = makeMarks(cfg.stateDir);
 const windows = makeWindows(cfg.stateDir);
 const uploads = makeUploads(cfg.stateDir);
+const records = makeRecords(cfg.stateDir);
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -116,7 +118,7 @@ const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepF
 function buildIndex({ archived = false } = {}) {
   const desk = loadDesktop(cfg.desktopDir);
   const own = layout.read();
-  const files = indexTranscripts(cfg.projectsDir);
+  const files = indexTranscripts(cfg.accounts);
   const live = activeStates();
   const started = new Map(readStarted().map(s => [s.id, s]));
   const now = Date.now();
@@ -248,7 +250,7 @@ const shown = items => items.filter(i => i.kind !== 'result').length;
 
 function readMessages(id, q) {
   let t = transcriptFor(id);
-  if (!t) { indexTranscripts(cfg.projectsDir, 0); t = transcriptFor(id); }
+  if (!t) { indexTranscripts(cfg.accounts, 0); t = transcriptFor(id); }
   if (!t) return { items: [], start: 0, end: 0, hasEarlier: false };
   const row = findRow(id);
   const cwd = row?.cwd || '';
@@ -268,32 +270,141 @@ function readMessages(id, q) {
   return { items, start, end, hasEarlier: start > 0, ...(reset ? { reset: true } : {}) };
 }
 
-// Settings follow Claude Desktop: a session Desktop knows keeps the mode, model and effort it recorded, and
-// anything else gets Desktop's mode for that folder, Desktop's effort, and the model in ~/.claude/settings.json.
-const MODE_NAMES = { default: 'manual' };
-function readUserSettings() {
-  try { return JSON.parse(fs.readFileSync(path.join(process.env.HOME, '.claude', 'settings.json'), 'utf8')); } catch { return {}; }
+// ---- accounts ------------------------------------------------------------------------------------
+// A session runs on one Claude account for its whole life. See docs/adr/20261023-a-claude-account-per-kind-of-work.md.
+
+const manyAccounts = cfg.accounts.length > 1;
+// The account's name, for a status or a row, and only when there is a choice of account to show.
+const accountField = account => (manyAccounts && account ? { account: account.name } : {});
+const statusOf = chat => ({ ...chat.status(), ...accountField(chat.account) });
+const nameOf = configDir => byDir(cfg.accounts, configDir)?.name ?? configDir;
+const absent = value => value === undefined || value === null;
+
+// The account a start asked for by name, or the folder's default, or null when the name is not one of the accounts.
+const chosenAccount = (name, cwd) => (absent(name) ? forFolder(cfg.accounts, cwd) : byName(cfg.accounts, name));
+
+const groupOfSession = id => layout.read().groups.find(g => g.session === id)?.id ?? null;
+
+// A group's chat starts on the account every member with a transcript sits under, or on the first account when they differ.
+function groupAccount(groupId) {
+  const { rows } = buildIndex({ archived: true });
+  const dirs = new Set([...rows.values()].filter(r => r.group === groupId).map(r => transcriptFor(r.id)?.account).filter(Boolean));
+  return (dirs.size === 1 && byDir(cfg.accounts, [...dirs][0])) || cfg.accounts[0];
 }
 
-function desktopSettings(row) {
+// Where a group's chat booked before accounts may have left its transcript: every listed account, ~/.claude, and the folder this server was
+// started with, which accountEnv takes out of the environment of every session.
+const LEGACY_FOLDERS = [...new Set([...cfg.accounts.map(a => a.configDir), path.join(os.homedir(), '.claude'), ...(process.env.CLAUDE_CONFIG_DIR ? [path.resolve(process.env.CLAUDE_CONFIG_DIR)] : [])])];
+
+// The account a session runs on, worked out at each spawn from where it already lives: its transcript first, as the CLI resumes only there, and
+// a record that disagrees refuses it. Then its record, then the chat running it. With none of these it is refused, never taken for new, except a
+// group's chat booked before accounts (no record), which is new only when none of LEGACY_FOLDERS holds a transcript, read now.
+function settle(id, row) {
+  const t = transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id));
+  const recorded = records.get(id);
+  const stuck = unreadableAccounts().map(nameOf);
+  if (t) {
+    if (t.alsoIn?.length) throw refuse(409, `Session ${id} has a transcript under both ${[t.account, ...t.alsoIn].map(nameOf).join(' and ')}, so GhostShell will not pick one. Move one of the two files away.`);
+    if (recorded && recorded !== t.account) throw refuse(409, `Session ${id} started on the ${nameOf(recorded)} account but its transcript is under the ${nameOf(t.account)} account, so GhostShell will not pick one. Check which holds the session, then correct its entry in accounts.json or move the stray transcript away.`);
+    // A copy may sit in a folder that cannot be read, and with no record there is nothing to say which account the session started on.
+    if (!recorded && stuck.length) throw refuse(409, `GhostShell cannot tell whether session ${id} also has a transcript under the ${stuck.join(' and ')} account, as it cannot read its sessions.`);
+    return { account: byDir(cfg.accounts, t.account), unrecorded: !recorded };
+  }
+  if (recorded) {
+    const account = byDir(cfg.accounts, recorded);
+    if (!account) throw refuse(409, `This session started on the account in ${recorded}, which config.json no longer lists. Add that account back to use the session.`);
+    return { account };
+  }
+  const open = getChat(id)?.account;
+  if (open) return { account: open };
+  const cannotRead = stuck.length ? ` as it cannot read the sessions of the ${stuck.join(' and ')} account` : '';
+  const group = row?.groupSession ?? groupOfSession(id);
+  if (!group) throw refuse(409, `GhostShell cannot tell which account this session is on${cannotRead}.`);
+  if (stuck.length) throw refuse(409, `GhostShell cannot tell whether this group's chat is new,${cannotRead}.`);
+  let seen;
+  try {
+    seen = findTranscripts(id, LEGACY_FOLDERS);
+  } catch (e) {
+    throw refuse(409, `GhostShell cannot tell whether this group's chat is new, as it could not read ${e.path ?? 'a projects folder'} (${e.code ?? e.message}).`);
+  }
+  if (!seen.length) return { account: groupAccount(group), unrecorded: true };
+  const owners = [...new Set(seen.map(f => f.configDir))];
+  const only = owners.length === 1 && byDir(cfg.accounts, owners[0]);
+  if (only) return { account: only, unrecorded: true };
+  throw refuse(409, `This group's chat has a transcript in ${seen.map(f => path.dirname(f.file)).join(' and ')}, which GhostShell cannot match to one account in config.json. Add the account that owns it, or move the file away.`);
+}
+
+const accountOf = (id, row) => settle(id, row).account;
+
+// A list is no place to fail over a record that cannot be read, so a row without a transcript shows no account then.
+const recordedDir = id => {
+  try { return records.get(id); } catch { return null; }
+};
+
+// For showing a session, where a refusal is no answer: the account when there is one to show.
+function viewAccount(id, row) {
+  try {
+    return accountOf(id, row);
+  } catch (e) {
+    if (e.status) return null;
+    throw e;
+  }
+}
+
+// Whether two paths are one folder on disk, through links and case. A folder that is not there is no folder of anyone's.
+function sameFolder(a, b) {
+  try {
+    const [x, y] = [a, b].map(p => fs.statSync(p, { bigint: true }));
+    return x.dev === y.dev && x.ino === y.ino;
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return false;
+    throw refuse(409, `GhostShell could not check whether ${a} and ${b} are one folder (${e.code ?? e.message}).`);
+  }
+}
+
+// The CLI would make a config folder that is not there and ask for a login in it, so a start on an account never logged in is refused first.
+// An account whose folder is another spelling of ~/.claude or of another account's would run with CLAUDE_CONFIG_DIR set to a login of its own.
+function requireLogin(account) {
+  if (!isDirectory(account.configDir)) throw refuse(409, `The ${account.name} account is not logged in yet. In a terminal run CLAUDE_CONFIG_DIR=${account.configDir} claude, then use /login.`);
+  const alias = `The ${account.name} account's folder ${account.configDir} is the same folder as`;
+  if (!isDefaultDir(account.configDir) && sameFolder(account.configDir, path.join(os.homedir(), '.claude'))) throw refuse(409, `${alias} ~/.claude, so it would run on a different login from Claude Desktop's. List that folder as ~/.claude in accounts.`);
+  const twin = cfg.accounts.find(a => a.configDir !== account.configDir && sameFolder(a.configDir, account.configDir));
+  if (twin) throw refuse(409, `${alias} the ${twin.name} account's, ${twin.configDir}, so GhostShell cannot tell their sessions apart. List that folder once in accounts.`);
+}
+
+// Settings follow Claude Desktop: a session Desktop knows keeps the mode, model and effort it recorded, and
+// anything else gets Desktop's mode for that folder, Desktop's effort, and the model in its account's settings.json.
+const MODE_NAMES = { default: 'manual' };
+function readUserSettings(account) {
+  if (!account) return {};
+  try { return JSON.parse(fs.readFileSync(path.join(account.configDir, 'settings.json'), 'utf8')); } catch { return {}; }
+}
+
+function desktopSettings(row, account) {
   const desk = loadDesktop(cfg.desktopDir);
-  const user = readUserSettings();
+  const user = readUserSettings(account);
   const mode = [row?.permissionMode, desk.folderModes[row?.cwd], user.permissions?.defaultMode]
     .map(m => MODE_NAMES[m] || m).find(m => MODES.includes(m)) || cfg.defaultMode;
   return { mode, model: row?.model || null, shownModel: row?.model || user.model || null, effort: row?.effort || desk.effort || null };
 }
 
 // What Desktop would use, with whatever model, effort and fast mode was picked here laid over it.
-function settingsFor(id, row) {
+function settingsFor(id, row, account) {
   const { model, effort, fast } = readPicks()[id] || {};
-  return { ...desktopSettings(row), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
+  return { ...desktopSettings(row, account), ...(model && { model, shownModel: model }), ...(effort && { effort }), ...(fast && { fast }), chrome: cfg.chrome };
 }
 
-async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine }) {
-  const s = desktopSettings({ cwd });
-  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, chips });
+async function newSession({ cwd, text, images = [], documents = [], files = [], mode, model, effort, fast, title, routine, account }) {
+  requireLogin(account);
+  const s = desktopSettings({ cwd }, account);
+  const chat = await startChat({ cwd, mode: mode || s.mode, model: model || s.model, shownModel: model || s.shownModel, effort: effort || s.effort, fast, text: withMentions(files, text), images, documents, chrome: cfg.chrome, claude: cfg.claude, account, chips });
   dropFastOnRefusal(chat);
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
+  try {
+    records.record(chat.id, account.configDir);
+  } catch (e) {
+    console.error(`Could not record the account of session ${chat.id}: ${e.message}`);
+  }
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
     const named = title || text.trim() || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
@@ -303,7 +414,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   } catch (e) {
     console.error(`Could not record session ${chat.id}: ${e.message}`);
   }
-  if (cfg.desktopHandoff && !routine) afterTurn(chat, () => handOff(chat.id));
+  if (cfg.desktopHandoff && !routine && isDefaultDir(account.configDir)) afterTurn(chat, () => handOff(chat.id));
   return chat.id;
 }
 
@@ -331,16 +442,23 @@ function groupCtx(groupId) {
       return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
     },
     pending: id => getChat(id)?.status().pending ?? [],
+    // The session takes the account the group's chat is on, looked up now. A refusal is worded for the model.
     async start({ cwd, prompt, title }) {
-      const id = await newSession({ cwd, text: prompt, title });
-      return { id, placed: placeInGroup(id, groupId) };
+      try {
+        const chat = layout.read().groups.find(g => g.id === groupId)?.session;
+        if (!chat) throw refuse(409, 'This group has no chat to take an account from.');
+        const id = await newSession({ cwd, text: prompt, title, account: accountOf(chat, findRow(chat)) });
+        return { id, placed: placeInGroup(id, groupId) };
+      } catch (e) {
+        throw e.status ? refusal(e.message) : e;
+      }
     },
   };
 }
 
 // The CLI refuses --session-id for an id that has a transcript and --resume for one that has none, so each spawn asks. The index is rescanned
 // once before a no, since a transcript written a moment ago may not be in it yet.
-const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id)));
+const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id)));
 
 // Booked when the owner first opens a group's chat. It makes the folder and writes the id and starts nothing, so it costs no tokens, and it is
 // synchronous, so two tabs opening it together get the same id.
@@ -351,7 +469,12 @@ function bookGroupSession(groupId) {
   } catch (e) {
     throw refuse(500, `Could not make the group's folder: ${e.message}`);
   }
-  return layout.claimGroupSession(groupId, () => crypto.randomUUID());
+  // A new id is recorded before it is booked, so a chat booked now is never mistaken for one that may have a transcript somewhere unseen.
+  return layout.claimGroupSession(groupId, () => {
+    const id = crypto.randomUUID();
+    records.record(id, groupAccount(groupId).configDir);
+    return id;
+  });
 }
 
 // ---- routines ------------------------------------------------------------------------------------
@@ -362,6 +485,7 @@ function routineProblem(r) {
   if (r.mode && !MODES.includes(r.mode)) return `Unknown permission mode ${r.mode}.`;
   if (r.model && !MODEL.test(r.model)) return `Unknown model ${r.model}.`;
   if (r.effort && !EFFORTS.includes(r.effort)) return `Unknown effort level ${r.effort}.`;
+  if (!absent(r.account) && !byName(cfg.accounts, r.account)) return `Unknown account ${r.account}.`;
   return null;
 }
 
@@ -369,7 +493,7 @@ function routineProblem(r) {
 const routines = makeScheduler({
   store: makeRoutines(cfg.stateDir),
   check: routineProblem,
-  start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
+  start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id, account: chosenAccount(r.account, r.cwd) }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
   stop: id => { const chat = getChat(id); if (chat) { chat.interrupt(); chat.stop(); } },
@@ -394,12 +518,21 @@ function afterTurn(chat, fn) {
 async function handOff(id) {
   const s = readStarted().find(x => x.id === id);
   if (!s || s.desktopAt) return;
+  // Desktop has one login, so a session on any other account, or one whose account is in doubt, stays out of it.
+  let account;
+  try {
+    account = accountOf(id);
+  } catch (e) {
+    if (e.status) return;
+    throw e;
+  }
+  if (!isDefaultDir(account.configDir)) return;
   // Capcom's process is stopped first, so the two apps never run the session at once. The next message here starts it again.
   const chat = getChat(id);
   if (chat && chat.state !== 'idle') return afterTurn(chat, () => handOff(id));
   if (chat?.proc) { const exited = new Promise(done => chat.proc.once('exit', done)); chat.stop(); await exited; }
   if (getChat(id)?.proc) return afterTurn(getChat(id), () => handOff(id));
-  const t = indexTranscripts(cfg.projectsDir, 0).get(id);
+  const t = indexTranscripts(cfg.accounts, 0).get(id);
   if (!t) return;
   if (inDesktop(id)) return markStarted(id, { desktopAt: Date.now() });
   if (!fs.readFileSync(t.file, 'utf8').includes('"type":"custom-title"')) {
@@ -475,16 +608,24 @@ function loginPage(message = '') {
   return page('login.html').replace('{{message}}', message);
 }
 
+// Throws a refusal with a status when the session's account cannot be settled, is not logged in, or is not the one a chat of it is already on,
+// and then starts nothing.
 function ensureChat(id, row, { mode } = {}) {
   const groupId = row?.groupSession;
+  const { account, unrecorded } = settle(id, row);
+  requireLogin(account);
+  const open = getChat(id)?.account;
+  if (open && open.configDir !== account.configDir) throw refuse(409, `Session ${id} is running on the ${open.name} account but is now found on the ${account.name} account, so GhostShell will not move it.`);
+  // A session with no record is recorded only now, with the login known to be there and the spawn next.
+  if (unrecorded) records.record(id, account.configDir);
   // A group's session starts on what a new session in its folder would, and has the group's tools and standing instructions.
-  const s = settingsFor(id, groupId ? { cwd: row.cwd } : row);
+  const s = settingsFor(id, groupId ? { cwd: row.cwd } : row, account);
   const group = groupId && {
     group: groupCtx(groupId),
     instructions: () => guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title),
     fresh: () => !hasTranscript(id),
   };
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group });
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, account, chips, ...group });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
@@ -548,11 +689,12 @@ async function contextFor(id, detail) {
     if (asked && chat.model === asked) windows.learn(asked, figure);
     return { source: 'process', detail, ...figure };
   }
-  const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+  const t = transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id));
   const found = t && lastReply(t.file);
   if (!found) return { source: 'none' };
   if (found.compacted) return { source: 'none', compacted: true };
-  return transcriptFigure(found, windows.get(modelKey(chat || settingsFor(id, findRow(id)))));
+  const row = findRow(id);
+  return transcriptFigure(found, windows.get(modelKey(chat || settingsFor(id, row, viewAccount(id, row)))));
 }
 
 // What the page redraws from. The clock is left out because it moves on every read.
@@ -579,7 +721,14 @@ function events(req, res, id) {
     write(ev.type, ev.data);
   };
   const row = findRow(id);
-  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), outside: first });
+  // A session whose account is refused still opens, with its settings from no account, and the page is told why it will not run.
+  let account = null;
+  let refused = '';
+  if (!chat) {
+    try { account = accountOf(id, row); } catch (e) { if (!e.status) throw e; refused = e.message; }
+  }
+  write('status', { ...(chat ? statusOf(chat) : { state: 'idle', running: false, ...settingsFor(id, row, account), ...accountField(account), live: '', pending: [] }), outside: first });
+  if (refused) write('error', { message: refused });
   if (!row?.groupSession) write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
@@ -591,7 +740,7 @@ function events(req, res, id) {
   // A group's session has no file until its first message, which a chat of ours sends, so the index is not rescanned for one while no chat of ours runs it.
   const groupChat = !!findRow(id)?.groupSession;
   const watch = setInterval(() => {
-    const t = transcriptFor(id) || (groupChat && !getChat(id) ? null : (indexTranscripts(cfg.projectsDir, 3000), transcriptFor(id)));
+    const t = transcriptFor(id) || (groupChat && !getChat(id) ? null : (indexTranscripts(cfg.accounts, 3000), transcriptFor(id)));
     if (!t) return;
     let now;
     try { now = fs.statSync(t.file).size; } catch { return; }
@@ -611,6 +760,11 @@ function events(req, res, id) {
 
 const NO_SESSION = 'No session with that id on this Mac.';
 const refuse = (status, message) => Object.assign(new Error(message), { status });
+// The reply to a refusal thrown while working out an account, which is a plain answer and no crash. Anything without a status is a bug and goes on up.
+const declined = (res, e) => {
+  if (!e.status) throw e;
+  return send(res, e.status, { error: e.message });
+};
 
 async function editLayout(req, res, change) {
   const body = await readJson(req);
@@ -709,26 +863,33 @@ async function editStructure(req, res, change) {
 }
 
 // What the CLI lists under `key` for a session or a folder, named in the body as `id` or `cwd`. A chat with a process answers from its own
-// reply, and anything else from a probe of its folder.
+// reply, and anything else from a probe of its folder on the session's account, or on the `account` named beside a folder (the folder's default if none).
 async function askLists(req, res, key, list) {
   const body = await readJson(req, 10_000);
   if (!body) return send(res, 400, { error: 'Send a JSON body.' });
   const { id, cwd } = body;
   let folder = cwd;
+  let account;
   if (typeof id === 'string') {
     if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
     const known = getChat(id)?.[key];
     if (known) return send(res, 200, { [key]: known });
     const row = findRow(id);
     if (!row) return send(res, 404, { error: NO_SESSION });
+    try { account = accountOf(id, row); } catch (e) { return declined(res, e); }
     folder = row.cwd && fs.existsSync(row.cwd) ? row.cwd : os.homedir();
   } else if (cwd === undefined) {
     return send(res, 400, { error: 'Which session or folder?' });
   } else if (typeof cwd !== 'string' || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) {
     return send(res, 400, { error: 'That folder does not exist on this Mac.' });
+  } else {
+    account = chosenAccount(body.account, cwd);
+    if (!account) return send(res, 400, { error: 'Unknown account.' });
   }
+  // A probe starts the CLI, which would make the config folder of an account never logged in and ask for a login in it.
+  try { requireLogin(account); } catch (e) { return declined(res, e); }
   try {
-    return send(res, 200, { [key]: await list(folder, cfg.claude) });
+    return send(res, 200, { [key]: await list(folder, cfg.claude, { account }) });
   } catch (e) {
     return send(res, 502, { error: e.message });
   }
@@ -841,11 +1002,18 @@ function handBashToClaude(id, { run, stdout, stderr }) {
   const row = findRow(id);
   if (!row) return null;
   const text = handOffText({ command: run.command, stdout, stderr });
-  if (readUserSettings().respondToBashCommands === false) {
-    terminal.hold(id, text);
-    return 'held';
+  // A session whose account is refused cannot take the result, and the command has run, so this says why and the result is not delivered.
+  try {
+    if (readUserSettings(accountOf(id, row)).respondToBashCommands === false) {
+      terminal.hold(id, text);
+      return 'held';
+    }
+    ensureChat(id, row).send(text);
+  } catch (e) {
+    if (!e.status) throw e;
+    console.error(`Could not hand the result of a command to Claude: ${e.message}`);
+    return null;
   }
-  ensureChat(id, row).send(text);
   if (row.archived) unarchive(id);
   return 'sent';
 }
@@ -917,6 +1085,10 @@ async function api(req, res, u) {
       }
       // Active also means any write in the last 2 minutes, so only a turn found open in the transcript counts as running in another app.
       r.dot = dotFor(r, r.state === 'active' && !!turn, shared);
+      if (manyAccounts) {
+        const account = byDir(cfg.accounts, transcriptFor(r.id)?.account ?? recordedDir(r.id));
+        if (account) r.account = account.name;
+      }
       // What the mark was worked out from is not for the page.
       delete r.verdict;
       delete r.error;
@@ -936,7 +1108,10 @@ async function api(req, res, u) {
     return send(res, 200, { archived });
   }
   if (req.method === 'GET' && u.pathname === '/api/defaults') {
-    return send(res, 200, desktopSettings({ cwd: u.searchParams.get('cwd') || process.env.HOME }));
+    const cwd = u.searchParams.get('cwd') || process.env.HOME;
+    const account = chosenAccount(u.searchParams.get('account'), cwd);
+    if (!account) return send(res, 400, { error: 'Unknown account.' });
+    return send(res, 200, { ...desktopSettings({ cwd }, account), ...(manyAccounts && { account: account.name, accounts: cfg.accounts.map(a => a.name) }) });
   }
   if (req.method === 'GET' && u.pathname === '/api/folders') {
     const seen = new Map();
@@ -947,7 +1122,7 @@ async function api(req, res, u) {
     return send(res, 200, { folders: [home, ...[...seen.keys()].filter(f => f !== home)].slice(0, 25) });
   }
   if (req.method === 'POST' && u.pathname === '/api/new') {
-    const { cwd, text, mode, model, effort, fast, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
+    const { cwd, text, mode, model, effort, fast, account: asked, images: sent, files: listed } = JSON.parse(await readBody(req, MAX_BODY_BYTES) || '{}');
     const { images, error } = readImages(sent);
     if (error) return send(res, 400, { error });
     const { files, error: fileError } = uploads.readFiles(listed);
@@ -960,8 +1135,15 @@ async function api(req, res, u) {
     if (model && !MODEL.test(model)) return send(res, 400, { error: 'Unknown model.' });
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     if (fast !== undefined && typeof fast !== 'boolean') return send(res, 400, { error: 'Unknown fast mode.' });
-    const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }).mode;
-    const id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast });
+    const account = chosenAccount(asked, cwd);
+    if (!account) return send(res, 400, { error: 'Unknown account.' });
+    const chosen = MODES.includes(mode) ? mode : desktopSettings({ cwd }, account).mode;
+    let id;
+    try {
+      id = await newSession({ cwd, text: text || '', images, documents, files, mode: chosen, model, effort, fast, account });
+    } catch (e) {
+      return declined(res, e);
+    }
     uploads.record(id, files);
     return send(res, 200, { id });
   }
@@ -985,7 +1167,8 @@ async function api(req, res, u) {
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const from = findRow(sessionId);
     // The chip's own session decides as well as the posted one, so naming another session cannot lift the group's rules.
-    const groupId = findRow(known?.sessionId || sessionId)?.groupSession || from?.groupSession;
+    const own = findRow(known?.sessionId || sessionId);
+    const groupId = own?.groupSession || from?.groupSession;
     const home = from?.cwd;
     // A group's session has no folder to fall back on: its own is private, and a chip must never start there.
     const folder = known?.cwd || cwd || (groupId ? '' : home);
@@ -1000,7 +1183,13 @@ async function api(req, res, u) {
       }
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
-    const id = await newSession({ cwd: start, text, title: known?.title || title });
+    // The chip's own session decides the account too, whatever folder the chip names.
+    let id;
+    try {
+      id = await newSession({ cwd: start, text, title: known?.title || title, account: accountOf(known?.sessionId || sessionId, own) });
+    } catch (e) {
+      return declined(res, e);
+    }
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead.
     if (groupId) placeInGroup(id, groupId);
     return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
@@ -1022,7 +1211,7 @@ async function api(req, res, u) {
     const row = findRow(id);
     const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};
     // fileLinks and terminal tell the page that those routes exist, so a page newer than this server draws nothing that would 404.
-    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: !row?.groupSession, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
+    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: !row?.groupSession, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors, ...accountField(viewAccount(id, row)) } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
@@ -1030,13 +1219,13 @@ async function api(req, res, u) {
   if (req.method === 'GET' && action === 'images' && !parts[4]) {
     const before = u.searchParams.get('before');
     if (before !== null && !/^\d+$/.test(before)) return send(res, 400, { error: 'before must be a byte offset.' });
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const t = transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id));
     if (!t) return send(res, 404, { error: 'No session with that id on this Mac.' });
     return send(res, 200, { items: listImages(t, before === null ? Infinity : Number(before)) });
   }
   // An image from a message in the transcript. The ref comes from the item, and the bytes never travel in the messages.
   if (req.method === 'GET' && action === 'images') {
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const t = transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id));
     const image = t && readImage(t, parts[4]);
     if (!image) return send(res, 404, { error: 'No such image.' });
     // NOTE: [18 Oct 2026] EK - Vary: Cookie, so the browser reuses its copy only while it holds the cookie it fetched it with. Sign-out's
@@ -1047,7 +1236,7 @@ async function api(req, res, u) {
   // browser from reading the JSON about a file as anything else.
   if (req.method === 'GET' && (action === 'preview' || action === 'file') && !parts[4]) {
     const about = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
-    const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
+    const t = transcriptFor(id) || (indexTranscripts(cfg.accounts, 0), transcriptFor(id));
     const chat = getChat(id);
     if (!t && !chat) return send(res, 404, { error: NO_SESSION }, 'application/json', about);
     const linked = linksOf(t, chat?.live, cfg.outputChars);
@@ -1075,7 +1264,12 @@ async function api(req, res, u) {
     if (!body.text?.trim() && !images.length && !files.length) return send(res, 400, { error: 'Nothing to send.' });
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
-    const chat = ensureChat(id, row, { mode: body.mode });
+    let chat;
+    try {
+      chat = ensureChat(id, row, { mode: body.mode });
+    } catch (e) {
+      return declined(res, e);
+    }
     // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
     // A slash command has to stay first to run, so the result waits for the message after it.
     const held = !isSlashCommand(body.text || '') && terminal.held(id);
@@ -1084,7 +1278,7 @@ async function api(req, res, u) {
     if (held) terminal.release(id);
     uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
-    return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
+    return send(res, 200, { ...statusOf(chat), ...(unarchived && { unarchived }) });
   }
   // A POST because a count of a chat Capcom runs can save a window to windows.json.
   if (action === 'context') {
@@ -1096,35 +1290,47 @@ async function api(req, res, u) {
   if (action === 'mode') {
     if (!MODES.includes(body.mode)) return send(res, 400, { error: 'Unknown permission mode.' });
     const row = findRow(id);
+    if (!row) return send(res, 404, { error: NO_SESSION });
+    let target;
     try {
-      await ensureChat(id, row, { mode: body.mode }).setMode(body.mode);
+      target = ensureChat(id, row, { mode: body.mode });
+    } catch (e) {
+      return declined(res, e);
+    }
+    try {
+      await target.setMode(body.mode);
     } catch (e) {
       return send(res, 400, { error: e.message });
     }
-    return send(res, 200, { mode: body.mode });
+    return send(res, 200, { mode: body.mode, ...accountField(target.account) });
   }
   if (action === 'model' || action === 'effort' || action === 'fast') {
     const value = body[action];
     if (action === 'model' ? !MODEL.test(value || '') : action === 'effort' ? !EFFORTS.includes(value) : typeof value !== 'boolean') return send(res, 400, { error: `Unknown ${action}.` });
     const row = findRow(id);
     if (!chat && !row) return send(res, 404, { error: 'No session with that id on this Mac.' });
-    const target = chat || ensureChat(id, row);
+    let target = chat;
+    try {
+      target ||= ensureChat(id, row);
+    } catch (e) {
+      return declined(res, e);
+    }
     try {
       await (action === 'model' ? target.setModel(value) : action === 'effort' ? target.setEffort(value) : target.setFast(value));
     } catch (e) {
       // The chat's status holds a later pick that went through, which the page would otherwise overwrite with the value it had before this one.
-      return send(res, 400, { error: e.message, status: target.status() });
+      return send(res, 400, { error: e.message, status: statusOf(target) });
     }
     savePick(id, { [action]: value });
-    return send(res, 200, target.status());
+    return send(res, 200, statusOf(target));
   }
   if (!chat) return send(res, 409, { error: 'That session is not running here.' });
   if (action === 'approve') {
     const answers = body.decision === 'answer' && body.answers && typeof body.answers === 'object' ? body.answers : undefined;
     if (body.decision === 'answer' && !answers) return send(res, 400, { error: 'No answers given.' });
-    return send(res, chat.answer(body.requestId, body.decision, answers) ? 200 : 410, chat.status());
+    return send(res, chat.answer(body.requestId, body.decision, answers) ? 200 : 410, statusOf(chat));
   }
-  if (action === 'stop') { chat.interrupt(); return send(res, 200, chat.status()); }
+  if (action === 'stop') { chat.interrupt(); return send(res, 200, statusOf(chat)); }
   return send(res, 404, { error: 'Not found' });
 }
 

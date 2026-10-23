@@ -18,6 +18,8 @@ One button on the right names the model, `Fast` when fast mode is on, and the ef
 
 A change applies from Claude's next request, even mid-turn. GhostShell remembers it for that session in `picks.json` in its state folder, so it survives the idle stop and a restart.
 
+With more than one [account](configuration.md#accounts), a new session's prompt box also has an Account menu beside the mode. It shows the home folder's account until you pick another, and picking one loads that account's model and mode. The session keeps the account for its whole life, and the chat's header names it.
+
 ## Skills and slash commands
 
 Type / at the start of the prompt box and a list of the skills and slash commands that chat can run opens above it, filtered by name and alias as you type.

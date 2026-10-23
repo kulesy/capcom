@@ -32,6 +32,8 @@ Capcom starts `claude -p --input-format stream-json --output-format stream-json 
 
 **Amended 2026-10-16.** Right after `initialize`, Capcom also sends a `set_max_thinking_tokens` control request that asks for thinking summaries, and it reads the thinking, tool call and token events in the stream to show what Claude is doing while it works. See [Show Claude's live work](20261016-live-work-from-the-cli-stream.md).
 
+**Amended 2026-10-23.** Each chat's process now runs on one Claude account. The account in `~/.claude` gets GhostShell's environment without `CLAUDE_CONFIG_DIR`, and any other account gets `CLAUDE_CONFIG_DIR` set to its config folder. See [Run each session on one Claude account](20261023-a-claude-account-per-kind-of-work.md).
+
 ### Consequences
 
 - ✅ A chat behaves as it does in a terminal, and Capcom stores no API key.

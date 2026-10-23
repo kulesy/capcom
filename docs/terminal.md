@@ -10,7 +10,7 @@ A command typed in the panel, or run from a code block, starts in the panel's fo
 
 ## Environment
 
-A command gets the environment of your interactive login shell, which GhostShell reads once and keeps for 10 minutes, so `PATH`, version managers and your own variables are there. GhostShell's own settings (`PORT`, `CAPCOM_STATE`) are not. `PAGER` and `GIT_PAGER` are `cat`.
+A command gets the environment of your interactive login shell, which GhostShell reads once and keeps for 10 minutes, so `PATH`, version managers and your own variables are there. GhostShell's own settings (`PORT`, `CAPCOM_STATE`) are not, and neither is the session's account, so `claude` in a command runs on the default login. `PAGER` and `GIT_PAGER` are `cat`.
 
 ## Output and input
 
@@ -32,7 +32,7 @@ A block holding a character you cannot see, such as a zero-width character, a so
 
 Text that starts with `!` runs as a command instead of being sent. GhostShell runs it, because the headless CLI GhostShell drives takes `!echo hi` as a prompt and has no shell mode.
 
-When the command ends, GhostShell sends Claude the command and its output in the CLI's own form (colour codes removed, each of output and errors cut to 30,000 characters in the middle), and Claude answers as it does in the CLI. With `respondToBashCommands` set to `false` in `~/.claude/settings.json`, GhostShell holds the result and sends it with your next message.
+When the command ends, GhostShell sends Claude the command and its output in the CLI's own form (colour codes removed, each of output and errors cut to 30,000 characters in the middle), and Claude answers as it does in the CLI. With `respondToBashCommands` set to `false` in the `settings.json` of the session's account, GhostShell holds the result and sends it with your next message.
 
 The transcript shows the command as a block with its output, whether GhostShell, the CLI or Desktop ran it. A `!` command you have not run stays behind when you change chat, where a message you have not sent goes with you.
 
