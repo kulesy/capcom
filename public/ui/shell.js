@@ -2,8 +2,8 @@
 import { html } from './html.js';
 
 // Each plate is drawn pointing up and turned into place, so ghost.css opens the shell by moving every plate up.
-const TALL = 'M8.95,8.17L12,6.91L15.05,8.17L17.48,5.75L12,0.5L6.52,5.75Z';
-const WIDE = 'M8.95,8.17L12,6.91L15.05,8.17L17.49,5.73L12,0L6.51,5.73Z';
+const TALL = 'M8.95,8.17L12,6.91L15.05,8.17L16.66,6.56Q14,3.88 12,0.5Q10,3.88 7.34,6.56Z';
+const WIDE = 'M8.95,8.17L12,6.91L15.05,8.17L16.67,6.55Q13.95,3.65 12,0Q10.05,3.65 7.33,6.55Z';
 const PLATES = [[0, TALL], [90, WIDE], [180, TALL], [270, WIDE]];
 
 export const Shell = ({ class: name }) => html`<svg class=${name ? `shell ${name}` : 'shell'} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
