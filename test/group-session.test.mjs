@@ -1,0 +1,239 @@
+// Run with `npm test`. A group's session over HTTP against the real server and a fake CLI: booking its id, how its chat is started, what its
+// tools can reach, the card for starting a session, and a chip it makes. The library parts have their own tests in group-tools.test.mjs.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { as, cliCalls, listen, request, restart, signIn, start, until as waitFor } from './harness.mjs';
+
+const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const NOT_HERE = 'That session is not in this group. Use list_group_sessions to see the ones you can reach.';
+const SESSIONS = [
+  { id: 'a', title: 'Member A', group: 'cg-work', ago: 5 },
+  { id: 'old', title: 'Archived member', group: 'cg-work', archived: true, ago: 20 },
+  { id: 'away', title: 'Member of another group', group: 'cg-home', ago: 6 },
+  { id: 'loose', title: 'In no group', ago: 7 },
+];
+const GROUPS = [{ id: 'cg-work', name: 'Work' }, { id: 'cg-home', name: 'Home' }];
+// Each test starts several CLIs, which a busy machine can be slow to launch, so these wait longer than the harness does.
+const until = (check, ms = 20_000) => waitFor(check, ms);
+
+const get = async (s, token, route) => (await request(s, 'GET', route, { headers: as(token) })).body();
+const post = (s, token, route, json) => request(s, 'POST', route, { headers: as(token), json: json ?? {} });
+const onDisk = s => JSON.parse(fs.readFileSync(s.layout, 'utf8'));
+const startsOf = s => cliCalls(s).filter(c => c.started);
+const flagOf = (argv, name) => argv[argv.indexOf(name) + 1];
+
+async function ready(mine) {
+  const s = await start({ sessions: SESSIONS, groups: GROUPS, claude: true, ...mine });
+  return { s, ...(await signIn(s)) };
+}
+
+// A group whose session is booked already, as it is once its owner has opened it.
+const booked = mine => ready({ groups: [{ id: 'cg-work', name: 'Work', session: WORK }, GROUPS[1]], ...mine });
+
+const sendTo = async (s, token, id, text) => {
+  const res = await post(s, token, `/api/sessions/${id}/send`, { text });
+  assert.equal(res.status, 200, res.text);
+  return res;
+};
+
+// What the fake CLI answered to the calls of Capcom's tools so far, in order.
+const replies = s => cliCalls(s).filter(c => c.mcp).map(c => c.mcp);
+async function callTool(s, token, id, tool, args) {
+  const before = replies(s).length;
+  await sendTo(s, token, id, `call ${tool} ${JSON.stringify(args)}`);
+  await until(() => replies(s).length > before);
+  return replies(s)[before];
+}
+const textOf = reply => reply.result.content[0].text;
+
+test('opening a group books its session once, makes its folder 0700, starts nothing, and a GET or an unknown group or a signed-out caller changes nothing', async () => {
+  const { s, token } = await ready();
+  const folder = path.join(s.state, 'groups', 'cg-work');
+  const before = fs.readFileSync(s.layout, 'utf8');
+  assert.equal((await request(s, 'GET', '/api/groups/cg-work/session', { headers: as(token) })).status, 404);
+  assert.equal((await request(s, 'POST', '/api/groups/cg-work/session', { json: {} })).status, 401);
+  assert.deepEqual([(await post(s, token, '/api/groups/cg-none/session')).status, (await post(s, token, '/api/groups/cg-none/session')).body()], [404, { error: 'Unknown group.' }]);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  assert.equal(fs.existsSync(path.join(s.state, 'groups')), false, 'no folder was made');
+
+  const both = await Promise.all([post(s, token, '/api/groups/cg-work/session'), post(s, token, '/api/groups/cg-work/session')]);
+  assert.deepEqual(both.map(r => r.status), [200, 200]);
+  const [{ id }, again] = [both[0].body(), both[1].body()];
+  assert.match(id, UUID);
+  assert.equal(again.id, id, 'two bookings at once give one id');
+  assert.equal((await post(s, token, '/api/groups/cg-work/session')).body().id, id, 'a later one gives it too');
+  assert.equal(onDisk(s).groups.find(g => g.id === 'cg-work').session, id);
+  assert.equal(onDisk(s).groups.find(g => g.id === 'cg-home').session, undefined);
+  assert.equal(fs.statSync(folder).mode & 0o777, 0o700);
+  assert.deepEqual(startsOf(s), [], 'no CLI was started by booking');
+  assert.deepEqual((await get(s, token, '/api/sessions')).groups.find(g => g.id === 'cg-work').session, { id, state: 'idle' });
+});
+
+test('the first message to a group\'s session starts the CLI with --session-id, the group\'s guide, the start tool asked about, and the group\'s own folder, and a restart resumes it', async () => {
+  const { s, token } = await ready();
+  const { id } = (await post(s, token, '/api/groups/cg-work/session')).body();
+  await sendTo(s, token, id, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+  const [{ started, cwd }] = startsOf(s);
+  assert.equal(flagOf(started, '--session-id'), id);
+  assert.equal(started.includes('--resume'), false);
+  assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in Capcom\./);
+  assert.ok(JSON.parse(flagOf(started, '--settings')).permissions.ask.includes('mcp__capcom__start_group_session'));
+  assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
+
+  const mode = flagOf(started, '--permission-mode');
+  const fresh = (await post(s, token, '/api/new', { cwd: s.home, text: 'begin a session' })).body().id;
+  assert.equal(fresh, 'begun-by-the-fake');
+  await until(() => startsOf(s).length === 2);
+  const ordinary = startsOf(s)[1].started;
+  assert.equal(flagOf(ordinary, '--permission-mode'), mode, 'it starts in the mode a new session in its folder gets');
+  for (const flag of ['--session-id', '--append-system-prompt']) assert.equal(ordinary.includes(flag), false, `an ordinary session has no ${flag}`);
+  assert.equal(JSON.parse(flagOf(ordinary, '--settings') ?? '{"permissions":{"ask":[]}}').permissions.ask.includes('mcp__capcom__start_group_session'), false);
+
+  const again = await restart(s);
+  const second = await signIn(again);
+  await sendTo(again, second.token, id, 'hello again');
+  await until(() => startsOf(again).length === 3);
+  const resumed = startsOf(again)[2].started;
+  assert.equal(flagOf(resumed, '--resume'), id, 'its transcript exists now, so it is resumed');
+  assert.equal(resumed.includes('--session-id'), false);
+  assert.match(flagOf(resumed, '--append-system-prompt'), /group "Work"/, 'the guide goes with every spawn');
+});
+
+test('the page\'s stream finds the transcript of a group\'s session once its first message has been sent', async () => {
+  const { s, token } = await booked();
+  const viewer = listen(s, token, WORK);
+  try {
+    await until(() => viewer.events.length);
+    await new Promise(done => setTimeout(done, 2000));
+    assert.equal(viewer.events.some(e => e.type === 'changed'), false, 'nothing is looked for before a chat of ours exists');
+    await sendTo(s, token, WORK, 'begin a session');
+    await until(() => viewer.events.some(e => e.type === 'changed'));
+  } finally {
+    viewer.close();
+  }
+});
+
+test('the tools of a group\'s chat reach its own sessions, archived ones included, and refuse another group\'s, one in no group, its own and an unknown id alike', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+
+  const list = textOf(await callTool(s, token, WORK, 'list_group_sessions', { include_archived: true }));
+  assert.match(list, /^Group "Work": 1 session, 1 archived/);
+  assert.match(list, /Member A \[a\]/);
+  assert.match(list, /Archived member \[old\]/);
+  for (const hidden of ['Member of another group', 'In no group', WORK]) assert.equal(list.includes(hidden), false, hidden);
+
+  for (const id of ['a', 'old']) {
+    const reply = await callTool(s, token, WORK, 'read_group_session', { session_id: id });
+    assert.equal(reply.result.isError, undefined, id);
+    assert.match(textOf(reply), new RegExp(`\\[${id}\\]`));
+  }
+  for (const id of ['away', 'loose', WORK, 'nobody']) {
+    const reply = await callTool(s, token, WORK, 'read_group_session', { session_id: id });
+    assert.deepEqual(reply.result, { content: [{ type: 'text', text: NOT_HERE }], isError: true }, id);
+  }
+});
+
+test('the group tools are offered to a group\'s chat and to no other, and an ordinary chat that calls one is refused', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await sendTo(s, token, WORK, 'list the tools');
+  await until(() => replies(s).length === 1);
+  assert.ok(['list_group_sessions', 'read_group_session', 'start_group_session'].every(n => replies(s)[0].result.tools.some(t => t.name === n)));
+
+  const made = (await post(s, token, '/api/new', { cwd: s.home, text: 'begin a session' })).body().id;
+  await sendTo(s, token, made, 'list the tools');
+  await until(() => replies(s).length === 2);
+  assert.equal(replies(s)[1].result.tools.some(t => t.name.endsWith('_group_session') || t.name === 'list_group_sessions'), false);
+  const refused = await callTool(s, token, made, 'read_group_session', { session_id: 'a' });
+  assert.ok(refused.error || refused.result?.isError, JSON.stringify(refused));
+});
+
+test('a group\'s chat is allowed to list and read with no card, while starting a session shows a card with no Always allow, and an ordinary chat gets a card for the read tool', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await sendTo(s, token, WORK, 'ask to list the group');
+  await until(() => cliCalls(s).some(c => c.requestId === 'perm-list'));
+  assert.equal(cliCalls(s).find(c => c.requestId === 'perm-list').response, 'allow');
+  const viewer = listen(s, token, WORK);
+  try {
+    await until(() => viewer.events.length);
+    await sendTo(s, token, WORK, 'ask to start a session');
+    await until(() => viewer.events.some(e => e.type === 'approval'));
+    assert.deepEqual(viewer.events.filter(e => e.type === 'approval').map(e => [e.data.tool, e.data.always]), [['mcp__capcom__start_group_session', false]]);
+    const answered = await post(s, token, `/api/sessions/${WORK}/approve`, { requestId: 'perm-start', decision: 'always' });
+    assert.equal(answered.status, 200);
+    await until(() => cliCalls(s).some(c => c.requestId === 'perm-start'));
+    const reply = cliCalls(s).find(c => c.requestId === 'perm-start');
+    assert.equal(reply.response, 'allow');
+    assert.equal(reply.rules, undefined, 'no rule is kept for it');
+  } finally {
+    viewer.close();
+  }
+
+  const made = (await post(s, token, '/api/new', { cwd: s.home, text: 'begin a session' })).body().id;
+  const other = listen(s, token, made);
+  try {
+    await until(() => other.events.length);
+    await sendTo(s, token, made, 'ask to list the group');
+    await until(() => other.events.some(e => e.type === 'approval'));
+    assert.deepEqual(other.events.filter(e => e.type === 'approval').map(e => e.data.tool), ['mcp__capcom__list_group_sessions']);
+  } finally {
+    other.close();
+  }
+});
+
+test('a session started by the group\'s chat runs in the folder it gave, with its prompt, and lands in the group, and a bad folder is refused', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+  const folder = s.home;
+  for (const [cwd, why] of [['relative/path', /absolute folder/], [path.join(s.home, 'missing'), /does not exist/], [s.state, /belongs to Capcom/], [path.join(s.state, 'groups', 'cg-work'), /belongs to Capcom/]]) {
+    const reply = await callTool(s, token, WORK, 'start_group_session', { cwd, prompt: 'begin a session' });
+    assert.equal(reply.result.isError, true, cwd);
+    assert.match(textOf(reply), why, cwd);
+  }
+  assert.equal(startsOf(s).length, 1, 'a refused call starts nothing');
+
+  const reply = await callTool(s, token, WORK, 'start_group_session', { cwd: folder, prompt: 'begin a session', title: 'Look at the bug' });
+  assert.match(textOf(reply), /^Started session \[begun-by-the-fake\] in .* called "Look at the bug"\. It is in the group "Work" and running now\./);
+  await until(() => startsOf(s).length === 2);
+  assert.equal(fs.realpathSync(startsOf(s)[1].cwd), fs.realpathSync(folder));
+  const ix = await get(s, token, '/api/sessions');
+  assert.deepEqual(ix.groups.find(g => g.id === 'cg-work').sessions.map(r => r.id).sort(), ['a', 'begun-by-the-fake']);
+  assert.equal(onDisk(s).assignments['begun-by-the-fake'], 'cg-work');
+});
+
+test('a chip made by a group\'s session starts its session in that group, and a chip made by an ordinary session does not', async () => {
+  const { s, token } = await booked();
+  const chip = (sessionId, toolUseId) => post(s, token, '/api/chips/start', { sessionId, toolUseId, title: 'Follow up', prompt: 'begin a session', cwd: s.home, confirmCwd: s.home });
+  const fromGroup = await chip(WORK, 'toolu_group');
+  assert.equal(fromGroup.status, 200, fromGroup.text);
+  assert.equal(fromGroup.body().id, 'begun-by-the-fake');
+  assert.equal(onDisk(s).assignments['begun-by-the-fake'], 'cg-work');
+  const ix = await get(s, token, '/api/sessions');
+  assert.ok(ix.groups.find(g => g.id === 'cg-work').sessions.some(r => r.id === 'begun-by-the-fake'), 'it shows in the group, not at the top level');
+  assert.equal(ix.started.some(r => r.id === 'begun-by-the-fake'), false);
+
+  const plain = await ready();
+  const fromLoose = await post(plain.s, plain.token, '/api/chips/start', { sessionId: 'loose', toolUseId: 'toolu_loose', title: 'Follow up', prompt: 'begin a session', cwd: plain.s.home });
+  assert.equal(fromLoose.status, 200, fromLoose.text);
+  assert.equal(onDisk(plain.s).assignments['begun-by-the-fake'], undefined);
+});
+
+test('a group deleted by hand while its chat runs takes its tools with it', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'begin a session');
+  await until(() => startsOf(s).length === 1);
+  assert.match(textOf(await callTool(s, token, WORK, 'list_group_sessions', {})), /^Group "Work"/);
+  // Looking for the transcript brings the shared index up to date, so the session can be found as an ordinary one once its group is gone.
+  assert.equal((await get(s, token, `/api/sessions/${WORK}/messages`)).items.length, 1);
+  fs.writeFileSync(s.layout, JSON.stringify({ ...onDisk(s), groups: [GROUPS[1]] }));
+  const reply = await callTool(s, token, WORK, 'list_group_sessions', {});
+  assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
+});

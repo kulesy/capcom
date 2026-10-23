@@ -1,5 +1,6 @@
 // Capcom. A browser chat client for every Claude Code session on this Mac, grouped in its own layout, and driven
 // through headless `claude -p` processes.
+import crypto from 'node:crypto';
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -12,7 +13,7 @@ import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
 import { linksOf, previewFile, serveFile } from './lib/files.mjs';
-import { groupDir } from './lib/groups.mjs';
+import { ensureGroupDir, groupDir, guideFor } from './lib/groups.mjs';
 import { makeLayout } from './lib/layout.mjs';
 import { makeMarks } from './lib/marks.mjs';
 import { indexTranscripts, transcriptFor, readHead, readBefore, readAfter, readImage, listImages, completeEnd } from './lib/transcripts.mjs';
@@ -294,6 +295,53 @@ async function newSession({ cwd, text, images = [], mode, model, effort, fast, t
   return chat.id;
 }
 
+// ---- group sessions ------------------------------------------------------------------------------
+
+// The session is running by now, so a layout that cannot be written is logged and told to the caller as not placed.
+function placeInGroup(id, groupId) {
+  try {
+    layout.move(id, groupId);
+    return true;
+  } catch (e) {
+    console.error(`Could not put ${id} in group ${groupId}: ${e.message}`);
+    return false;
+  }
+}
+
+// What a group's chat reaches its group through. Each call looks the group up again, so a group deleted by hand takes its tools with it.
+function groupCtx(groupId) {
+  return {
+    stateDir: cfg.stateDir,
+    lookup() {
+      const group = layout.read().groups.find(g => g.id === groupId);
+      if (!group) return null;
+      const { rows } = buildIndex({ archived: true });
+      return { name: group.name, members: [...rows.values()].filter(r => r.group === groupId) };
+    },
+    pending: id => getChat(id)?.status().pending ?? [],
+    async start({ cwd, prompt, title }) {
+      const id = await newSession({ cwd, text: prompt, title });
+      return { id, placed: placeInGroup(id, groupId) };
+    },
+  };
+}
+
+// The CLI refuses --session-id for an id that has a transcript and --resume for one that has none, so each spawn asks. The index is rescanned
+// once before a no, since a transcript written a moment ago may not be in it yet.
+const hasTranscript = id => !!(transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id)));
+
+// Booked when the owner first opens a group's chat. It makes the folder and writes the id and starts nothing, so it costs no tokens, and it is
+// synchronous, so two tabs opening it together get the same id.
+function bookGroupSession(groupId) {
+  if (!layout.read().groups.some(g => g.id === groupId)) throw refuse(404, 'Unknown group.');
+  try {
+    ensureGroupDir(cfg.stateDir, groupId);
+  } catch (e) {
+    throw refuse(500, `Could not make the group's folder: ${e.message}`);
+  }
+  return layout.claimGroupSession(groupId, () => crypto.randomUUID());
+}
+
 // ---- routines ------------------------------------------------------------------------------------
 // Desktop's scheduled tasks, run from here. See docs/adr/20261015-capcom-runs-routines-itself.md.
 
@@ -416,8 +464,15 @@ function loginPage(message = '') {
 }
 
 function ensureChat(id, row, { mode } = {}) {
-  const s = settingsFor(id, row);
-  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips });
+  const groupId = row?.groupSession;
+  // A group's session starts on what a new session in its folder would, and has the group's tools and standing instructions.
+  const s = settingsFor(id, groupId ? { cwd: row.cwd } : row);
+  const group = groupId && {
+    group: groupCtx(groupId),
+    instructions: () => guideFor(layout.read().groups.find(g => g.id === groupId)?.name ?? row.title),
+    fresh: () => !hasTranscript(id),
+  };
+  const chat = chatFor(id, { cwd: row?.cwd, mode: MODES.includes(mode) ? mode : s.mode, model: s.model, shownModel: s.shownModel, effort: s.effort, fast: s.fast, chrome: s.chrome, claude: cfg.claude, chips, ...group });
   dropFastOnRefusal(chat);
   for (const fn of viewers.get(id) || []) chat.listeners.add(fn);
   return chat;
@@ -805,12 +860,23 @@ async function api(req, res, u) {
     if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }) });
     const text = known?.prompt || prompt;
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
-    const home = findRow(sessionId)?.cwd;
+    const from = findRow(sessionId);
+    const home = from?.cwd;
     const folder = known?.cwd || cwd || home;
     if (!text || !folder || !fs.existsSync(folder)) return send(res, 400, { error: 'This chip has no prompt or folder to start from.' });
     if (folder !== home && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     const id = await newSession({ cwd: folder, text, title: known?.title || title });
+    // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead.
+    if (from?.groupSession) placeInGroup(id, from.groupSession);
     return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
+  }
+  const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
+  if (req.method === 'POST' && booking) {
+    try {
+      return send(res, 200, { id: bookGroupSession(booking[1]) });
+    } catch (e) {
+      return send(res, e.status || 500, { error: e.message });
+    }
   }
   if (parts[1] !== 'sessions' || !parts[2]) return send(res, 404, { error: 'Not found' });
   const id = parts[2];

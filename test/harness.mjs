@@ -51,6 +51,9 @@ const freePort = () => new Promise(resolve => {
 // Sent 'begin a session' it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
 // sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
 // context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
+// Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
+// CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session'
+// or 'ask to list the group' it asks to use the tool of that name. The log has the folder it started in, and the reply to each such request as `mcp`.
 // A session is { id, title, archived, archivedAgo, routine, group, pinned, ago, source, remoteMcpServersConfig, parent, spawnedFrom, lineageDetached, fileAgo,
 // edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }, with `ago`, `archivedAgo` (when Desktop archived it) and the other `Ago` times in minutes.
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
@@ -134,11 +137,17 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   fs.writeFileSync(cli, [
     '#!/usr/bin/env node',
     "import fs from 'node:fs';",
+    "import path from 'node:path';",
     "import readline from 'node:readline';",
     `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
     "const say = message => process.stdout.write(JSON.stringify(message) + '\\n');",
-    "note({ started: process.argv.slice(2) });",
+    "note({ started: process.argv.slice(2), cwd: process.cwd() });",
     "const startedOn = process.argv[process.argv.indexOf('--model') + 1];",
+    "const namedId = process.argv.includes('--session-id') ? process.argv[process.argv.indexOf('--session-id') + 1] : null;",
+    "const projects = path.join(process.env.HOME, '.claude', 'projects');",
+    "const transcriptOf = id => (fs.existsSync(projects) ? fs.readdirSync(projects).map(d => path.join(projects, d, `${id}.jsonl`)).find(f => fs.existsSync(f)) : undefined);",
+    // The real CLI exits at once when --session-id names a session that already has a transcript (checked on CLI 2.1.309).
+    "if (namedId && transcriptOf(namedId)) { process.stderr.write(`Error: Session ID ${namedId} is already in use.\\n`); process.exit(1); }",
     "const held = [];",
     "let begun = false;",
     "readline.createInterface({ input: process.stdin }).on('line', line => {",
@@ -151,7 +160,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,
     "      say({ type: 'control_response', response: usage ? { subtype: 'success', request_id: m.request_id, response: usage } : { subtype: 'error', request_id: m.request_id, error: 'No usage to report.' } });",
     "    }",
-    "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id });",
+    "    if (m.type === 'control_response') note({ response: m.response.response?.behavior || m.response.subtype, requestId: m.response.request_id, ...(m.response.response?.mcp_response && { mcp: m.response.response.mcp_response }), ...(m.response.response?.updatedPermissions && { rules: m.response.response.updatedPermissions }) });",
     "    if (m.type === 'control_request' && m.request.settings) note({ settings: m.request.settings });",
     "    if (m.type === 'control_request' && ['set_model', 'apply_flag_settings'].includes(m.request.subtype)) {",
     "      const noFast = m.request.settings?.fastMode === true && ['no-fast-by-the-fake', 'late-no-fast-by-the-fake'].includes(startedOn);",
@@ -162,12 +171,24 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    }",
     "    if (m.type !== 'user') return;",
     "    note({ user: m.message.content });",
+    // A session named by --session-id writes its transcript when it takes its first message, as the real one does.
+    "    if (namedId && !transcriptOf(namedId)) {",
+    "      fs.mkdirSync(path.join(projects, '-group-folder'), { recursive: true });",
+    "      fs.writeFileSync(path.join(projects, '-group-folder', `${namedId}.jsonl`), JSON.stringify({ type: 'user', cwd: process.cwd(), message: { role: 'user', content: m.message.content } }) + '\\n');",
+    "    }",
+    "    if (m.message.content.startsWith('call ')) {",
+    "      const [, tool, ...json] = m.message.content.split(' ');",
+    "      say({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(json.join(' ') || '{}') } } } });",
+    "    }",
+    "    if (m.message.content === 'list the tools') say({ type: 'control_request', request_id: 'list-tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
+    "    if (m.message.content === 'ask to start a session') say({ type: 'control_request', request_id: 'perm-start', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__start_group_session', input: { cwd: '/tmp', prompt: 'x' }, permission_suggestions: [{ type: 'addRules', rules: [{ toolName: 'mcp__capcom__start_group_session' }], behavior: 'allow', destination: 'localSettings' }] } });",
+    "    if (m.message.content === 'ask to list the group') say({ type: 'control_request', request_id: 'perm-list', request: { subtype: 'can_use_tool', tool_name: 'mcp__capcom__list_group_sessions', input: {} } });",
     "    if (m.message.content === 'ask for approval') say({ type: 'control_request', request_id: 'perm-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
     "    if (m.message.content === 'finish the turn') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 });",
     "    if (m.message.content === 'finish the turn with fast mode off') say({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0, fast_mode_state: 'off' });",
     "    if (m.message.content === 'fail the turn') say({ type: 'result', subtype: 'success', is_error: true, result: 'The fake turn failed.' });",
     "    if (m.message.content === 'begin a session') {",
-    "      say({ type: 'system', subtype: 'init', session_id: 'begun-by-the-fake', model: 'stub' });",
+    "      say({ type: 'system', subtype: 'init', session_id: namedId || 'begun-by-the-fake', model: 'stub' });",
     "      begun = true;",
     "    }",
     "  } catch {}",
