@@ -7,29 +7,40 @@ export const escapeCancels = cancel => e => {
   cancel();
 };
 
-// A name typed into the list, up to `max` characters. `onSubmit` resolves true when the server took it, and the caller then closes
-// the form. It resolves false when the server refused, and the form stays open to try again.
-export function NameForm({ label, value = '', action, max = 80, onSubmit, onCancel }) {
+// A name with its runs of whitespace made single spaces and its ends trimmed, as the server keeps it.
+export const clean = value => (value || '').replace(/\s+/g, ' ').trim();
+
+// A bare box for a name, in place of the title or button it names. Enter and the focus leaving save it, Esc cancels, and an empty name or
+// one no different from `was` cancels without asking the server. `onSubmit(text, away)` resolves false when the server refused, and the
+// box stays open. `away` says the focus left, so the caller leaves it where the person put it.
+export function NameForm({ label, placeholder, value = '', was = value, max = 80, onSubmit, onCancel }) {
   const [text, setText] = useState(value);
-  const [busy, setBusy] = useState(false);
   const input = useRef(null);
   const form = useRef(null);
+  const ended = useRef(false);
+  const gone = useRef(false);
   useLayoutEffect(() => {
     input.current.focus({ preventScroll: true });
     input.current.select();
     form.current.scrollIntoView({ block: 'nearest' });
+    return () => { gone.current = true; };
   }, []);
 
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
-    if (!(await onSubmit(text))) setBusy(false);
+  // Enter, Esc and the focus leaving can follow one another, as the blur after the form closes does, so only the first save counts
+  // until a refused one lets the form end again. Esc still cancels while a save is pending, so a request that hangs never traps the box.
+  async function finish(away, save) {
+    if (gone.current || (ended.current && save)) return;
+    ended.current = true;
+    const name = clean(text);
+    if (!save || !name || name === clean(was)) return onCancel(away);
+    if (!(await onSubmit(text, away))) ended.current = false;
   }
 
-  return html`<form class="name-form" ref=${form} onSubmit=${submit} onKeyDown=${escapeCancels(onCancel)}>
-    <label class="name-field"><span>${label}</span>
-      <input class="input" ref=${input} type="text" value=${text} maxlength=${max} autocomplete="off" enterkeyhint="done" onInput=${e => setText(e.currentTarget.value)} /></label>
-    <button class="btn" data-variant="outline" type="button" onClick=${onCancel}>Cancel</button>
-    <button class="btn" type="submit" disabled=${busy || !text.trim()}>${action}</button>
+  // A window that loses the focus blurs the box too, and the name is saved only when the focus goes somewhere on the page.
+  const blur = () => { if (document.hasFocus()) finish(true, true); };
+
+  return html`<form class="name-form" ref=${form} onSubmit=${e => { e.preventDefault(); finish(false, true); }} onKeyDown=${escapeCancels(() => finish(false, false))}>
+    <input class="input" ref=${input} type="text" value=${text} maxlength=${max} placeholder=${placeholder} aria-label=${label} autocomplete="off" enterkeyhint="done"
+      onInput=${e => setText(e.currentTarget.value)} onBlur=${blur} />
   </form>`;
 }

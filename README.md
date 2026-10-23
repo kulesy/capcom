@@ -242,10 +242,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   selected one. Unarchiving, or sending the session a message, brings it back to the group, pin or routine
   it had. Desktop's records are read only, so GhostShell keeps these choices in `layout.json`, and its choice
   wins over Desktop's archive flag in both directions.
-- **Renaming.** Double-click a session's row, or choose Rename in its menu, and a field takes the row's
-  place with the title selected. Enter saves, Esc cancels, and a title runs to 120 characters at most. On a
-  phone a double tap opens the session, so rename from the menu. GhostShell keeps the title in `layout.json`
-  and shows it in place of every other title, for any session, whichever app started it. It shows in
+- **Renaming.** Double-click a session's row, or choose Rename in its menu, and a text box takes the
+  row's place with the title selected. Enter saves, Esc cancels, clicking away saves, and a title runs to
+  120 characters at most. On a phone a double tap opens the session, so rename from the menu. GhostShell
+  keeps the title in `layout.json` and shows it in place of every other title, for any session, whichever app started it. It shows in
   GhostShell only: Desktop's records are read only and a terminal session's title belongs to the CLI, so Desktop
   and the terminal keep the titles they have. A group lists its sessions by the new title, and the search
   finds them by it. With `desktopHandoff` set to `true`, a session renamed here before it is handed to

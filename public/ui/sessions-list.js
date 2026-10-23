@@ -5,7 +5,7 @@
 import { ask } from './ask.js';
 import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
-import { NameForm } from './forms.js';
+import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
 import { supportsGroups } from './group-rules.js';
@@ -231,6 +231,8 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const opened = useRef(0);
   const latestPlace = useRef(place);
   latestPlace.current = place;
+  const latestForm = useRef(form);
+  latestForm.current = form;
   const latestNest = useRef(null);
   const latestMenu = useRef(null);
   const latestKey = useRef(null);
@@ -455,15 +457,13 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     say(problem || (parent ? `Nested “${title}” under “${parentTitle}”.` : `Moved “${title}” out of “${parentTitle}”.`), { problem: !!problem });
   }
 
-  // Gives a session a title of its own. One no different from the one it has closes the form without asking the server. The form
-  // keeps what was sent, so a reload that draws the row somewhere else draws the form there with it, ready to try again.
-  async function renameRow(r, text) {
-    const clean = value => (value || '').replace(/\s+/g, ' ').trim();
-    const title = clean(text);
-    if (title === clean(r.title)) { closeForm(rowOf(r.id)); return true; }
-    setForm(f => (f?.kind === 'session' && f.session === r.id ? { ...f, sent: text } : f));
-    const done = await change('api/layout/rename', { id: r.id, title });
-    if (done) closeForm(rowOf(r.id));
+  // Gives a session a title of its own. The form keeps what was sent, so a reload that draws the row somewhere else draws the form
+  // there with it, ready to try again.
+  async function renameRow(r, text, away) {
+    const mine = f => f?.kind === 'session' && f.session === r.id;
+    setForm(f => (mine(f) ? { ...f, sent: text } : f));
+    const done = await change('api/layout/rename', { id: r.id, title: clean(text) });
+    if (done) closeSaved(mine, away, rowOf(r.id));
     return !!done;
   }
 
@@ -636,6 +636,10 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   };
 
   const closeForm = (...focus) => { setForm(null); setBack(focus); };
+  // A name box that lost the focus is closed with nowhere to hand it back, because the person put it somewhere else.
+  const closeFormAway = (away, ...focus) => closeForm(...(away ? [] : focus));
+  // A save resolves after the person may have opened another box, which stays open. `mine` picks out the form that saved.
+  const closeSaved = (mine, away, ...focus) => { if (mine(latestForm.current)) closeFormAway(away, ...focus); };
   const headOf = id => `.group-head[data-key="${CSS.escape(id)}"]`;
   const scopeOf = id => (id ? `.scope[data-key="${CSS.escape(id)}"]` : '.scope.home');
   // A button's menu closes when its button is pressed again. A key that asks for the first or last item (`entry`) opens it afresh.
@@ -664,17 +668,18 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
   }
 
-  async function addProject(name) {
+  async function addProject(name, away) {
     const { problem, made } = await edit('api/layout/project/add', { name });
     if (!made) return problem || 'Could not add the project.';
-    projects.pick(made.id);
-    closeForm(scopeOf(made.id), '.new-group', '.add');
+    // A name saved by clicking away leaves the view where that click took it.
+    if (!away) projects.pick(made.id);
+    closeSaved(f => f?.kind === 'project', away, scopeOf(made.id), '.new-group', '.add');
     return '';
   }
 
-  async function addGroup(name, project) {
+  async function addGroup(name, project, away) {
     const made = await change('api/layout/group/add', { name, project });
-    if (made) closeForm(headOf(made.id), '.add');
+    if (made) closeSaved(f => f?.kind === 'group' && (f.project ?? null) === project, away, headOf(made.id), '.add');
     return !!made;
   }
 
@@ -707,7 +712,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     cancelRename: () => closeForm(scopeOf(form.project)),
     rowMenu: (id, button, entry) => (shown?.session === id && shown.anchor === button && !entry ? setShown(null) : latestMenu.current(id, button, null, entry)),
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
-    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} action="Save" max=${TITLE_MAX} onCancel=${() => closeForm(rowOf(r.id))} onSubmit=${text => renameRow(r, text)} />`,
+    sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} was=${r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
     groupMenu: g => {
       const to = moveTargets(ix.projects, g);
       return to.length ? { label: `Move ${g.name}`, items: to.map(t => ({ label: t.label, run: () => moveGroup(g, t.project) })) } : null;
@@ -721,17 +726,17 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
         { label: 'Delete project', icon: icons.trash, danger: true, run: () => deleteProject(p) },
       ],
     }),
-    groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} action="Create" onSubmit=${name => addGroup(name, p.id)} onCancel=${() => closeForm(...form.back)} />`,
-    renameForm: p => html`<${NameForm} label="Rename project" value=${p.name} action="Save" onCancel=${() => closeForm(scopeOf(p.id))}
-      onSubmit=${async name => {
+    groupForm: p => html`<${NameForm} label=${`New group in ${p.name}`} placeholder="New group" onSubmit=${(name, away) => addGroup(name, p.id, away)} onCancel=${away => closeFormAway(away, ...form.back)} />`,
+    renameForm: p => html`<${NameForm} label="Rename project" value=${p.name} onCancel=${away => closeFormAway(away, scopeOf(p.id))}
+      onSubmit=${async (name, away) => {
         const done = await change('api/layout/project/rename', { id: p.id, name });
-        if (done) closeForm(scopeOf(p.id));
+        if (done) closeSaved(f => f?.kind === 'rename' && f.project === p.id, away, scopeOf(p.id));
         return !!done;
       }} />`,
   };
 
   const topForm = form?.kind === 'group' && !form.project
-    ? html`<${NameForm} label="New group" action="Create" onCancel=${() => closeForm('.add')} onSubmit=${name => addGroup(name, null)} />`
+    ? html`<${NameForm} label="New group" placeholder="New group" onCancel=${away => closeFormAway(away, '.add')} onSubmit=${(name, away) => addGroup(name, null, away)} />`
     : null;
 
   // A double click on a row's link renames it, after the first click has opened it as usual. A click with a modifier is left alone.
@@ -743,7 +748,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   return html`<${Fragment}>
   <${ProjectsPanel} ix=${ix} projects=${projects} tree=${tree} creating=${form?.kind === 'project'} onNew=${() => setForm({ kind: 'project' })}
-    onCancel=${() => closeForm('.new-project')} onCreate=${addProject} />
+    onCancel=${away => closeFormAway(away, '.new-project')} onCreate=${addProject} />
   <nav class="list" aria-label="Sessions" ref=${nav} onKeyDown=${escapeList}>
     <header class="list-head">
       <${ProjectsToggle} projects=${projects} />

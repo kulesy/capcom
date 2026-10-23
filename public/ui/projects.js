@@ -125,9 +125,9 @@ function Scope({ home, id, name, count, lamp, current, onPick, actions }) {
 
 const plus = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
 
-// `creating` is whether the New project form is open, and the list owns it. `onCreate(name)` resolves with the reason the server
-// refused, or an empty string. `tree` is the list's handle on what a project's row shares with it: the menu and the rename form. A panel
-// that closes with a form or the menu open ends it.
+// `creating` is whether the New project form is open, and the list owns it. `onCreate(name, away)` resolves with the reason the server
+// refused, or an empty string, and `away` is whether the focus left the box. `tree` is the list's handle on what a project's row shares
+// with it: the menu and the rename form. A panel that closes with a form or the menu open ends it.
 export function ProjectsPanel({ ix, projects, tree, creating, onNew, onCancel, onCreate }) {
   const { view, wide, open, box, opener, pick, close } = projects;
   const { renamingProject: renaming } = tree;
@@ -148,8 +148,8 @@ export function ProjectsPanel({ ix, projects, tree, creating, onNew, onCancel, o
     pick(id);
   };
   const begin = () => { setReason(''); onNew(); };
-  const create = async name => {
-    const problem = await onCreate(name);
+  const create = async (name, away) => {
+    const problem = await onCreate(name, away);
     setReason(problem);
     return !problem;
   };
@@ -189,7 +189,7 @@ export function ProjectsPanel({ ix, projects, tree, creating, onNew, onCancel, o
         ? html`<li key=${p.id}>${tree.renameForm(p)}</li>`
         : html`<${Scope} key=${p.id} id=${p.id} name=${p.name} count=${countOf(ix, p.id)} lamp=${lamp(p.id)} current=${view === p.id} onPick=${e => choosing(e, p.id)} actions=${actions(p)} />`))}
       <li>${creating
-        ? html`<${NameForm} label="New project" action="Create" onSubmit=${create} onCancel=${onCancel} />`
+        ? html`<${NameForm} label="New project" placeholder="New project" onSubmit=${create} onCancel=${onCancel} />`
         : html`<button class="scope new-project" type="button" disabled=${!ix} onClick=${begin}>${plus()}<span class="scope-name">New project</span></button>`}</li>
     </ul>
     <div role="status">${creating && reason ? html`<p class="problem">${reason}</p>` : null}</div>

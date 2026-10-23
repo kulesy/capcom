@@ -925,23 +925,29 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .menu-separator { height: 1px; margin: 0.25rem -0.25rem; background-color: var(--border); }
 
 .name-form {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  --name-font: 0.875rem;
+  --name-height: var(--row-height);
 }
 
-.list > .name-form { padding-inline: 1rem; }
+.list > .name-form, .sections > .name-form { --name-height: 2rem; margin: 0.5rem; }
 
-.sections > .name-form { margin-inline: 0.25rem; padding-inline: 0.75rem; }
+.rail .name-form { --name-height: 2rem; }
 
-.list > .name-form, .rows .name-form, .rail .name-form, .sections > .name-form { flex-wrap: wrap; justify-content: flex-end; }
+.name-form .input {
+  display: block;
+  height: var(--name-height);
+  padding: 0 calc(var(--row-pad) - 1px);
+  font-size: var(--name-font);
+  line-height: 1.25;
+  box-shadow: none;
+}
 
-.name-field { display: grid; flex: 1; min-width: 0; gap: 0.5rem; }
+.rail .name-form .input { padding-left: calc(1.75rem - 1px); }
 
-.list > .name-form .name-field, .rows .name-field, .rail .name-field, .sections > .name-form .name-field { flex-basis: 100%; }
-
-.name-field span { font-size: 0.875rem; font-weight: 500; line-height: 1; }
+.name-form .input:focus-visible {
+  border-color: var(--sidebar-ring);
+  box-shadow: inset 0 0 0 1px var(--sidebar-ring);
+}
 
 body[data-scroll-locked] {
   overflow: hidden !important;
@@ -1118,6 +1124,10 @@ body[data-scroll-locked] {
 
   .group-head, .scope { min-height: 2.75rem; }
 
+  .name-form { --name-font: 1rem; }
+
+  .name-form .input { min-height: 2.75rem; }
+
   .more::after, .fold::after { content: ""; position: absolute; inset: -0.75rem; }
 }
 
@@ -1242,6 +1252,10 @@ body[data-scroll-locked] {
   .group { padding-block: 0.3rem; }
 
   .group-head { height: 1.75rem; padding-inline: 0.5rem 0.25rem; }
+
+  .rows .name-form, .list > .name-form, .sections > .name-form { --name-font: 0.8125rem; }
+
+  .list > .name-form, .sections > .name-form { --name-height: 1.75rem; margin-block: 0.3rem; }
 
   .bar > .more { right: 1.5rem; }
 }
