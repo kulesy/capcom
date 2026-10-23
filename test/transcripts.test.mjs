@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { IMAGE_TYPES } from '../lib/images.mjs';
 import { noticeFrom } from '../lib/notices.mjs';
-import { listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
+import { completeEnd, listImages, readAfter, readBefore, readHead, readImage, toolSummary } from '../lib/transcripts.mjs';
 import { threadImages } from '../public/ui/gallery.js';
 import { absorb, prepend } from '../public/ui/thread.js';
 
@@ -1000,4 +1000,41 @@ test('a line holding a document is skipped by the picture scan and gives no pict
   ]);
   assert.equal(readImage(t, `${at[2]}.0.u3`).bytes.toString(), 'after');
   assert.deepEqual(listImages(t, at[2]).map(i => i.images.length), [1], 'a list that stops at the picture after the document holds the one before it');
+});
+
+const totalRead = reads => reads.mock.calls.reduce((n, call) => n + call.result, 0);
+
+test('a line longer than the chunk is read once, not again for each step back, and stops at the floor it is given', t => {
+  const lead = Array.from({ length: 40 }, (_, n) => user(`line ${n}`));
+  const before = lead.reduce((n, entry) => n + JSON.stringify(entry).length + 1, 0);
+  const long = JSON.stringify(user('x'.repeat(300_000)));
+  const t1 = file('long-line', [...lead, user('x'.repeat(300_000)), user('last')]);
+  const end = before + long.length + 1;
+  const reads = t.mock.method(fs, 'readSync');
+  const got = readBefore(t1, end, 1000, '', 8000);
+  assert.ok(got.start <= before && got.start > before - 1000, 'it starts on a line, within a chunk before the long one');
+  assert.equal(got.items.at(-1).text.length, 300_000);
+  assert.ok(totalRead(reads) <= long.length + 2 * 1000, `${totalRead(reads)} bytes read for a line of ${long.length}`);
+
+  reads.mock.resetCalls();
+  assert.deepEqual(readBefore(t1, end, 1000, '', 8000, undefined, end - 50_000), { items: [], start: end - 50_000, end });
+  assert.equal(totalRead(reads), 50_000, 'nothing is read before the floor');
+  assert.equal(readBefore(t1, end, 1000, '', 8000, undefined, 5).start, got.start, 'a floor before the start of the line changes nothing');
+});
+
+test('the end of the last complete line is found without reading a byte twice, and nothing further back than a limit', t => {
+  const done = `${JSON.stringify(user('first'))}\n`;
+  const f = path.join(base, 'unfinished.jsonl');
+  fs.writeFileSync(f, `${done}${'x'.repeat(1_000_000)}`);
+  const reads = t.mock.method(fs, 'readSync');
+  assert.equal(completeEnd({ file: f }), done.length);
+  assert.ok(totalRead(reads) <= done.length + 1_000_000, `${totalRead(reads)} bytes read for a file of ${done.length + 1_000_000}`);
+  reads.mock.resetCalls();
+  assert.equal(completeEnd({ file: f }, 100_000), 0, 'no line end in the last 100,000 bytes');
+  assert.equal(totalRead(reads), 100_000);
+  assert.equal(completeEnd({ file: f }, 2_000_000), done.length, 'a limit past the line end finds it');
+  fs.writeFileSync(f, '');
+  assert.equal(completeEnd({ file: f }), 0);
+  fs.writeFileSync(f, 'one\ntwo\n');
+  assert.equal(completeEnd({ file: f }, 3), 8, 'the last line end is the last byte');
 });

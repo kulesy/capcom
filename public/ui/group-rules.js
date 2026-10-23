@@ -16,9 +16,10 @@ export const BUCKETS = [
 // The sessions of a group as the index lists them, with those nested under each. The archived ones are not in it.
 export const membersOf = group => withKids(group.sessions);
 
+// A session needs the owner while it waits on an approval, and when its mark says it is awaiting, as a Desktop session's does after a turn that ended in a question.
 export function bucketOf(row, now = Date.now()) {
   if (row.archived) return 'archived';
-  if (row.state === 'waiting') return 'needs';
+  if (row.state === 'waiting' || row.dot === 'awaiting') return 'needs';
   if (row.state === 'working') return 'working';
   return row.state === 'active' || now - row.lastActivityAt < RECENT_MS ? 'recent' : 'idle';
 }

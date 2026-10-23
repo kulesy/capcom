@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RECENT_MS } from '../public/ui/group-rules.js';
-import { descendantsOf, familyDot, orderLines, rankOf, rollupLine, rollupOf, subsOf, treeOf } from '../public/ui/sub-rules.js';
+import { descendantsOf, familyDot, orderLines, rankOf, rollupLine, rollupOf, subsOf, tally, treeOf } from '../public/ui/sub-rules.js';
 import { withKids } from '../public/ui/tree.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -95,6 +95,24 @@ test('the roll-up counts every session below at every level by part, and carries
   assert.deepEqual(rollupOf(ROWS, 'a2', NOW), { total: 1, needs: 0, working: 0, recent: 0, idle: 1, dot: null });
   assert.deepEqual(rollupOf(ROWS, 'b', NOW), { total: 0, needs: 0, working: 0, recent: 0, idle: 0, dot: null });
   assert.deepEqual(rollupOf(ROWS, 'nobody', NOW), { total: 0, needs: 0, working: 0, recent: 0, idle: 0, dot: null });
+});
+
+test('a session needs you when its state is waiting or its mark is awaiting, so a question asked in Desktop counts', () => {
+  const asked = [row('p', null, 'idle', MINUTE), row('q', 'p', 'idle', MINUTE, { dot: 'awaiting' }), row('w', 'p', 'waiting', MINUTE, { dot: 'awaiting' }), row('r', 'p', 'idle', MINUTE, { dot: 'ready' })];
+  assert.deepEqual(rollupOf(asked, 'p', NOW), { total: 3, needs: 2, working: 0, recent: 1, idle: 0, dot: 'awaiting' });
+  assert.equal(rollupLine(rollupOf(asked, 'p', NOW)), '3 sub sessions, 2 waiting on you');
+  assert.deepEqual(shape(treeOf(asked, 'p', NOW)), ['q', 'w', 'r'], 'both come before the one that is only unread');
+  assert.equal(rollupOf([...asked.slice(0, 2), row('gone', 'p', 'idle', MINUTE, { dot: 'awaiting', archived: true })], 'p', NOW).needs, 1, 'an archived one needs nothing');
+});
+
+test('a list of sessions adds up as the sessions below one do, and a roll-up line can count them as sessions', () => {
+  const some = [row('a', null, 'waiting', MINUTE), row('b', null, 'working', MINUTE), row('c', 'b', 'idle', 3 * RECENT_MS), row('d', null, 'idle', MINUTE, { archived: true })];
+  assert.deepEqual(tally(some, NOW), { total: 3, needs: 1, working: 1, recent: 0, idle: 1, dot: 'awaiting' });
+  assert.deepEqual(tally([], NOW), { total: 0, needs: 0, working: 0, recent: 0, idle: 0, dot: null });
+  assert.equal(rollupLine(tally(some, NOW), 'session'), '3 sessions, 1 waiting on you, 1 working');
+  assert.equal(rollupLine(tally(some.slice(2, 3), NOW), 'session'), '1 session');
+  assert.equal(rollupLine(tally(some.slice(2, 3), NOW)), '1 sub session');
+  assert.equal(rollupLine(tally([], NOW), 'session'), '');
 });
 
 test('the roll-up takes its mark from the most urgent session wherever it sits, from the state when the row has no mark, and leaves out archived sessions', () => {

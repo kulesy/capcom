@@ -1,6 +1,6 @@
 // Run with `npm test`. The Sub sessions tab in the real page against the real server: the tab and the header button for a chat with sub sessions,
-// its lines and what they read from the server, a line opened to its reply, a group's chat, a folded family in the list, and a server that
-// cannot summarise sessions. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
+// its lines and what they read from the server, a line opened to its reply, a group's chat, a folded family in the list, a server that
+// cannot summarise sessions, and when the page asks the server about a session and when it does not. It needs Playwright's Chromium headless shell, and every test skips with a reason that names where it looked when there is none.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,12 +13,16 @@ const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 //   top
 //     kid (asks a question)
 //       grand
+//   lead
+//     mover (moves while the tests run)
 //   loner
 const SESSIONS = [
   { id: 'top', title: 'Top', ago: 5 },
   { id: 'kid', title: 'Kid', parent: 'top', ago: 4, verdict: 'need_input' },
   { id: 'grand', title: 'Grand', parent: 'kid', ago: 3 },
   { id: 'loner', title: 'Loner', ago: 9 },
+  { id: 'lead', title: 'Lead', ago: 91 },
+  { id: 'mover', title: 'Mover', parent: 'lead', ago: 90 },
   { id: 'member', title: 'Member', group: 'cg-work', ago: 6 },
   { id: WORK, title: 'Talk about the work', source: 'cli', ago: 1, group: 'cg-work' },
 ];
@@ -30,17 +34,23 @@ const skip = chromium ? false : notFound();
 const timeout = 30_000;
 let app;
 let older;
+let spy;
 let browser;
 
 // The fake CLI's transcripts are in one folder, and a session that has said something has an assistant line at the end of its file.
 const says = (id, text) => fs.appendFileSync(path.join(app.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`),
   `${JSON.stringify({ type: 'assistant', message: { id: `m-${id}`, role: 'assistant', content: [{ type: 'text', text }] } })}\n`);
 
-// The server behind a proxy that leaves out the `subStatus` feature of the list, as a server that started before it existed does.
-function withoutSubStatus(target) {
+// The server behind a proxy that logs the requests it passes on and can hold the answers to api/summaries until they are let go. `leave` names
+// the features of the list it leaves out, as a server that started before they existed does.
+function through(target, { leave = [] } = {}) {
+  const seen = [];
+  const held = { on: false, answers: [] };
   const proxy = http.createServer((req, res) => {
+    seen.push(req.url);
+    const route = req.url.split('?')[0];
     const forward = http.request({ host: 'localhost', port: target.port, method: req.method, path: req.url, headers: req.headers }, reply => {
-      if (req.url.split('?')[0] !== '/api/sessions') {
+      if (route !== '/api/summaries' && !(route === '/api/sessions' && leave.length)) {
         res.writeHead(reply.statusCode, reply.headers);
         reply.pipe(res);
         return;
@@ -48,17 +58,29 @@ function withoutSubStatus(target) {
       const chunks = [];
       reply.on('data', chunk => chunks.push(chunk));
       reply.on('end', () => {
-        const { features, ...index } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        const { subStatus, ...left } = features;
-        const body = JSON.stringify({ ...index, features: left });
-        res.writeHead(reply.statusCode, { ...reply.headers, 'content-length': Buffer.byteLength(body) });
-        res.end(body);
+        let body = Buffer.concat(chunks);
+        if (route === '/api/sessions') {
+          const { features, ...index } = JSON.parse(body.toString('utf8'));
+          for (const name of leave) delete features[name];
+          body = Buffer.from(JSON.stringify({ ...index, features }));
+        }
+        const answer = () => {
+          res.writeHead(reply.statusCode, { ...reply.headers, 'content-length': body.length });
+          res.end(body);
+        };
+        if (route === '/api/summaries' && held.on) held.answers.push(answer);
+        else answer();
       });
     });
     req.pipe(forward);
   });
   return new Promise(resolve => proxy.listen(0, '127.0.0.1', () => resolve({
     origin: `http://127.0.0.1:${proxy.address().port}`,
+    // The urls asked for api/summaries so far.
+    summaries: () => seen.filter(url => url.startsWith('/api/summaries')),
+    hold: () => { held.on = true; },
+    release: () => { held.on = false; for (const answer of held.answers.splice(0)) answer(); },
+    waiting: () => held.answers.length,
     close: () => new Promise(done => { proxy.closeAllConnections(); proxy.close(done); }),
   })));
 }
@@ -67,13 +89,16 @@ before(async () => {
   if (skip) return;
   app = await start({ sessions: SESSIONS, groups: GROUPS, claude: true });
   says('kid', REPLY);
-  older = await withoutSubStatus(app);
+  says('mover', 'Starting out. More to come.');
+  older = await through(app, { leave: ['subStatus'] });
+  spy = await through(app);
   browser = await launch(chromium);
 });
 
 after(async () => {
   await browser?.close();
   await older?.close();
+  await spy?.close();
 });
 
 const LOGIN = `!!document.querySelector('#password')`;
@@ -107,18 +132,20 @@ const all = (page, selector, read) => page.evaluate(`[...document.querySelectorA
 // The ids each request for summaries named, in order, with whether it asked for the whole reply.
 const asked = page => page.evaluate(`performance.getEntriesByType('resource').filter(e => e.name.includes('api/summaries')).map(e => { const q = new URL(e.name).searchParams; return [q.get('ids'), q.get('detail')]; })`);
 
-test('a chat with sub sessions has the Sub sessions tab, open and first, and a header button that names how many there are', { skip, timeout }, async t => {
+test('a chat with sub sessions has the Sub sessions tab, open and first, and a header button that names how many there are and what waits on you', { skip, timeout }, async t => {
   const page = await appPage(t, '#/s/top');
   await page.until(`!!document.querySelector('#panel .subs')`);
   assert.equal((await all(page, '#panel .panel-tab', 'el.textContent.trim()'))[0], 'Sub sessions');
   assert.equal(await page.evaluate(`document.querySelector('#tab-subs').getAttribute('aria-selected')`), 'true');
   assert.equal(await page.evaluate(`document.querySelector('#tab-subs') === document.querySelector('.panel-tab')`), true, 'it is the first tab');
   assert.equal(await page.evaluate(`document.querySelector('#panel').getAttribute('aria-label').startsWith('Sub sessions')`), true);
-  assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`), 'Sub sessions: 2');
+  assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`), 'Sub sessions: 2, 1 waiting on you', 'Kid ended its turn on a question, so its mark is awaiting');
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-expanded')`), 'true');
-  assert.equal(await page.evaluate(`!!document.querySelector('#subsButton .subs-mark')`), false, 'nothing waits on you');
+  assert.equal(await page.evaluate(`!!document.querySelector('#subsButton .subs-mark')`), true);
   assert.equal(await page.evaluate(`document.activeElement?.closest('#panel') === null`), true, 'opening by itself leaves the focus where it was');
-  assert.equal(await text(page, '.subs-sum'), '2 sub sessions');
+  assert.equal(await text(page, '.subs-sum'), '2 sub sessions, 1 waiting on you');
+  assert.deepEqual(await all(page, '.subs .status-heading', 'el.firstChild.textContent.trim()'), ['Needs you'], 'Kid is under Needs you and not Recent activity');
+  assert.deepEqual(await all(page, '.subs .status-part .sub-title', 'el.firstChild.textContent'), ['Kid']);
   assert.deepEqual(page.problems, []);
 });
 
@@ -161,8 +188,8 @@ test('the header button closes the tab, opens it again, and a chat remembers tha
   await page.click('#subsButton');
   await page.until(`!document.querySelector('#panel')`);
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-expanded')`), 'false');
-  await page.evaluate(`location.reload()`);
-  await page.until(`document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
+  await page.evaluate(`window.oldDocument = true; location.reload()`);
+  await page.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
   assert.equal(await page.evaluate(`!!document.querySelector('#panel')`), false, 'a panel the owner closed stays closed');
   await page.click('#subsButton');
   await page.until(`!!document.querySelector('#panel #tab-subs[aria-selected="true"]')`);
@@ -193,7 +220,7 @@ test('a group\'s chat has its sessions in the Sub sessions tab, in place of the 
   assert.deepEqual(await all(page, '#panel .panel-tab', 'el.textContent.trim()'), ['Sub sessions'], 'the group has no terminal');
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`), 'Sub sessions: 1');
   assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href")'), ['#/s/member']);
-  assert.match(await text(page, '.subs-sum'), /^1 recent/);
+  assert.equal(await text(page, '.subs-sum'), '1 session');
   const phone = await appPage(t, '#/g/cg-work', { phone: true });
   await phone.until(`!!document.querySelector('#subsButton')`);
   assert.equal(await phone.evaluate(`!!document.querySelector('#panel')`), false);
@@ -203,13 +230,15 @@ test('a group\'s chat has its sessions in the Sub sessions tab, in place of the 
   assert.deepEqual(phone.problems, []);
 });
 
-test('a server that cannot summarise sessions keeps the status over a group\'s transcript and gives a chat no tab', { skip, timeout }, async t => {
+test('a server that cannot summarise sessions keeps the status over a group\'s transcript, gives a chat no tab and is never asked for summaries', { skip, timeout }, async t => {
   const group = await appPage(t, '#/g/cg-work', { origin: older.origin });
   await group.until(`!!document.querySelector('.group-status .status-sum')`);
   assert.equal(await group.evaluate(`document.querySelectorAll('#panel, #subsButton').length`), 0);
   const chat = await appPage(t, '#/s/top', { origin: older.origin });
   await chat.until(`document.querySelector('#title')?.textContent === 'Top'`);
   assert.equal(await chat.evaluate(`document.querySelectorAll('#subsButton, #tab-subs, .subs').length`), 0);
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.deepEqual(older.summaries(), [], 'the server behind the proxy has the route, and the page does not use it without the flag');
   assert.deepEqual(group.problems, []);
   assert.deepEqual(chat.problems, []);
 });
@@ -219,11 +248,146 @@ test('a folded family shows the mark of the most urgent session under it, and sa
     const page = await appPage(t, '', { origin, keep: { folded: { top: true } } });
     await page.until(`!!document.querySelector('#sections a.row[data-id="top"]')`);
     assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="top"] .row-dot')?.dataset.dot`), 'awaiting', origin);
-    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold .fold').getAttribute('aria-label')`), '2 nested sessions, some need input');
+    assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold .fold').getAttribute('aria-label')`), '2 nested sessions, 1 waiting on you');
     await page.click('#sections li.has-fold .fold');
     await page.until(`document.querySelector('#sections li.has-fold .fold')?.getAttribute('aria-expanded') === 'true'`);
     assert.equal(await page.evaluate(`document.querySelector('a.row[data-id="top"] .row-dot')?.dataset.dot ?? null`), null, 'open, the head shows its own mark');
     assert.equal(await page.evaluate(`document.querySelector('#sections li.has-fold .fold').getAttribute('aria-label')`), '2 nested sessions');
     assert.deepEqual(page.problems, []);
   }
+});
+
+test('on a touch screen a tap on the middle of a header button reaches that button and not the one beside it', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/top', { phone: true });
+  await page.until(`!!document.querySelector('#subsButton') && !!document.querySelector('#terminalButton')`);
+  assert.equal(await page.evaluate(`matchMedia('(pointer: coarse)').matches`), true, 'the page takes this for a touch screen');
+  for (const id of ['subsButton', 'terminalButton']) {
+    const owner = (dx = 0) => page.evaluate(`(r => document.elementFromPoint(r.x + r.width / 2 + ${dx}, r.y + r.height / 2).closest('button')?.id)(document.getElementById(${JSON.stringify(id)}).getBoundingClientRect())`);
+    assert.deepEqual([await owner(-12), await owner(), await owner(12)], [id, id, id], `the middle of ${id} and a little to each side are its own`);
+  }
+  await page.tap('#subsButton');
+  await page.until(`document.querySelector('#tab-subs')?.getAttribute('aria-selected') === 'true'`);
+  assert.equal(await page.evaluate(`!!document.querySelector('#tab-terminal[aria-selected="true"]')`), false, 'the tap on Sub sessions did not open the terminal');
+  await page.click('#panel [aria-label="Close panel"]');
+  await page.until(`!document.querySelector('#panel')`);
+  await page.tap('#terminalButton');
+  await page.until(`document.querySelector('#tab-terminal')?.getAttribute('aria-selected') === 'true'`);
+  assert.deepEqual(page.problems, []);
+});
+
+test('a panel that opened by itself is not saved, and goes instead of covering the chat when the window narrows to a phone', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/top');
+  await page.until(`!!document.querySelector('#panel .subs')`);
+  assert.equal(await page.evaluate(`localStorage.getItem('capcom.panels')`), null, 'opening by itself saves nothing');
+  await page.resize(390, 844);
+  await page.until(`!document.querySelector('#panel')`);
+  assert.equal(await page.evaluate(`document.querySelector('#session').dataset.panel ?? null`), null);
+  assert.equal(await page.evaluate(`[...document.querySelector('#session').children].some(el => el.inert)`), false, 'the chat can be reached');
+  assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-expanded')`), 'false');
+  await page.evaluate(`window.oldDocument = true; location.reload()`);
+  await page.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
+  assert.equal(await page.evaluate(`!!document.querySelector('#panel')`), false, 'a phone that never opened it is not shown it');
+  await page.resize(1280, 860);
+  await page.until(`document.querySelector('#panel')?.getAttribute('role') === 'region' && !!document.querySelector('#panel .subs')`);
+  assert.equal(await page.evaluate(`localStorage.getItem('capcom.panels')`), null, 'and it is still the page\'s doing and not the owner\'s');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a panel the owner opened on a phone is saved and opens over the chat on the next visit, and one the owner closed stays closed on a wide screen', { skip, timeout }, async t => {
+  const phone = await appPage(t, '#/s/top', { phone: true });
+  await phone.until(`!!document.querySelector('#subsButton')`);
+  await phone.click('#subsButton');
+  await phone.until(`document.querySelector('#panel')?.getAttribute('role') === 'dialog'`);
+  assert.equal(await phone.evaluate(`JSON.parse(localStorage.getItem('capcom.panels')).top.open`), true);
+  await phone.evaluate(`window.oldDocument = true; location.reload()`);
+  await phone.until(`!window.oldDocument && document.readyState === 'complete' && !!document.querySelector('#subsButton')`);
+  await phone.until(`document.querySelector('#panel')?.getAttribute('role') === 'dialog'`);
+  const wide = await appPage(t, '#/s/top');
+  await wide.until(`!!document.querySelector('#panel .subs')`);
+  await wide.click('#subsButton');
+  await wide.until(`!document.querySelector('#panel')`);
+  assert.equal(await wide.evaluate(`JSON.parse(localStorage.getItem('capcom.panels')).top.open`), false);
+  await wide.resize(390, 844);
+  await wide.resize(1280, 860);
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(await wide.evaluate(`!!document.querySelector('#panel')`), false);
+  assert.deepEqual(phone.problems, []);
+  assert.deepEqual(wide.problems, []);
+});
+
+// Appends a reply to `id` and loads the page's list until the row has moved, since the server looks in the folder every four seconds.
+async function moves(page, id, reply) {
+  const stamp = () => page.evaluate(`Promise.all([import('/ui/subs.js'), import('/ui/tree.js')]).then(([{ sessionIndex }, { findRow }]) => findRow(sessionIndex.get().ix, ${JSON.stringify(id)})?.lastActivityAt ?? null)`);
+  const before = await stamp();
+  says(id, reply);
+  for (const start = Date.now(); (await stamp()) === before;) {
+    if (Date.now() - start > 12_000) throw new Error(`${id} did not move`);
+    await page.evaluate(`document.dispatchEvent(new Event('visibilitychange'))`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+}
+
+const listen = (url, { ids, detail }) => url.includes(`ids=${ids}`) && (detail ? url.includes('detail=1') : !url.includes('detail=1'));
+
+test('a line that moves while its summary is on the way is asked for again when the answer lands, not at the next refresh of the list', { skip, timeout: 40_000 }, async t => {
+  spy.hold();
+  t.after(() => spy.release());
+  const mark = spy.summaries().length;
+  const page = await appPage(t, '#/s/lead', { origin: spy.origin });
+  await page.until(`!!document.querySelector('#panel .subs .sub')`);
+  for (const start = Date.now(); spy.waiting() < 1;) {
+    if (Date.now() - start > 5000) throw new Error('the request for the line was never made');
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  await moves(page, 'mover', 'Moved on. The rest follows.');
+  assert.equal(spy.summaries().length - mark, 1, 'the line is stale, but the request for it is still out, so it is not asked for twice');
+  spy.release();
+  await page.until(`document.querySelector('.sub .sub-said')?.textContent === 'Moved on.'`, 8000);
+  assert.deepEqual(spy.summaries().slice(mark).filter(url => listen(url, { ids: 'mover' })).length, 2, 'asked once more, with the new stamp');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a tab out of sight, and a closed panel, ask the server for nothing while sessions move', { skip, timeout: 40_000 }, async t => {
+  const page = await appPage(t, '#/s/lead', { origin: spy.origin });
+  await page.until(`!!document.querySelector('#panel .subs .sub')`);
+  await page.click('.sub-fold');
+  await page.until(`!!document.querySelector('.sub-open .sub-reply')`);
+  assert.ok(spy.summaries().some(url => listen(url, { ids: 'mover', detail: true })), 'the open line read its reply');
+
+  await page.click('#tab-terminal');
+  await page.until(`document.querySelector('#tab-terminal')?.getAttribute('aria-selected') === 'true'`);
+  let mark = spy.summaries().length;
+  await moves(page, 'mover', 'Second reply. More.');
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.deepEqual(spy.summaries().slice(mark), [], 'the Terminal tab is on show, so nothing is asked about the sessions behind it');
+
+  await page.click('#tab-subs');
+  await page.until(`document.querySelector('.sub-reply')?.textContent.startsWith('Second reply.')`);
+  assert.ok(spy.summaries().slice(mark).some(url => listen(url, { ids: 'mover', detail: true })), 'back on show, the open line reads the reply it missed');
+  assert.ok(spy.summaries().slice(mark).some(url => listen(url, { ids: 'mover' })), 'and so does the line');
+
+  await page.click('#subsButton');
+  await page.until(`!document.querySelector('#panel')`);
+  mark = spy.summaries().length;
+  await moves(page, 'mover', 'Third reply. Even more.');
+  await new Promise(resolve => setTimeout(resolve, 700));
+  assert.deepEqual(spy.summaries().slice(mark), [], 'a closed panel asks for nothing either');
+  assert.deepEqual(page.problems, []);
+});
+
+test('more than 300 lines drawn are each asked for once and then the page stops asking', { skip, timeout: 60_000 }, async t => {
+  const kids = Array.from({ length: 330 }, (_, n) => ({ id: `kid-${String(n).padStart(3, '0')}`, title: `Kid ${n}`, parent: 'big', ago: 10 + n }));
+  const big = await start({ sessions: [{ id: 'big', title: 'Big', ago: 5 }, ...kids], claude: true });
+  const watch = await through(big);
+  t.after(() => watch.close());
+  const page = await appPage(t, '#/s/big', { origin: watch.origin });
+  await page.until(`document.querySelectorAll('#panel .subs .sub').length === 330`, 20_000);
+  const asked = () => watch.summaries().flatMap(url => new URL(url, 'http://x').searchParams.get('ids').split(','));
+  for (const first = Date.now(); new Set(asked()).size < 330;) {
+    if (Date.now() - first > 20_000) throw new Error(`only ${new Set(asked()).size} of 330 lines were asked for`);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  assert.equal(asked().length, 330, 'each line once, and no more after');
+  assert.deepEqual(page.problems, []);
 });

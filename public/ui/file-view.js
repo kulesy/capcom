@@ -5,7 +5,7 @@ import { fileSize, grouped, lf } from './format.js';
 import { useStore } from './hooks.js';
 import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
-import { hidePanel, panelOf, panels, selectTab, showPanel } from './panel-state.js';
+import { panelNow, restorePanel, showPanel } from './panel-state.js';
 import { createStore } from './store.js';
 import { NewTab, openViewer } from './viewer.js';
 
@@ -27,7 +27,7 @@ export function openFile({ id, path, line, from }) {
   let before = null;
   const reveal = () => {
     if (!mine() || before) return;
-    before = panelOf(panels.get(), id);
+    before = panelNow(id);
     showPanel(id, 'file', from);
   };
   shown.set({ open: { n, chat: id, path, line, from, late: false, preview: null, error: '' } });
@@ -38,7 +38,7 @@ export function openFile({ id, path, line, from }) {
       const src = route(id, 'file', path);
       shown.set({ open: null });
       // The panel was opened to wait for a picture, which the viewer shows instead, so it goes back to how it was.
-      if (before) { if (before.open) selectTab(id, before.tab); else hidePanel(id); }
+      if (before) restorePanel(id, before);
       openViewer([{ key: src, src, alt: preview.name }], 0, from);
     } else {
       patch({ preview });

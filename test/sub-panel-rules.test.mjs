@@ -4,8 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RECENT_MS } from '../public/ui/group-rules.js';
 import {
-  batchesOf, drawnRows, familyNote, linesOf, MAX_IDS, partOf, partsOf, pendingLine, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
-  subStatusOn, summaryLine,
+  batchesOf, drawnRows, familyNote, KEPT, linesOf, MAX_IDS, partOf, partsOf, pendingLine, splitWaiting, staleIds, stampOf, subsButtonName, subsOffered, subsStatus,
+  subStatusOn, summaryLine, trim,
 } from '../public/ui/sub-panel-rules.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
@@ -92,10 +92,38 @@ test('the button counts every session below the chat, or all of a group\'s, and 
   assert.equal(subsButtonName({ total: 4, needs: 4 }), 'Sub sessions: 4, 4 waiting on you');
 });
 
-test('the line at the top of the tab is the roll-up, or the words a group\'s status always had', () => {
+test('the line at the top of the tab is the roll-up, and a group\'s counts its live sessions at every depth as sessions', () => {
   assert.equal(summaryLine(index(), 'top', NOW), '3 sub sessions, 1 waiting on you, 1 working');
   assert.equal(summaryLine(index(), 'loner', NOW), '');
-  assert.equal(summaryLine(index(), WORK, NOW), '1 needs you · 1 working · 1 recent · 3 more');
+  assert.equal(summaryLine(index(), WORK, NOW), '3 sessions, 1 waiting on you, 1 working');
+  const family = index();
+  family.groups[0].sessions = [row('h', null, 'idle', MINUTE, {
+    group: 'cg-work',
+    children: [row('h1', 'h', 'waiting', MINUTE, { dot: 'awaiting' }), row('h2', 'h', 'working', MINUTE, { dot: 'running' }), row('h3', 'h2', 'idle', 3 * RECENT_MS), row('h4', 'h3', 'idle', 3 * RECENT_MS), row('gone', 'h', 'idle', MINUTE, { archived: true })],
+  })];
+  assert.equal(summaryLine(family, WORK, NOW), '5 sessions, 1 waiting on you, 1 working', 'one family, counted at every depth, the archived left out');
+  assert.deepEqual(subsStatus(family, WORK, NOW), { total: 5, needs: 1 }, 'the button counts what the line does');
+  family.groups[0].sessions = [row('only', null, 'idle', MINUTE, { group: 'cg-work' })];
+  assert.equal(summaryLine(family, WORK, NOW), '1 session');
+  family.groups[0].sessions = [];
+  assert.equal(summaryLine(family, WORK, NOW), '', 'a group with nothing in it says nothing, and the tab says so itself');
+});
+
+test('a session whose mark is awaiting needs you as one that waits does, in its line, its part, the roll-ups, the button and a folded family', () => {
+  const asked = index();
+  asked.ungrouped[0].children = [row('ask', 'top', 'idle', MINUTE, { dot: 'awaiting' }), row('calm', 'top', 'idle', 2 * MINUTE)];
+  const lines = linesOf(asked, 'top', NOW);
+  assert.deepEqual(lines.map(n => [n.row.id, partOf(n, NOW)]), [['ask', 'needs'], ['calm', 'recent']]);
+  assert.deepEqual(Object.values(partsOf(lines, NOW)).map(nodes => ids(nodes.map(n => n.row))), [['ask'], [], ['calm'], []]);
+  assert.equal(summaryLine(asked, 'top', NOW), '2 sub sessions, 1 waiting on you');
+  assert.deepEqual(subsStatus(asked, 'top', NOW), { total: 2, needs: 1 });
+  assert.equal(subsButtonName(subsStatus(asked, 'top', NOW)), 'Sub sessions: 2, 1 waiting on you');
+  assert.deepEqual(familyNote(asked.ungrouped[0], NOW), { dot: 'awaiting', label: '2 nested sessions, 1 waiting on you' });
+  const group = index();
+  group.groups[0].sessions[1] = row('w2', null, 'idle', 2 * MINUTE, { group: 'cg-work', dot: 'awaiting' });
+  assert.equal(summaryLine(group, WORK, NOW), '3 sessions, 2 waiting on you');
+  assert.deepEqual(subsStatus(group, WORK, NOW), { total: 3, needs: 2 });
+  assert.deepEqual(partsOf(linesOf(group, WORK, NOW), NOW).needs.map(n => n.row.id), ['w2', 'w1'], 'both lines are in Needs you, the newest first');
 });
 
 test('what a session waits on names the tool and what it would do, or says it is a question, and counts the rest', () => {
@@ -159,5 +187,51 @@ test('a folded family takes the mark of the most urgent session under it, with w
   const unread = { ...top, children: [row('x', 'top', 'idle', MINUTE, { dot: 'ready' })] };
   assert.deepEqual(familyNote(unread, NOW), { dot: 'ready', label: '1 nested session, some unread' });
   const asks = { ...top, children: [row('x', 'top', 'idle', MINUTE, { dot: 'awaiting' })] };
-  assert.deepEqual(familyNote(asks, NOW), { dot: 'awaiting', label: '1 nested session, some need input' });
+  assert.deepEqual(familyNote(asks, NOW), { dot: 'awaiting', label: '1 nested session, 1 waiting on you' });
+});
+
+test('the summaries kept past the limit are the oldest not drawn, and a drawn one is never dropped', () => {
+  const kept = new Map(['a', 'b', 'c', 'd', 'e'].map(id => [id, { stamp: id }]));
+  trim(kept, new Set(['a', 'b']), 3);
+  assert.deepEqual([...kept.keys()], ['a', 'b', 'e'], 'c and d were the oldest that were not drawn');
+  trim(kept, new Set(['a', 'b', 'e']), 1);
+  assert.deepEqual([...kept.keys()], ['a', 'b', 'e'], 'all drawn, so all kept past the limit');
+  trim(kept, new Set(), 1);
+  assert.deepEqual([...kept.keys()], ['e'], 'nothing drawn, so down to the limit');
+  trim(kept, new Set(), 5);
+  assert.equal(kept.size, 1);
+  assert.equal(KEPT, 300);
+});
+
+// The loop the tab runs: ask for what is stale, keep the answers, and look again when a request answers.
+function settle(rows, kept, batch = MAX_IDS) {
+  const drawn = new Set(rows.map(r => r.id));
+  let requests = 0;
+  for (; requests < 50; requests++) {
+    const ids = staleIds(rows, kept);
+    if (!ids.length) return requests;
+    for (const ask of batchesOf(ids, batch)) {
+      for (const id of ask) {
+        kept.delete(id);
+        kept.set(id, { stamp: stampOf(rows.find(r => r.id === id)) });
+        trim(kept, drawn);
+      }
+    }
+  }
+  return -1;
+}
+
+test('more than 300 lines drawn are all asked for once and the asking stops, where evicting a drawn one would never stop', () => {
+  const rows = Array.from({ length: 320 }, (_, n) => row(`s${n}`, 'top', 'idle', n * MINUTE));
+  const kept = new Map();
+  assert.equal(settle(rows, kept), 1, 'one round of batches, and nothing stale after it');
+  assert.equal(kept.size, 320, 'the lines on screen stay past the limit');
+  assert.deepEqual(staleIds(rows, kept), []);
+  const others = Array.from({ length: 40 }, (_, n) => row(`o${n}`, 'top', 'idle', n * MINUTE));
+  for (const r of others) kept.set(r.id, { stamp: stampOf(r) });
+  trim(kept, new Set(rows.map(r => r.id)));
+  assert.equal(kept.size, 320, 'what is not on screen goes first');
+  assert.deepEqual(staleIds(rows, kept), []);
+  const wide = Array.from({ length: 700 }, (_, n) => row(`w${n}`, 'top', 'working', n * MINUTE));
+  assert.equal(settle(wide, new Map()), 1);
 });

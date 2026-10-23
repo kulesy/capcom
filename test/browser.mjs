@@ -175,6 +175,17 @@ export async function launch(chromium) {
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     }
 
+    // A finger's tap on the middle of `selector`, which the page hears as a touch and then a click, as it does from a phone.
+    async function tap(selector) {
+      await settled();
+      const { x, y } = await centre(selector);
+      await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+
+    // Sets the size of the screen, as turning a phone or narrowing a window does. A phone stays a phone.
+    const resize = (width, height) => call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: phone ? 2 : 1, mobile: phone });
+
     // Moves the mouse to the middle of `selector`, as a pointer does that passes over it.
     async function hover(selector) {
       await settled();
@@ -207,6 +218,8 @@ export async function launch(chromium) {
       until,
       press,
       click,
+      tap,
+      resize,
       hover,
       down,
       up,

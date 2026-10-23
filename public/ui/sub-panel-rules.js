@@ -1,8 +1,8 @@
 // What the Sub sessions tab, the header button that opens it and a folded family's row decide, as rules that need no page, so node can test them.
 // The rows are the index's, and `ix` is the page's whole list.
 import { fullToolLabel, plural } from './format.js';
-import { BUCKETS, bucketOf, bucketsOf, groupOfSession, membersOf, summaryOf } from './group-rules.js';
-import { familyDot, orderLines, placeOf, rankOf, rollupLine, rollupOf, treeOf } from './sub-rules.js';
+import { BUCKETS, groupOfSession, membersOf } from './group-rules.js';
+import { familyDot, orderLines, placeOf, rankOf, rollupLine, rollupOf, tally, treeOf } from './sub-rules.js';
 import { everyRow, withKids } from './tree.js';
 
 // The most ids the server's summaries route answers at once.
@@ -41,21 +41,16 @@ export function partsOf(nodes, now = Date.now()) {
 export function subsStatus(ix, id, now = Date.now()) {
   if (!ix) return { total: 0, needs: 0 };
   const group = groupOfSession(ix, id);
-  if (!group) {
-    const { total, needs } = rollupOf(everyRow(ix), id, now);
-    return { total, needs };
-  }
-  const live = membersOf(group).filter(row => !row.archived);
-  return { total: live.length, needs: live.filter(row => bucketOf(row, now) === 'needs').length };
+  const { total, needs } = group ? tally(membersOf(group), now) : rollupOf(everyRow(ix), id, now);
+  return { total, needs };
 }
 
 export const subsButtonName = ({ total, needs }) => `Sub sessions: ${total}${needs ? `, ${needs} ${WAITING}` : ''}`;
 
-// The line at the top of the tab. A group's keeps the words its status panel always had.
+// The line at the top of the tab: the roll-up of the sessions below the chat, or of a group's live sessions at every depth, which it calls "session".
 export function summaryLine(ix, id, now = Date.now()) {
   const group = groupOfSession(ix, id);
-  if (group) return summaryOf(bucketsOf(membersOf(group), now), group.archived);
-  return rollupLine(rollupOf(everyRow(ix), id, now));
+  return group ? rollupLine(tally(membersOf(group), now), 'session') : rollupLine(rollupOf(everyRow(ix), id, now));
 }
 
 // What a session waits on, from the summaries route's `pending`: "Waiting for you to approve Bash: npm test", or "Waiting for your
@@ -71,6 +66,18 @@ export function pendingLine(pending) {
 
 // A session's summary is read again when it has moved or changed state, since what it waits on goes with its state.
 export const stampOf = row => `${row.lastActivityAt}:${row.state}`;
+
+// The most summaries the page keeps.
+export const KEPT = 300;
+
+// Drops the oldest entries of `kept`, a map in the order they were stored, until it holds `max`. An id in `drawn` is never dropped: a
+// summary that is on screen and goes would be asked for again, and asking for it would drop another.
+export function trim(kept, drawn, max = KEPT) {
+  for (const id of kept.keys()) {
+    if (kept.size <= max) return;
+    if (!drawn.has(id)) kept.delete(id);
+  }
+}
 
 // The ids of `rows` whose summary is not in `kept` (a map of id to { stamp }) or was read at another stamp, each once.
 export const staleIds = (rows, kept) => [...new Set(rows.filter(row => kept.get(row.id)?.stamp !== stampOf(row)).map(row => row.id))];
@@ -91,7 +98,7 @@ export function splitWaiting(text) {
 }
 
 const TAIL = {
-  awaiting: roll => (roll.needs ? `${roll.needs} ${WAITING}` : 'some need input'),
+  awaiting: roll => `${roll.needs} ${WAITING}`,
   running: roll => (roll.working ? `${roll.working} working` : 'some working'),
   error: () => 'some failed',
   ready: () => 'some unread',

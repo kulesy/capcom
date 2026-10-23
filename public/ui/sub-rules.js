@@ -67,18 +67,21 @@ export function treeOf(rows, id, now = Date.now()) {
   return build(id);
 }
 
-// Archived sessions below are left out of the counts. `dot` is the most urgent mark among the rest, or null.
-export function rollupOf(rows, id, now = Date.now()) {
-  const live = descendantsOf(rows, id).filter(row => !row.archived);
+// How a list of sessions adds up. Archived ones are left out of the counts. `dot` is the most urgent mark among the rest, or null.
+export function tally(rows, now = Date.now()) {
+  const live = rows.filter(row => !row.archived);
   const roll = { total: live.length, needs: 0, working: 0, recent: 0, idle: 0, dot: mostUrgent(live) };
   for (const row of live) roll[bucketOf(row, now)]++;
   return roll;
 }
 
+// The sessions below `id`, at any depth, added up.
+export const rollupOf = (rows, id, now = Date.now()) => tally(descendantsOf(rows, id), now);
+
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-// "3 sub sessions, 2 waiting on you, 1 working", leaving out a part with nothing in it.
-export const rollupLine = ({ total, needs, working }) => (total ? [plural(total, 'sub session'), needs && `${needs} waiting on you`, working && `${working} working`].filter(Boolean).join(', ') : '');
+// "3 sub sessions, 2 waiting on you, 1 working", leaving out a part with nothing in it. A group's chat counts "session" in place of "sub session".
+export const rollupLine = ({ total, needs, working }, noun = 'sub session') => (total ? [plural(total, noun), needs && `${needs} waiting on you`, working && `${working} working`].filter(Boolean).join(', ') : '');
 
 // What a folded family's row shows: the most urgent mark among its head and the sessions nested under it.
 export const familyDot = row => mostUrgent(withKids([row]));

@@ -119,6 +119,37 @@ test('the end of the file is read first, and a reply further back is found by re
   assert.ok(readsNear <= 4, `${readsNear} reads for a reply in the last chunk`);
 });
 
+test('a line longer than the limit ends the search with nothing found, and no more than the limit is read however long the line is', t => {
+  const reads = t.mock.method(fs, 'readSync');
+  const read = () => reads.mock.calls.reduce((n, call) => n + call.result, 0);
+  const LIMIT = 2 * 1024 * 1024;
+  const PROBE = 64 * 1024;
+  transcript('huge', [user('go'), said('Before the long line.'), user('x'.repeat(20 * 1024 * 1024))]);
+  reads.mock.resetCalls();
+  assert.equal(latestReply(files.get('huge'), ''), null, 'the reply before a 20 MB line is out of reach');
+  assert.ok(read() <= LIMIT + PROBE, `${read()} bytes read for a 20 MB line`);
+
+  const unfinished = path.join(dir, 'unfinished.jsonl');
+  fs.writeFileSync(unfinished, `${JSON.stringify(said('Before the long line.'))}\n${JSON.stringify(user('x'.repeat(20 * 1024 * 1024)))}`);
+  reads.mock.resetCalls();
+  assert.equal(latestReply({ id: 'unfinished', file: unfinished }, ''), null, 'a line still being written is not found past the limit either');
+  assert.ok(read() <= LIMIT, `${read()} bytes read for a 20 MB line with no end yet`);
+
+  transcript('after-huge', [user('go'), user('x'.repeat(20 * 1024 * 1024)), said('After the long line.')]);
+  reads.mock.resetCalls();
+  assert.equal(latestReply(files.get('after-huge'), '').text, 'After the long line.');
+  assert.ok(read() < 3 * PROBE, `${read()} bytes read for a reply at the end`);
+
+  const line = n => JSON.stringify(user('x'.repeat(n))).length + 1;
+  const replyLine = JSON.stringify(said('Just inside.')).length + 1;
+  transcript('past', [user('go'), said('Just past it.'), user('x'.repeat(LIMIT - replyLine - line(0) + 100))]);
+  assert.equal(latestReply(files.get('past'), ''), null, 'a reply that starts a little before the limit is not found');
+  transcript('inside', [user('go'), said('Just inside.'), user('x'.repeat(LIMIT - replyLine - line(0) - 1000))]);
+  assert.equal(latestReply(files.get('inside'), '').text, 'Just inside.', 'one that starts a little after it is');
+  const summaries = makeSummaries({ transcriptFor });
+  assert.deepEqual({ ...summaries.get('huge') }, { line: '', reply: '', at: null }, 'the summary is the one for a session that has said nothing');
+});
+
 test('a summary has the first sentence of the latest reply, the reply cut to 4,000 characters, and when it was said', () => {
   const summaries = makeSummaries({ transcriptFor });
   transcript('one', [user('go'), said('Old reply.'), said(`## Result\n${'detail line. '.repeat(500)}`, '2026-10-23T05:30:00.000Z')]);

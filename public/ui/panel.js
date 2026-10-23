@@ -4,7 +4,7 @@ import { backTo, closeFile, FileTab, useFile } from './file-view.js';
 import { useStore } from './hooks.js';
 import { html, memo, useCallback, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
-import { hidePanel, openQuietly, panelOf, panels, selectTab, setPanelWidth, takeOrigin, takeWant } from './panel-state.js';
+import { closeQuietly, hidePanel, openQuietly, panelOf, panels, selectTab, setPanelWidth, takeOrigin, takeWant } from './panel-state.js';
 import { keyHint } from './shortcuts.js';
 import { subsOffered } from './sub-panel-rules.js';
 import { LIST_TREE, sessionIndex, SubsTab } from './subs.js';
@@ -34,8 +34,8 @@ export function useShownTab(ctrl) {
   return state.open ? tabShown(state.tab, tabs) : null;
 }
 
-// Draws nothing until the chat's panel is open and offers a tab. It also opens the panel by itself on the Sub sessions tab, once, for a
-// chat that has sub sessions and has never had its panel opened or closed.
+// Draws nothing until the chat's panel is open and offers a tab. It also opens the panel by itself on the Sub sessions tab for a chat that
+// has sub sessions, while its panel has never been opened or closed and fits beside the chat. That is not saved, and it goes if the room does.
 export function Panel({ ctrl }) {
   const id = ctrl.id;
   const { tabs, file } = usePanelTabs(ctrl);
@@ -43,8 +43,17 @@ export function Panel({ ctrl }) {
   const saved = useStore(panels, s => id in s.byId);
   const offered = tabs.includes('subs');
   useLayoutEffect(() => {
-    const span = document.getElementById('session')?.clientWidth || innerWidth;
-    if (opensByDefault({ saved, offered, mode: panelMode(span) })) openQuietly(id, 'subs');
+    const section = document.getElementById('session');
+    const fit = () => {
+      const mode = panelMode(section?.clientWidth || innerWidth);
+      if (opensByDefault({ saved, offered, mode })) openQuietly(id, 'subs');
+      else if (!offered || mode !== 'side') closeQuietly(id);
+    };
+    fit();
+    if (!section) return undefined;
+    const watch = new ResizeObserver(fit);
+    watch.observe(section);
+    return () => watch.disconnect();
   }, [id, saved, offered]);
   if (!state.open || !tabs.length) return null;
   return html`<${Shown} ctrl=${ctrl} tabs=${tabs} tab=${tabShown(state.tab, tabs)} file=${file} />`;

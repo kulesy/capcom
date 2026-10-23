@@ -303,6 +303,4 @@
   .sub-body { margin-top: -0.5rem; }
 
   .chat-tools { gap: 1rem; }
-
-  .chat-tools .btn::after { content: ""; position: absolute; inset: -0.375rem; }
 }

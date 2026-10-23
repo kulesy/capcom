@@ -15,6 +15,14 @@ test('a session that needs you, one that is working, a recent one and an idle on
   );
 });
 
+test('a session whose mark is awaiting needs you whatever its state, as a Desktop session does when its turn ended in a question, unless it is archived', () => {
+  assert.equal(bucketOf(row('q', 'idle', 5, { dot: 'awaiting' }), NOW), 'needs');
+  assert.equal(bucketOf(row('q', 'active', RECENT_MS * 3, { dot: 'awaiting' }), NOW), 'needs');
+  assert.equal(bucketOf(row('x', 'idle', 5, { dot: 'awaiting', archived: true }), NOW), 'archived');
+  for (const dot of ['ready', 'running', 'error', null, undefined]) assert.equal(bucketOf(row('d', 'idle', 5, { dot }), NOW), 'recent', `a ${dot} mark does not need you`);
+  assert.deepEqual(ids(bucketsOf([row('q', 'idle', 5, { dot: 'awaiting' }), row('w', 'waiting', 4), row('i', 'idle', 3)], NOW).needs), ['w', 'q']);
+});
+
 test('each part goes newest first, a tie goes by id, and the parts come back in the panel\'s order', () => {
   const out = bucketsOf([row('b', 'idle', 10), row('c', 'idle', 5), row('a', 'idle', 10), row('z', 'waiting', 1), row('y', 'working', 1)], NOW);
   assert.deepEqual(Object.keys(out), ['needs', 'working', 'recent', 'idle', 'archived']);
