@@ -1,6 +1,8 @@
 // A small Markdown renderer for Claude's replies. Everything is escaped first, so a reply can never
 // inject markup; only http and https links survive, and paths to files on this Mac when the caller can open them.
 
+import { runnableBlock } from './ui/terminal-rules.js';
+
 const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 // A path is plain when it starts with `~/` or `/` and every segment after that is named: none empty, none `.` or `..`, no trailing slash.
@@ -111,6 +113,19 @@ function list(lines, i, file) {
   return { html: `<${tag}${start}>${items.map(([t, ...rest]) => `<li>${inline(t, file)}${rest.join('')}</li>`).join('')}</${tag}>`, i };
 }
 
+// Copy always, and Run when the block is a command. Both only draw: the page decides whether Run shows, and reads the command again
+// from the block's own text when it is clicked.
+function codeBlock(lang, text) {
+  const tool = (kind, label, tip, extra = '') => `<button type="button" class="btn" data-variant="ghost" data-size="xs" data-code="${kind}" aria-label="${label}" data-tip="${tip}"${extra}>${kind === 'copy' ? 'Copy' : 'Run'}</button>`;
+  const block = runnableBlock(lang, text);
+  const run = !block ? ''
+    : block.hidden ? tool('run', 'Run in terminal, unavailable because the block holds hidden characters', 'This block holds hidden characters, so it cannot be run', ' aria-disabled="true"')
+    : tool('run', 'Run in terminal', 'Run in terminal');
+  const label = lang ? `<span class="code-lang">${esc(lang)}</span>` : '';
+  return `<div class="code-block"><div class="code-head">${label}<span class="code-tools">${tool('copy', 'Copy code', 'Copy')}${run}</span></div>`
+    + `<pre class="code"${lang ? ` data-lang="${esc(lang)}"` : ''}><code>${esc(text)}</code></pre></div>`;
+}
+
 export function md(src, file) {
   const lines = src.replace(/\r\n?/g, '\n').split('\n');
   const out = [];
@@ -125,7 +140,7 @@ export function md(src, file) {
       i++;
       while (i < lines.length && !lines[i].trim().startsWith(fence[1])) body.push(lines[i++]);
       i++;
-      out.push(`<pre class="code"${fence[2] ? ` data-lang="${esc(fence[2])}"` : ''}><code>${esc(body.join('\n'))}</code></pre>`);
+      out.push(codeBlock(fence[2], body.join('\n')));
       continue;
     }
     const h = l.match(/^(#{1,6})\s+(.*)$/);

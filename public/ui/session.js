@@ -6,6 +6,7 @@ import { HOME } from './env.js';
 import { leadingMentions } from './files.js';
 import { payload } from './images.js';
 import { createStore } from './store.js';
+import { createTerminal } from './terminal-state.js';
 import { absorb, prepend } from './thread.js';
 
 const enc = encodeURIComponent;
@@ -52,7 +53,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   // Until a new session starts, the box holds its settings here; the ones left alone follow the folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
-    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false,
+    items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false, terminal: false,
     status: draft ? { state: 'idle', pending: [], mode: 'manual', model: null, shownModel: null, effort: null, fast: false } : null,
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
@@ -60,6 +61,8 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     folder: HOME, folders: [], jump: 0, earlierSeq: 0, context: null,
   });
   const state = store.get;
+  // A new session has no folder to run in yet, so it has no terminal.
+  const term = draft ? null : createTerminal({ id, enabled: () => state().terminal });
   let closed = false;
   let es = null;
   let fetching = false;
@@ -99,7 +102,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const r = await api(`api/sessions/${enc(id)}/messages`);
       if (closed) return;
-      store.set(s => ({ session: r.session || s.session, fileLinks: r.fileLinks === true }));
+      store.set(s => ({ session: r.session || s.session, fileLinks: r.fileLinks === true, terminal: r.terminal === true }));
       const thread = absorb({ items: [], orphans: new Map() }, r.items);
       const chips = await loadChips();
       if (closed) return;
@@ -147,6 +150,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     on('fast', d => patchStatus({ fast: d.fast }));
     on('effort', d => patchStatus({ effort: d.effort }));
     on('turn-end', d => { ended = true; if (d.error) notice(d.message || 'The last turn ended with an error.'); fetchNew(); refreshIndex(); refreshContext(); });
+    on('terminal', d => { if (state().terminal) term.apply(d); });
     on('error', d => notice(d.message));
     on('exit', () => { patchStatus({ running: false, state: 'idle', pending: [], holds: [] }); store.set({ work: null, turnStart: 0 }); refreshContext(); });
     es.onerror = () => { if (!closed) notice(es.readyState === EventSource.CLOSED ? 'Lost contact with the Mac.' : ''); };
@@ -395,7 +399,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
   const fileUrl = path => `api/sessions/${enc(id)}/file?path=${enc(path)}`;
 
   return {
-    id, draft: draft ? { touched } : null, store, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
+    id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
     send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl, fileUrl,
   };
 }

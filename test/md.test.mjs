@@ -201,3 +201,48 @@ test('linkedFiles names the path with no line, so a link with a line and one wit
 test('fileTarget takes only a string', () => {
   for (const bad of [undefined, null, 4, {}, ['/Users/eli/a']]) assert.equal(fileTarget(bad), null);
 });
+
+// The buttons and code of each fenced block, as { lang, tools, code }, where tools is the data-code of each button in order.
+const blocks = markup => [...markup.matchAll(/<div class="code-block"><div class="code-head">(?:<span class="code-lang">(.*?)<\/span>)?<span class="code-tools">(.*?)<\/span><\/div><pre class="code"[^>]*><code>(.*?)<\/code><\/pre><\/div>/gs)]
+  .map(([, lang, tools, code]) => ({ lang: lang ?? null, tools: [...tools.matchAll(/data-code="(\w+)"/g)].map(m => m[1]), code }));
+
+test('every fenced block has a Copy button, and the code inside it is escaped as it was', () => {
+  assert.deepEqual(blocks(md('```js\nconst a = "<b>" && 1;\n```')), [{ lang: 'js', tools: ['copy'], code: 'const a = &quot;&lt;b&gt;&quot; &amp;&amp; 1;' }]);
+  assert.deepEqual(blocks(md('```\nplain text\nin two lines\n```')), [{ lang: null, tools: ['copy'], code: 'plain text\nin two lines' }]);
+  assert.match(md('```js\nx\n```'), /<pre class="code" data-lang="js"><code>x<\/code><\/pre>/);
+});
+
+test('a block that is a command also has a Run button, and the rule is the one the page reads the command by', () => {
+  assert.deepEqual(blocks(md('```bash\nls -la\n```')).map(b => b.tools), [['copy', 'run']]);
+  assert.deepEqual(blocks(md('```\necho hello\n```')).map(b => b.tools), [['copy', 'run']], 'one line with no language');
+  assert.deepEqual(blocks(md('```console\n$ ls\noutput\n```')).map(b => b.tools), [['copy', 'run']]);
+  assert.deepEqual(blocks(md('```\none\ntwo\n```')).map(b => b.tools), [['copy']], 'two lines with no language');
+  assert.deepEqual(blocks(md('```js\nls\n```')).map(b => b.tools), [['copy']]);
+  assert.deepEqual(blocks(md('```console\noutput only\n```')).map(b => b.tools), [['copy']]);
+});
+
+test('a command block holding hidden characters has a Run button that is marked unavailable, and Copy is not', () => {
+  const run = markup => /<button[^>]*data-code="run"[^>]*>/.exec(markup)[0];
+  for (const hidden of ['‮', '​', '\u0007', '⁦']) {
+    const button = run(md(`\`\`\`bash\nls ${hidden}-la\n\`\`\``));
+    assert.match(button, /aria-disabled="true"/);
+    assert.match(button, /data-tip="This block holds hidden characters, so it cannot be run"/);
+  }
+  assert.doesNotMatch(run(md('```bash\nls\t-la\n```')), /aria-disabled/, 'a tab is plain');
+  assert.doesNotMatch(/<button[^>]*data-code="copy"[^>]*>/.exec(md('```bash\nls ‮\n```'))[0], /aria-disabled/);
+});
+
+test('every button has a label and a tooltip, and is a button that submits nothing', () => {
+  const buttons = [...md('```bash\nls\n```').matchAll(/<button\b[^>]*>/g)].map(m => m[0]);
+  assert.equal(buttons.length, 2);
+  for (const button of buttons) {
+    assert.match(button, /type="button"/);
+    assert.match(button, /aria-label="[^"]+"/);
+    assert.match(button, /data-tip="[^"]+"/);
+  }
+});
+
+test('a language word shows in the label, and a block inside a quote has its buttons too', () => {
+  assert.equal(blocks(md('```a+b\nx\n```'))[0].lang, 'a+b');
+  assert.deepEqual(blocks(md('> ```bash\n> ls\n> ```')).map(b => b.tools), [['copy', 'run']]);
+});
