@@ -232,6 +232,17 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   const fold = (id, on) => setFolded(all => ({ ...Object.fromEntries(Object.entries(all).filter(([key]) => key !== id)), ...(on && { [id]: true }) }));
   const toggleFold = id => fold(id, !folded[id]);
 
+  // The family of the chat on screen opens once for each chat, as its row arrives, so a session started into a folded family is in
+  // view. A family folded while the chat is open stays folded.
+  const unfolded = useRef(null);
+  useEffect(() => {
+    if (!current) { unfolded.current = null; return; }
+    if (unfolded.current === current || !findRow(ix, current)) return;
+    unfolded.current = current;
+    const root = rootOf(ix, current);
+    if (root.id !== current && folded[root.id]) fold(root.id, false);
+  }, [current, ix]);
+
   useEffect(() => dragRows(box.current, {
     onStart: id => setDrag({ id, over: null }),
     onOver: over => setDrag(d => d && { ...d, over }),

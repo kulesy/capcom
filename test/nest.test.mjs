@@ -1,12 +1,12 @@
-// Run with `npm test`. Nesting a session under another: the links Desktop records, Capcom's own choice over them, the route that nests and
-// takes a session out, and what moving, pinning and archiving do to a family. Over HTTP against the real server, with a fake Mac under a
+// Run with `npm test`. Nesting a session under another: the links Desktop records and the chips that started sessions, Capcom's own choice over
+// them, the route that nests and takes a session out, and what moving, pinning and archiving do to a family. Over HTTP against the real server, with a fake Mac under a
 // temporary home.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { everyRow } from '../public/ui/tree.js';
-import { as, request, signIn, start } from './harness.mjs';
+import { as, request, restart, signIn, start } from './harness.mjs';
 
 const GROUPS = [{ id: 'cg-work', name: 'Work' }, { id: 'cg-home', name: 'Home' }];
 const SESSIONS = [
@@ -478,4 +478,155 @@ test('a family past the newest 60 is cut, and stays whole when any member was br
   const kept = (await index(s, token)).ungrouped;
   assert.equal(kept.length, 61);
   assert.deepEqual(shape(kept).at(-1), 'Family [Member 1, Member 2, Member 3, Member 4]');
+});
+
+// Maker made a chip, and Made is the session that chip started, so Capcom started it and Desktop has no record of it.
+const MAKER = [
+  { id: 'maker', title: 'Maker', group: 'cg-work', ago: 5 },
+  { id: 'made', title: 'Made', source: 'capcom', ago: 1 },
+  { id: 'other', title: 'Other', group: 'cg-work', ago: 6 },
+];
+const STARTED = [{ sessionId: 'maker', startedId: 'made', status: 'started' }];
+
+test('a session started from a chip shows under the session that made the chip, in its place, and not in Started here', async () => {
+  const { s, token } = await ready({ sessions: MAKER, chips: STARTED });
+  const ix = await index(s, token);
+  assert.deepEqual(places(ix).groups, { 'cg-work': ['Maker [Made]', 'Other'], 'cg-home': [] });
+  assert.deepEqual(ix.started, []);
+  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').group], ['maker', 'cg-work']);
+  assert.equal(Object.hasOwn(onDisk(s), 'parents'), false, 'the link is read from chips.json, so nothing is written');
+});
+
+test('a chip started from the page nests its new session under the session that made the chip at once and after a restart', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true });
+  const { token } = await signIn(s);
+  const res = await request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'maker', toolUseId: 'toolu_page', title: 'Follow up', prompt: 'begin a session', cwd: s.home } });
+  assert.equal(res.status, 200);
+  const { id } = res.body();
+  const nested = async (server, cookie) => {
+    const ix = await index(server, cookie);
+    return [rowOf(ix, id).parent, ix.started, shape(ix.groups[0].sessions)];
+  };
+  assert.deepEqual(await nested(s, token), ['maker', [], ['Maker [Follow up]', 'Other']]);
+  assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
+  const again = await restart(s);
+  assert.deepEqual(await nested(again, (await signIn(again)).token), ['maker', [], ['Maker [Follow up]', 'Other']]);
+});
+
+test('the chip link beats the link Desktop records for the session the chip started, and Desktop\'s link stands for a session no chip started', async () => {
+  const { s, token } = await ready({
+    sessions: [...MAKER.filter(r => r.id !== 'made'), { id: 'both', title: 'Both', parent: 'other', ago: 1 }, { id: 'plain', title: 'Plain', parent: 'other', ago: 2 }],
+    chips: [{ sessionId: 'maker', startedId: 'both', status: 'started' }],
+  });
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Maker [Both]', 'Other [Plain]']);
+});
+
+test('Capcom\'s own choice beats the chip link in both directions: a null keeps the session at the top level, and a parent nests it there instead', async () => {
+  const out = await ready({ sessions: MAKER, chips: STARTED, layout: { parents: { made: null } } });
+  const kept = await index(out.s, out.token);
+  assert.deepEqual(places(kept).groups['cg-work'], ['Maker', 'Other']);
+  assert.deepEqual(shape(kept.started), ['Made']);
+
+  const under = await ready({ sessions: MAKER, chips: STARTED, layout: { parents: { made: 'other' } } });
+  const moved = await index(under.s, under.token);
+  assert.deepEqual(places(moved).groups['cg-work'], ['Other [Made]', 'Maker']);
+  assert.deepEqual(moved.started, []);
+});
+
+test('moving, pinning or taking out a session started from a chip leaves its starter and writes a null for it', async () => {
+  for (const [route, json, where] of [
+    ['move', { id: 'made', group: 'cg-home' }, { pinned: [], groups: { 'cg-work': ['Maker', 'Other'], 'cg-home': ['Made'] } }],
+    ['pin', { id: 'made', pinned: true }, { pinned: ['Made'], groups: { 'cg-work': ['Maker', 'Other'], 'cg-home': [] } }],
+    ['nest', { id: 'made', parent: null }, { pinned: [], groups: { 'cg-work': ['Made', 'Maker', 'Other'], 'cg-home': [] } }],
+  ]) {
+    const { s, token } = await ready({ sessions: MAKER, chips: STARTED });
+    assert.equal((await call(s, token, route, json)).status, 200, route);
+    assert.deepEqual(onDisk(s).parents, { made: null }, route);
+    const ix = await index(s, token);
+    assert.deepEqual({ pinned: shape(ix.pinned), groups: places(ix).groups }, where, route);
+    assert.deepEqual(ix.started, [], `${route}: it is in its place, not in Started here`);
+  }
+});
+
+test('a session started from a chip that leaves its starter hands the sessions started from it to the starter', async () => {
+  const { s, token } = await ready({
+    sessions: [...MAKER, { id: 'deeper', title: 'Deeper', source: 'capcom', ago: 2 }],
+    chips: [...STARTED, { sessionId: 'made', startedId: 'deeper', status: 'started' }],
+  });
+  assert.deepEqual(places(await index(s, token)).groups['cg-work'], ['Maker [Made, Deeper]', 'Other']);
+  assert.equal((await call(s, token, 'move', { id: 'made', group: 'cg-home' })).status, 200);
+  assert.deepEqual(onDisk(s).parents, { made: null, deeper: 'maker' });
+  assert.deepEqual(places(await index(s, token)).groups, { 'cg-work': ['Maker [Deeper]', 'Other'], 'cg-home': ['Made'] });
+});
+
+test('a chip that is open, dismissed or has no started session, or no session that made it, makes no link', async () => {
+  const { s, token } = await ready({
+    sessions: [
+      { id: 'maker', title: 'Maker', group: 'cg-work', ago: 5 },
+      { id: 'a', title: 'A', source: 'capcom', ago: 1 },
+      { id: 'b', title: 'B', source: 'capcom', ago: 2 },
+      { id: 'd', title: 'D', source: 'capcom', ago: 3 },
+    ],
+    chips: [
+      { sessionId: 'maker', startedId: 'a', status: 'open' },
+      { sessionId: 'maker', startedId: 'b', status: 'dismissed' },
+      { sessionId: 'maker', status: 'started' },
+      { startedId: 'd', status: 'started' },
+    ],
+  });
+  const ix = await index(s, token);
+  assert.deepEqual(places(ix).groups['cg-work'], ['Maker']);
+  assert.deepEqual(shape(ix.started), ['A', 'B', 'D']);
+});
+
+test('a session started from a chip by a session that is nested itself shows under the topmost parent, after its starter', async () => {
+  const { s, token } = await ready({
+    sessions: [{ id: 'top', title: 'Top', group: 'cg-work', ago: 8 }, { id: 'maker', title: 'Maker', parent: 'top', ago: 5 }, { id: 'made', title: 'Made', source: 'capcom', ago: 1 }],
+    chips: STARTED,
+  });
+  const ix = await index(s, token);
+  assert.deepEqual(places(ix).groups['cg-work'], ['Top [Maker, Made]']);
+  assert.deepEqual([rowOf(ix, 'made').parent, rowOf(ix, 'made').via], ['top', 'maker']);
+  assert.equal(Object.hasOwn(onDisk(s), 'parents'), false);
+});
+
+test('a session cannot nest under a session started from a chip it made, and a refusal writes nothing', async () => {
+  const { s, token } = await ready({
+    sessions: [...MAKER, { id: 'deeper', title: 'Deeper', source: 'capcom', ago: 2 }],
+    chips: [...STARTED, { sessionId: 'made', startedId: 'deeper', status: 'started' }],
+  });
+  const before = fs.readFileSync(s.layout, 'utf8');
+  for (const parent of ['made', 'deeper']) {
+    const res = await call(s, token, 'nest', { id: 'maker', parent });
+    assert.deepEqual([res.status, res.body()], [400, { error: 'A session cannot nest under itself or its own child.' }], `Maker under ${parent}`);
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
+// An open chip that Maker made, which the page of another session (a fork of Maker, say) starts or dismisses.
+const OPEN = [{ sessionId: 'maker', toolUseId: 'toolu_open', status: 'open', prompt: 'begin a session' }];
+const chipsOf = async (s, token, id) => (await request(s, 'GET', `/api/sessions/${id}/chips`, { headers: as(token) })).body().chips;
+
+test('a chip started from the page of another session still nests under the session that made it', async () => {
+  const sessions = MAKER.filter(r => r.id !== 'made');
+  const s = await start({ sessions, groups: GROUPS, claude: true, chips: OPEN });
+  const { token } = await signIn(s);
+  const res = await request(s, 'POST', '/api/chips/start', { headers: as(token), json: { sessionId: 'other', toolUseId: 'toolu_open' } });
+  assert.equal(res.status, 200);
+  const { id, chip } = res.body();
+  assert.deepEqual([chip.sessionId, chip.startedId], ['maker', id]);
+  const ix = await index(s, token);
+  assert.equal(rowOf(ix, id).parent, 'maker');
+  assert.deepEqual([(await chipsOf(s, token, 'maker')).length, (await chipsOf(s, token, 'other')).length], [1, 0]);
+});
+
+test('a chip dismissed from the page of another session stays with the session that made it', async () => {
+  const s = await start({ sessions: MAKER, groups: GROUPS, chips: OPEN });
+  const { token } = await signIn(s);
+  const res = await request(s, 'POST', '/api/chips/dismiss', { headers: as(token), json: { sessionId: 'other', toolUseId: 'toolu_open', title: 'A chip' } });
+  assert.equal(res.status, 200);
+  assert.deepEqual([res.body().chip.sessionId, res.body().chip.status], ['maker', 'dismissed']);
+  assert.deepEqual((await chipsOf(s, token, 'maker')).map(c => c.status), ['dismissed']);
+  assert.deepEqual(await chipsOf(s, token, 'other'), []);
 });

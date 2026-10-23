@@ -77,12 +77,13 @@ onTurn(({ id, kind, at }) => writeMark(() => {
 
 const ownTitle = (own, id) => (Object.hasOwn(own.titles, id) && typeof own.titles[id] === 'string' && own.titles[id].trim() ? own.titles[id] : '');
 
-// What a session is linked to: Capcom's own choice, a null included, wins over Desktop's link, as it does for archiving.
-const linkOf = (own, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : desk.links.get(id) ?? null);
+// What a session is linked to: Capcom's own choice, a null included, wins over the chip it was started from, and that over Desktop's link.
+const linkOf = (own, fromChips, desk, id) => (Object.hasOwn(own.parents, id) ? own.parents[id] : fromChips.get(id) ?? desk.links.get(id) ?? null);
 const linksNow = () => {
   const own = layout.read();
+  const fromChips = chips.links();
   const desk = loadDesktop(cfg.desktopDir);
-  return id => linkOf(own, desk, id);
+  return id => linkOf(own, fromChips, desk, id);
 };
 const linkNow = id => linksNow()(id);
 
@@ -95,7 +96,7 @@ function keepFamily(id, rows) {
   return links;
 }
 
-// A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone reads Desktop's links.
+// A session with a link leaves its parent when it moves or is pinned, which only the server can tell, since it alone knows a session's link.
 const leaving = id => (linkNow(id) === null ? {} : { unlink: true, relink: keepFamily(id, buildIndex().rows) });
 
 function buildIndex({ archived = false } = {}) {
@@ -151,7 +152,8 @@ function buildIndex({ archived = false } = {}) {
   }
 
   // A family shows in the place of its holder, the topmost session its links reach, so a child takes the place its holder has now.
-  const families = familiesOf(rows, id => linkOf(own, desk, id), { archived });
+  const fromChips = chips.links();
+  const families = familiesOf(rows, id => linkOf(own, fromChips, desk, id), { archived });
   const places = new Map([...rows.values()].map(r => [r.id, { group: r.group, pinned: r.pinned }]));
   for (const r of rows.values()) {
     const { holder, parent, via } = families.get(r.id);
@@ -568,7 +570,7 @@ function nest(id, parent) {
   // The links lead through archived sessions too, which a family does not show, so they are followed all the way up.
   if ([target, ...chainOf(rows, linksNow(), target)].some(r => r.id === id)) throw refuse(400, 'A session cannot nest under itself or its own child.');
   const root = target.parent ?? target.id;
-  // A session that shows under that parent already keeps its own group and any link Desktop makes.
+  // A session that shows under that parent already keeps its own group and its link.
   if (rows.get(id).parent === root) return { parent: root };
   layout.nest(id, root, { relink: keepFamily(id, rows) });
   return { parent: buildIndex().rows.get(id).parent };
@@ -775,7 +777,7 @@ async function api(req, res, u) {
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
     if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: known });
-    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId, title, status: 'dismissed' }) });
+    if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }) });
     const text = known?.prompt || prompt;
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
     const home = findRow(sessionId)?.cwd;
@@ -783,7 +785,7 @@ async function api(req, res, u) {
     if (!text || !folder || !fs.existsSync(folder)) return send(res, 400, { error: 'This chip has no prompt or folder to start from.' });
     if (folder !== home && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
     const id = await newSession({ cwd: folder, text, title: known?.title || title });
-    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
+    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, status: 'started', startedId: id }) });
   }
   if (parts[1] !== 'sessions' || !parts[2]) return send(res, 404, { error: 'Not found' });
   const id = parts[2];

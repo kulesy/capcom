@@ -1,6 +1,6 @@
 # Nest sessions under a parent, and follow the links Desktop records
 
-- Status: Accepted, amended 2026-10-22
+- Status: Accepted, amended 2026-10-22 and 2026-10-23
 - Deciders: Eli
 - Date: 2026-10-22
 - Tags: sessions, nesting, linked-sessions, layout, drag-and-drop, claude-desktop
@@ -33,7 +33,7 @@ Chosen option: "Follow Desktop's links on every refresh, and keep Capcom's nests
 
 - **File.** `layout.json` gains `parents`, which maps a CLI session id to a parent's id or to null. An id nests the session under that parent. A null takes it out of the parent Desktop links it to. A session with no entry follows Desktop. A file without `parents` loads as having none and is not rewritten until something changes. An entry that is neither null nor an id is dropped as the file is read, and a `parents` that is not an object makes the file unreadable, as a bad `titles` does.
 - **Desktop's links.** `lib/desktop.mjs` reads `spawnedFrom`, `forkedFromSessionId` and `lineageDetached` from each session record and keeps the link beside the fields the rows take. It follows Desktop's own rule (`parentOf`), so side chats, forks and suggested tasks all nest. A record with `lineageDetached` set has no link, and neither has one whose `spawnedFrom.userFork` is true. A side chat (`spawnedFrom.sideSession`) links to the session it was started from. When its record also names a fork (`forkedFromSessionId`) of some other session, other than the deleted parent that `spawnedFrom.deletedParent` names, the fork wins. Any other record links to the session it was forked from, or else to the one `spawnedFrom` names. A link to the record itself counts as none. Desktop names the parent by its own id, so Capcom maps it to the CLI session id through the other records and drops a link whose parent has no record or no CLI session. This is Desktop's rule with its user-links gate on, checked on Desktop 3.1623.0 only, and a NOTE beside the code says so. Capcom reads the links on every refresh, writes nothing to Desktop, and has no links when Desktop cannot be read.
-- **A session's link** is Capcom's entry in `parents` when it has one, otherwise Desktop's link, otherwise none.
+- **A session's link** is Capcom's entry in `parents` when it has one, otherwise the chip it was started from, otherwise Desktop's link, otherwise none (`linkOf` in `server.mjs`). A chip links the session it started to the session that made it: `makeChips` in `lib/tools.mjs` maps each started chip's `startedId` to its `sessionId`, and a chip that is open, dismissed or missing either id makes no link. The map is built from `chips.json`, already in memory, on each refresh, and nothing new is written when a chip is started. A session started from a chip is a Capcom session, so it nests in the list instead of heading Started here. When the session that made the chip is a routine run, is missing or is not listed, it stays at the top level. Move, pin, Nest under and Move out of write `parents`, so they win over a chip as they win over Desktop. A session with a chip link counts as linked, so moving it out writes a null and hands the sessions under it on, as for any other link.
 - **The walk.** `lib/families.mjs` follows each row's links upward through every row, archived ones included, and gives each row three ids. The holder is the topmost session its links reach, or the row itself. The parent is the topmost one the list shows, or null. `via` is the nearest one the list shows, or null, and orders the family. A chain stops at a null link, at an id with no row, at a routine run, which never holds children, and at a row it has passed already. A row whose chain comes back to itself is in a cycle and shows at the top level. A chain that runs into a cycle without the row in it stops at the first session of the cycle it reaches. That session is in a cycle, so it shows at the top level, and an archived session further round the cycle cannot pull the family into another place. Every parent is top level, so a family is one level deep: a grandchild shows under its topmost live ancestor, and the children of an archived parent move up to the parent's place and nest under it again when it comes back.
 - **Place.** A family shows in its holder's place, so a child takes the holder's group or pin and its own group or pin is ignored while it is nested. Moving or pinning a parent moves its children with no extra write.
 - **List.** `GET api/sessions` gives each row a `parent` (an id or null) and each top level row with children a `children` list. A child is in no other list: Pinned, the groups, Routines and the three loose lists hold top level sessions only. Children go depth first, as Desktop's do: each session that nests straight under the head, in the order of the parent's list, followed at once by the sessions that nest under it by `via`. Under a recency sort a family sorts where its best member does, so a busy child does not drop out of view under an old parent, and under the other sorts it sorts where its head does. The sorts are in [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md). The cut at the newest 60 counts a family as one session and keeps it whole when any member was brought back from the archive. The counts in section heads and in the projects sidebar include the children.
@@ -54,6 +54,7 @@ Chosen option: "Follow Desktop's links on every refresh, and keep Capcom's nests
 - ✅ Capcom's choice wins in both directions, so a Desktop link neither undoes a nest nor brings back a family the owner took apart.
 - ✅ When a nested session leaves its family, moves or is archived, the family keeps its other members, whatever chain of links lies behind them, and the sessions below that one keep their places under each other.
 - ✅ Nothing is written to Desktop's files.
+- ✅ A session started from a chip nests under the session that made the chip, as Desktop nests the tasks it suggests. The link rests on `chips.json`, so a chip started before 2026-10-23 nests too.
 - ❌ Nesting is one level deep. A session that holds others takes them along when it is nested, and a chain of links shows as one level under its topmost live session.
 - ❌ A nest made in Capcom shows in Capcom only. Desktop keeps the links it has, so a session the owner took out in Capcom stays in its family in Desktop.
 - ❌ An entry in `parents` stays for good. Capcom has no way yet to hand a session back to Desktop's link, so a session the owner nested or took out ignores what Desktop records for it until `parents` is edited by hand.
@@ -70,7 +71,7 @@ Chosen option: "Follow Desktop's links on every refresh, and keep Capcom's nests
 - ✅ Desktop's families show with no drag, and so do the links it makes later.
 - ✅ The owner's choice still wins, as the archive flag's does.
 - ❌ The list reads two more fields of Desktop's internal records, which an update can move.
-- ❌ Two sources decide a session's parent, so a family in Capcom can differ from the one in Desktop.
+- ❌ Three sources decide a session's parent (Capcom's choice, the chip a session was started from, and Desktop's records), so a family in Capcom can differ from the one in Desktop.
 
 ### Copy Desktop's links into `layout.json` once, as the groups and pins are
 
@@ -86,6 +87,7 @@ Chosen option: "Follow Desktop's links on every refresh, and keep Capcom's nests
 ## Links
 
 - [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md), amended 2026-10-22 to point here. Its 2026-10-18 amendment set the rule that Capcom's own archive choice beats Desktop's flag in both directions.
+- [Serve Desktop-style tools from Capcom's own MCP server](20261007-own-mcp-server-for-desktop-style-tools.md), whose chips now nest the session they start under the session that made the chip.
 - [List sessions from transcripts and Desktop's records, read only](20261006-read-only-session-list.md), amended 2026-10-22: the links between sessions are read the same way.
 - [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md), whose views and counts now include nested sessions.
 - [Build Capcom's look and behaviour on shadcn/ui](20261022-shadcn-design-language.md), whose menu, sidebar and focus rules the nested rows follow.

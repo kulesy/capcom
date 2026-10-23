@@ -62,8 +62,9 @@ const freePort = () => new Promise(resolve => {
 // `lineageDetached` are written as they are, for the records Desktop does not count as a link.
 // `sections` is how Desktop sorts its lists: an array for the scope that holds the groups, or an object of scope keys to arrays. `localStorage` is Desktop's
 // Local Storage, with the ids of the sessions it marks `unread` and the minutes ago it `acked` each id, and writes a key only for what it is given. `marks` is
-// Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`.
-function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks }) {
+// Capcom's marks.json, with the minutes ago for each id under `edges`, `seen`, `unread` and `errors`. `chips` are the chips in chips.json, each
+// { sessionId, startedId, status } with the other fields as they are, a `toolUseId` made up when it has none, and `status` open unless it is given.
+function furnish(home, state, { sessions = [], groups = [], layout = {}, claude = false, sections, localStorage, marks, chips }) {
   const desktop = path.join(home, 'Library', 'Application Support', 'Claude');
   const records = path.join(desktop, 'claude-code-sessions', 'account', 'org');
   const transcripts = path.join(home, '.claude', 'projects', '-test-folder');
@@ -91,6 +92,10 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
   if (marks) {
     const times = list => Object.fromEntries(Object.entries(list ?? {}).map(([id, minutes]) => [id, back(minutes)]));
     fs.writeFileSync(path.join(state, 'marks.json'), JSON.stringify({ edges: times(marks.edges), seen: times(marks.seen), unread: times(marks.unread), errors: times(marks.errors) }));
+  }
+  if (chips) {
+    const made = chips.map((c, i) => ({ toolUseId: `toolu_${i}`, status: 'open', title: 'A chip', ...c }));
+    fs.writeFileSync(path.join(state, 'chips.json'), JSON.stringify(Object.fromEntries(made.map(c => [c.toolUseId, c]))));
   }
   const started = [];
   sessions.forEach(({ id, title = '', archived = false, archivedAgo, routine, ago = 10, source = 'desktop', remoteMcpServersConfig, parent, spawnedFrom = parent && { sessionId: `local_${parent}`, sideSession: true }, lineageDetached, fileAgo = ago, edgeAgo, createdAgo, forkedFrom, verdict, errorAgo, fields }) => {

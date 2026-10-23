@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { handleMcp, TOOL_NAMES } from '../lib/tools.mjs';
+import { handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
 import {
   ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_MAX, parseGlyphs, PROMPT_MAX,
 } from '../public/ui/widget-frame.js';
@@ -78,6 +78,34 @@ test('the other tools answer as before', () => {
   assert.equal(call('tools/call', { name: 'show_widget', arguments: { title: 'x', widget_code: '<p></p>' } }).result.content[0].text, 'The widget is showing in the chat.');
   assert.equal(call('tools/call', { name: 'mark_chapter', arguments: { title: 'x' } }).result.content[0].text, 'Chapter marked.');
   assert.equal(call('tools/call', { name: 'nothing_here', arguments: {} }).result.isError, true);
+});
+
+test('chips map each session a chip started to the session that made it, and leave out a chip that is open, dismissed, or missing either session', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-chips-'));
+  try {
+    const chips = makeChips(dir);
+    assert.deepEqual([...chips.links()], []);
+    chips.put({ toolUseId: 'open', sessionId: 'maker', startedId: 'a', status: 'open' });
+    chips.put({ toolUseId: 'dismissed', sessionId: 'maker', startedId: 'b', status: 'dismissed' });
+    chips.put({ toolUseId: 'unstarted', sessionId: 'maker', status: 'started' });
+    chips.put({ toolUseId: 'unowned', startedId: 'd', status: 'started' });
+    assert.deepEqual([...chips.links()], [], 'none of these makes a link');
+    chips.put({ toolUseId: 'open', status: 'started' });
+    chips.put({ toolUseId: 'second', sessionId: 'other', startedId: 'e', status: 'started' });
+    assert.deepEqual([...chips.links()], [['a', 'maker'], ['e', 'other']]);
+    assert.deepEqual([...makeChips(dir).links()], [['a', 'maker'], ['e', 'other']], 'a restart reads them from chips.json');
+    assert.deepEqual(fs.readdirSync(dir), ['chips.json']);
+
+    const written = [];
+    const write = fs.writeFileSync;
+    t.mock.method(fs, 'writeFileSync', (file, ...rest) => { written.push(file); return write(file, ...rest); });
+    chips.put({ toolUseId: 'third', sessionId: 'maker', startedId: 'f', status: 'started' });
+    assert.equal(written.length, 1);
+    assert.ok(written.every(file => file !== path.join(dir, 'chips.json')), 'a save is written beside the file and renamed into place, so a cut-off write cannot leave it unreadable');
+    assert.deepEqual(fs.readdirSync(dir), ['chips.json']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('the guide names every host a widget can load from, and Google Fonts', () => {

@@ -166,7 +166,11 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   and shows a link Desktop records later on the next refresh. Capcom's own choice wins over Desktop's in
   both directions, as it does for the archive flag. A session you nest stays nested whatever Desktop
   records, and one you take out stays out although Desktop links it. `layout.json` keeps those choices under
-  `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows Desktop.
+  `parents`: a parent's id nests a session and a null takes it out. A session with no entry follows the chip it
+  was started from, and then Desktop. A session you start from a chip nests under the session that made the
+  chip, as Desktop nests the tasks it suggests. Capcom reads that from `chips.json`, so chips you started
+  earlier nest too. Moving the session, pinning it, taking it out or nesting it elsewhere wins over the chip,
+  as it does over Desktop's links.
 - **Projects** are an optional level above groups, so a project holds groups and a group holds sessions. A
   group belongs to at most one project, and one that belongs to none stays at the top level, which Home
   shows. Group headers fold, and the browser remembers which are folded. A group's name is bold, and a
