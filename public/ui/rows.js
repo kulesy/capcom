@@ -5,8 +5,10 @@ import { HOME } from './env.js';
 import { clip, duration, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
 import { FileCard } from './file-card.js';
 import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gallery.js';
-import { Fragment, html, memo, useReducer, useRef, useState } from './html.js';
+import { Fragment, html, memo, useLayoutEffect, useReducer, useRef, useState } from './html.js';
 import { useClock } from './hooks.js';
+import { draw, icons } from './menu.js';
+import { splitQuotes } from './quote-rules.js';
 import { groupStart, step, summarize } from './thread.js';
 import { Widget } from './widget.js';
 
@@ -125,6 +127,30 @@ function Thumbs({ images = [], files = [], url, onOpen }) {
   })}</div>`;
 }
 
+// A quote in a sent message, cut to three lines. It is a button, to read the rest, only when something is cut.
+function Quoted({ quote }) {
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  const text = useRef(null);
+  // Measured again whenever the text's box changes size, and when the element is swapped for the other tag.
+  useLayoutEffect(() => {
+    const el = text.current;
+    const measure = () => { if (!open) setCut(el.scrollHeight > el.clientHeight + 1); };
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [quote.text, open, cut]);
+  const Tag = cut ? 'button' : 'div';
+  return html`<${Tag} class="quoted" type=${cut ? 'button' : undefined} aria-expanded=${cut ? open : undefined} data-open=${open ? '' : undefined} onClick=${cut ? () => setOpen(!open) : undefined}>
+    ${draw(icons.quote, 'quote-glyph')}
+    <span class="quoted-body">
+      ${quote.from !== null ? html`<span class="quoted-from">From ${quote.from || 'another session'}</span>` : null}
+      <span class="quoted-text" ref=${text}>${lf(quote.text)}</span>
+    </span>
+  <//>`;
+}
+
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
   && a.term === b.term && a.terminal === b.terminal
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
@@ -132,7 +158,10 @@ const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
 export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
-  if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? html`<div class="bubble">${lf(i.text)}</div>` : null}</li>`;
+  if (i.kind === 'user') {
+    const { quotes, text } = splitQuotes(i.text);
+    return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${quotes.map((q, n) => html`<${Quoted} key=${n} quote=${q} />`)}${text ? html`<div class="bubble">${lf(text)}</div>` : null}</li>`;
+  }
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
     if (/__spawn_task$/.test(i.name)) return html`<${ChipCard} t=${i} chip=${chip} cwd=${cwd} onChip=${onChip} />`;

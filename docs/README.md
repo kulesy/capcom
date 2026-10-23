@@ -3,7 +3,7 @@
 The detail behind GhostShell, the browser chat client for Claude Code sessions on a Mac, one page for each part.
 
 - [How it works](how-it-works.md): where sessions come from, how a chat runs, approvals, settings, reading long sessions and the look.
-- [Chat](chat.md): the prompt box, the model menu, slash commands, the context ring, live work, tool calls, notices and messages between chats.
+- [Chat](chat.md): the prompt box, quotes, the model menu, slash commands, the context ring, live work, tool calls, notices and messages between chats.
 - [Attachments](attachments.md): images, files and the image viewer.
 - [Session list](session-list.md): views, rows, new sessions, groups, pins, nesting, projects, search, archiving, renaming and keys.
 - [Tools](tools.md): the `capcom` MCP server (chips, chapters, group sessions, widgets, questions) and Claude in Chrome.

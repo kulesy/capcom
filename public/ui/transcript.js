@@ -5,6 +5,7 @@ import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore } from './hooks.js';
+import { QuoteFloat } from './quote.js';
 import { isChip, Row, Thought } from './rows.js';
 import { Shell } from './shell.js';
 import { display, doingNow } from './thread.js';
@@ -79,7 +80,7 @@ function Live({ ctrl, box, pin, fileUrl }) {
     <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
 }
 
-export function Transcript({ ctrl }) {
+export function Transcript({ ctrl, quoting }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
   const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session, fileLinks, terminal } = useFields(
@@ -162,6 +163,7 @@ export function Transcript({ ctrl }) {
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, files: m.files, sending: true }} onImage=${viewImage} />`)}
       </ol>
       <${Live} ctrl=${ctrl} box=${box} pin=${pin} fileUrl=${fileUrl} />
+      <${QuoteFloat} ctrl=${ctrl} quoting=${quoting} />
     </div>
     <button class="btn scroll-end" data-variant="outline" data-size="icon-sm" data-active=${away} type="button" inert=${!away} aria-label="Scroll to end" data-tip="Scroll to end" onClick=${toEnd}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v11.5M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>`;

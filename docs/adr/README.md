@@ -38,3 +38,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-23 | [Call the app GhostShell, and keep capcom for every internal name](20261023-ghostshell-name.md) | Accepted, amended 2026-10-23 |
 | 2026-10-23 | [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md) | Accepted |
 | 2026-10-23 | [Run terminal commands on pipes with no PTY, and run `!` commands in GhostShell](20261023-terminal-without-a-pty.md) | Accepted |
+| 2026-10-23 | [Quote selected text into the prompt box, and send each quote as a blockquote](20261023-quote-selected-text.md) | Accepted |

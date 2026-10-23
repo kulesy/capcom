@@ -11,6 +11,7 @@ import { draw, icons } from './menu.js';
 import { Panel } from './panel.js';
 import { panelOf, panels, togglePanel } from './panel-state.js';
 import { runFromClick } from './run.js';
+import { QuoteDock, useQuoting } from './quote.js';
 import { createChat } from './session.js';
 import { keyHint, shortcut } from './shortcuts.js';
 import { runnableBlock } from './terminal-rules.js';
@@ -75,11 +76,13 @@ function Notice({ ctrl }) {
 // one element that follows a store of its own, because a new element on each render would redraw the whole chat.
 export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside }) {
   const held = useRef(null);
+  const pane = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
   const ctrl = held.current;
   const named = useStore(ctrl.store, s => s.session?.title);
   const terminal = useStore(ctrl.store, s => s.terminal);
   const onBlock = useCallback(e => blockClick(ctrl, e), [ctrl]);
+  const quoting = useQuoting(ctrl, pane);
   useLayoutEffect(() => {
     ctrl.open();
     return ctrl.close;
@@ -98,11 +101,12 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [ctrl]);
-  return html`<section class="session" id="session" data-terminal=${terminal ? '' : undefined} onClick=${onBlock}>
+  return html`<section class="session" id="session" ref=${pane} data-terminal=${terminal ? '' : undefined} onClick=${onBlock}>
     <${ChatHead} ctrl=${ctrl} kind=${meta} />
     ${aside}
-    <${Transcript} ctrl=${ctrl} />
+    <${Transcript} ctrl=${ctrl} quoting=${quoting} />
     <div class="dock">
+      <${QuoteDock} ctrl=${ctrl} quoting=${quoting} />
       <${Approvals} ctrl=${ctrl} />
       <${Holds} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />

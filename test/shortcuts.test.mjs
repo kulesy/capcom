@@ -1,5 +1,5 @@
-// Run with `npm test`. Capcom's own keys: Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K and Ctrl+B or
-// Cmd+B anywhere, Cmd+A on a Mac outside a text field, and the modifier the hints name. The page is a stand-in with just the
+// Run with `npm test`. Capcom's own keys: Ctrl+N anywhere and Cmd+N only in the installed app, Ctrl+K or Cmd+K, Ctrl+B or
+// Cmd+B and Ctrl+' or Cmd+' anywhere, Cmd+A on a Mac outside a text field, and the modifier the hints name. The page is a stand-in with just the
 // display-mode media feature, set to what Chrome reports, the platform navigator reports, and an event target that says whether it
 // is inside a text field.
 import test, { beforeEach } from 'node:test';
@@ -88,9 +88,22 @@ test('Ctrl+B and Cmd+B show or hide the projects sidebar in a tab, in the app an
   }
 });
 
-test('Alt, Shift or a composition under way turns Ctrl or Cmd with N, K, B or A into nothing', () => {
+test("Ctrl+' and Cmd+' quote the selected text in a tab, in the app and in full screen, on any layout", () => {
+  for (mode of ['browser', 'standalone', 'fullscreen']) {
+    assert.equal(shortcut(press("'", CTRL)), 'quote', mode);
+    assert.equal(shortcut(press("'", CMD)), 'quote', mode);
+    assert.equal(shortcut(press("'", { ctrlKey: true, metaKey: true })), 'quote', `${mode}, both held`);
+    assert.equal(shortcut({ ...press('Dead', CMD), code: 'Quote' }), 'quote', `${mode}, a layout where the key is a dead key`);
+    assert.equal(shortcut({ ...press('Dead', CTRL), code: 'Quote' }), 'quote', `${mode}, a dead key with Ctrl`);
+    assert.equal(shortcut(press("'")), null, `${mode}, no modifier`);
+    assert.equal(shortcut({ ...press('Dead'), code: 'Quote' }), null, `${mode}, the physical key with no modifier`);
+    assert.equal(shortcut(press('"', CMD)), null, `${mode}, a double quote`);
+  }
+});
+
+test('Alt, Shift or a composition under way turns Ctrl or Cmd with N, K, B, A or an apostrophe into nothing', () => {
   for (mode of ['browser', 'standalone']) {
-    for (const key of ['n', 'k', 'b', 'a']) {
+    for (const key of ['n', 'k', 'b', 'a', "'"]) {
       for (const [name, held] of [['Ctrl', CTRL], ['Cmd', CMD]]) {
         for (const extra of ['altKey', 'shiftKey', 'isComposing']) {
           assert.equal(shortcut(press(key, { ...held, [extra]: true })), null, `${mode}, ${name}+${key} with ${extra}`);

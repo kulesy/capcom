@@ -8,6 +8,14 @@ The prompt box follows Desktop's. It is one row: a + on the left attaches files 
 
 The permission mode (Manual, Accept edits, Plan, Auto, Bypass permissions) sits under the box as plain text and opens its list when you click it.
 
+## Quotes
+
+Select text anywhere in a chat's messages, tool output and code blocks included, and a Quote button shows beside the selection. Click it, or press Ctrl+' or Cmd+', and the text goes into the prompt box as a quote, with the cursor at the end of your text. On a phone the button sits above the prompt box, clear of the phone's own selection menu.
+
+Quotes stack above the text, cut to two lines, each with a cross to take it off. They stay in the draft as you move between chats, so you can quote one session in another, and a quote from another session names it.
+
+Claude gets each quote as a markdown blockquote ahead of your text, and a quote from another session as `From the session "<title>":` and then the blockquote. The chat draws them as quotes above your message, cut to three lines, and a click opens a longer one. Quotes alone are a message. A slash command or a `!` command goes alone and leaves them in the box. [The decision record](adr/20261023-quote-selected-text.md) says why a quote travels as text.
+
 ## Model, effort and fast mode
 
 One button on the right names the model, `Fast` when fast mode is on, and the effort, and opens a menu like Desktop's.

@@ -29,6 +29,7 @@ import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
+import { titleText } from './public/ui/quote-rules.js';
 
 const auth = makeAuth(cfg.stateDir);
 const passkeys = makePasskeys(cfg.stateDir, { port: cfg.port, origins: cfg.passkeyOrigins, warn: console.error });
@@ -296,7 +297,7 @@ async function newSession({ cwd, text, images = [], documents = [], files = [], 
   // The session is running by now, so a record that cannot be written must not tell the caller that it never started.
   try {
     // The list falls back on this title when the transcript's first line is too long to read, as it is with an image in it.
-    const named = title || text.trim() || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
+    const named = title || titleText(text.trim()) || (files.length ? (files.length > 1 ? 'Files' : files[0].name) : images.length > 1 ? 'Images' : 'Image');
     fs.writeFileSync(startedFile, JSON.stringify([...readStarted(), { id: chat.id, cwd, at: Date.now(), title: named.slice(0, 120), ...(routine && { routine }) }]));
     // Fast mode is saved from the chat, as the CLI may have refused it already. The hook covers a refusal that comes later.
     if (model || effort || chat.fast) savePick(chat.id, { ...(model && { model }), ...(effort && { effort }), ...(chat.fast && { fast: true }) });

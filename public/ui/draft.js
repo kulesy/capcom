@@ -15,9 +15,9 @@ export function carryDraft() {
 
 export const setDraftText = value => { text = value; };
 
-// The images and files attached to it. A store, because a file is decoded and scaled, or uploaded, before it shows as sent, and the box that
+// The quotes, images and files attached to it. A store, because a file is decoded and scaled, or uploaded, before it shows as sent, and the box that
 // took it may have been replaced by then. A file still on its way up carries `uploading` and the controller that can stop it.
-export const attached = createStore({ images: [], files: [], preparing: 0 });
+export const attached = createStore({ images: [], files: [], quotes: [], preparing: 0 });
 
 // What this server takes as a file, or null on one that takes only images. Asked for when the page loads.
 export const uploads = createStore({ limits: null });
@@ -53,6 +53,15 @@ const isOther = file => file.type.startsWith('image/') && file.type !== 'image/s
 const full = limit => `A message can hold up to ${limit} files.`;
 
 let counter = 0;
+
+// A quote is { key, text, from: { id, title } }, `from` being the session it was taken from. The same words from the same session are one quote.
+export function addQuote(text, from) {
+  const { quotes } = attached.get();
+  if (quotes.some(q => q.text === text && q.from.id === from.id)) return;
+  attached.set({ quotes: [...quotes, { key: `quote${++counter}`, text, from }] });
+}
+
+export const removeQuote = key => attached.set(s => ({ quotes: s.quotes.filter(q => q.key !== key) }));
 
 // Uploads one file, its card showing at once. A failure drops the card and says why, and so does a file the server would refuse.
 async function uploadFile(file, notice, { maxBytes, maxFiles }) {

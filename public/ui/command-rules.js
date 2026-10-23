@@ -1,6 +1,9 @@
 // What the prompt box's / list does with the text, with no page in it so node can test it.
 const NAME_PARTS = /[-_:.]/;
 
+// A message that opens with /name is a slash command for the CLI. A mention of a file or a quote in front of it would stop that.
+export const isSlashCommand = text => /^\s*\/[A-Za-z][\w:.-]*(?=\s|$)/.test(text);
+
 const wordEnd = text => {
   const space = text.search(/\s/);
   return space < 0 ? text.length : space;

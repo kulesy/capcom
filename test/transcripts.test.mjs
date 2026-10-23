@@ -949,6 +949,14 @@ test('a session started with files alone is titled by the file, and by Files whe
   assert.equal(head('head-file-and-words', `@"${dir}/plan.csv"\nSummarise this`), 'Summarise this');
 });
 
+test('a session started with quotes is titled by the words after them, and by the first quote when no words follow', () => {
+  const head = (name, text) => readHead(file(name, [{ ...user(text), cwd: '/work' }])).title;
+  assert.equal(head('head-quote-words', '> the build failed\n\nWhy did it fail?'), 'Why did it fail?');
+  assert.equal(head('head-quote-from', 'From the session "Plan the launch":\n> a launch date\n> in May\n\nWhen is it?'), 'When is it?');
+  assert.equal(head('head-quote-alone', '> the build failed\n\n> and then the deploy'), 'the build failed');
+  assert.equal(head('head-quote-none', 'Fix the build\n> not a quote'), 'Fix the build\n> not a quote');
+});
+
 test('a session started with uploaded files alone is titled by the names the owner gave them, not by <uuid>.<ext>, and a PDF with a text copy is one file', () => {
   const [csv, pdf, doc] = uploaded([[ID_A, 'Budget 2026.csv', 'a,b'], [ID_B, 'Annual report.pdf', 'pdf bytes', 'the words'], ['0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c', 'Brief.docx', 'zip bytes', 'the brief']]);
   const title = (name, dir, text) => readHead(file(name, [{ ...user(text), cwd: '/work' }]), dir).title;

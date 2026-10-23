@@ -94,7 +94,7 @@
     .row, .group[data-drop], .drop-hint, [data-slot="empty"], [data-slot="empty-icon"][data-variant="icon"], .scope,
     .bubble, .thumb, .thumbs .thumb img, .file-card, .file-glyph, .msg code, .tool code, .msg pre.code, .table,
     .tool details, .tool-group details, .think details, .tool summary, .tool-group summary, .think summary,
-    .tool-io, .system, .approval, .approval pre, .hold, .dock .notice, .composer-box, .attachment,
+    .tool-io, .system, .approval, .approval pre, .hold, .dock .notice, .composer-box, .attachment, .quote, .quoted,
     .attached > .preparing, .context-pop, .context-load > span, [data-slot="command"],
     [data-slot="command-input"], .chip, [data-slot="command-item"], .slash-menu, kbd, [data-slot="tooltip-content"],
     .viewer-img, .offer, .diff, .option, .preview, .chip-card, .widget iframe.card, .widget-note, .widget-wait, .widget-ask,

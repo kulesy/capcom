@@ -14,15 +14,17 @@ export const onMac = () => navigator.platform.startsWith('Mac');
 export const modifier = () => (inApp() && onMac() ? 'Cmd' : 'Ctrl');
 
 // What a key press asks for: 'new' to start a session, 'find' to open the search, 'projects' to show or hide the projects sidebar,
-// 'terminal' to show or hide the chat's terminal, 'archive' to archive one, or null. Chrome reserves neither Cmd+K nor Cmd+B, so
-// each works in a tab as well as in the app, as Desktop's Cmd+K and Cmd+B do. A text field keeps Cmd+A for Select All, and Ctrl+A
-// is left to the browser everywhere.
+// 'terminal' to show or hide the chat's terminal, 'archive' to archive one, 'quote' to quote the selected text, or null. Chrome
+// reserves neither Cmd+K nor Cmd+B, so each works in a tab as well as in the app, as Desktop's Cmd+K and Cmd+B do. A text field keeps
+// Cmd+A for Select All, and Ctrl+A is left to the browser everywhere.
 export function shortcut(e) {
   if (e.altKey || e.shiftKey || e.isComposing) return null;
   // Chrome's autofill sends keydown events with no key.
   const key = e.key?.toLowerCase();
   if (key === 'k' && (e.ctrlKey || e.metaKey)) return 'find';
   if (key === 'b' && (e.ctrlKey || e.metaKey)) return 'projects';
+  // Some layouts make the apostrophe a dead key, so the physical key is read as well.
+  if ((key === "'" || e.code === 'Quote') && (e.ctrlKey || e.metaKey)) return 'quote';
   // Ctrl+` as in Desktop and VS Code. On a Mac that is the Control key, as Cmd+` already cycles an app's windows.
   if ((key === '`' || e.code === 'Backquote') && e.ctrlKey && !e.metaKey) return 'terminal';
   if (key === 'n' && (e.ctrlKey ? !e.metaKey : e.metaKey && inApp())) return 'new';

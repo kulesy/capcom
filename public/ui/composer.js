@@ -1,8 +1,8 @@
-// The prompt box: the text, the images and files attached to it, and the settings under it.
+// The prompt box: the text, the quotes, images and files attached to it, and the settings under it.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
-import { attach, attached, carryDraft, detach, detachFile, pastedFiles, setDraftText, uploads } from './draft.js';
+import { attach, attached, carryDraft, detach, detachFile, pastedFiles, removeQuote, setDraftText, uploads } from './draft.js';
 import { HOME } from './env.js';
 import { tilde } from './format.js';
 import { FileFace } from './file-card.js';
@@ -12,6 +12,7 @@ import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
+import { messageFor } from './quote-rules.js';
 import { bangMode, leaveBang } from './terminal-rules.js';
 import { openViewer } from './viewer.js';
 
@@ -26,14 +27,29 @@ const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
 
 const CONTROLS = 'button, textarea, input, select, a';
 
+const Cross = () => html`<svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+
+// The quotes in the draft. One from another session than `here`, the one the message goes to, names its own.
+function Quotes({ quotes, here }) {
+  return html`<ul class="quotes" aria-label="Quotes">
+    ${quotes.map(q => html`<li class="quote" key=${q.key} title=${q.text}>
+      ${draw(icons.quote, 'quote-glyph')}
+      <div class="quote-body">
+        ${q.from.id !== here ? html`<p class="quote-from">From ${q.from.title || 'another session'}</p>` : null}
+        <p class="quote-text">${q.text}</p>
+      </div>
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label="Remove quote" onClick=${() => removeQuote(q.key)}><${Cross} /></button></li>`)}
+  </ul>`;
+}
+
 function Attachments({ images, files, preparing }) {
   return html`<ul class="attached" aria-label="Attachments">
     ${images.map((img, n) => html`<li class="attachment" key=${img.id}>
       <button class="thumb" type="button" data-image=${imageKey(img)} aria-label=${`View ${img.name}`} aria-haspopup="dialog" onClick=${e => openViewer(draftImages(images), n, e.currentTarget)}><img src=${img.src} alt=${img.name} /></button>
-      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${img.name}`} onClick=${() => detach(img.id)}><${Cross} /></button></li>`)}
     ${files.map(file => html`<li class="attachment file-card" key=${file.key} title=${file.name} aria-busy=${file.uploading || null}>
       <${FileFace} file=${file} />
-      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${file.name}`} onClick=${() => detachFile(file.key)}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></li>`)}
+      <button class="btn thumb-remove" data-variant="secondary" data-size="icon-xs" type="button" aria-label=${`Remove ${file.name}`} onClick=${() => detachFile(file.key)}><${Cross} /></button></li>`)}
     ${Array.from({ length: preparing }, (_, n) => html`<li class="thumb preparing" key=${`preparing${n}`} aria-hidden="true"></li>`)}
   </ul>`;
 }
@@ -70,6 +86,7 @@ export function Composer({ ctrl }) {
   const { status, starting, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session');
   const images = useStore(attached, a => a.images);
   const files = useStore(attached, a => a.files);
+  const quotes = useStore(attached, a => a.quotes);
   const preparing = useStore(attached, a => a.preparing);
   const takesFiles = useStore(uploads, u => u.limits !== null);
   const uploading = files.some(f => f.uploading);
@@ -92,8 +109,8 @@ export function Composer({ ctrl }) {
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
   // A text that starts with ! is a command to run in the session's folder, where the session has a terminal.
   const bang = bangMode({ text, terminal, draft });
-  // Images or files alone are a message too.
-  const ready = bang ? !!bang.command : !!text.trim() || images.length > 0 || files.length > 0;
+  // Quotes, images or files alone are a message too.
+  const ready = bang ? !!bang.command : !!text.trim() || images.length > 0 || files.length > 0 || quotes.length > 0;
   // While Claude works and the box is empty, the Send button is the Stop button. Typing or attaching turns it back into Send.
   const stop = isBusy(status) && !draft && !ready && !bang;
 
@@ -211,17 +228,18 @@ export function Composer({ ctrl }) {
     e.preventDefault();
     const typed = area.current.value;
     const t = typed.trim();
-    const { images: sent, files: sentFiles } = attached.get();
+    const { images: sent, files: sentFiles, quotes: sentQuotes } = attached.get();
     const asked = bangMode({ text: typed, terminal: ctrl.store.get().terminal, draft });
     if (asked) {
       if (asked.command) await runCommand(typed, asked.command);
       return;
     }
-    if ((!t && !sent.length && !sentFiles.length) || attached.get().preparing || sentFiles.some(f => f.uploading)) return;
-    const clear = () => { setText(''); attached.set({ images: [], files: [] }); };
-    if (draft) { ctrl.startNew(t, sent, clear, sentFiles); return; }
+    if ((!t && !sent.length && !sentFiles.length && !sentQuotes.length) || attached.get().preparing || sentFiles.some(f => f.uploading)) return;
+    const { message, kept } = messageFor(sentQuotes, t, ctrl.id);
+    const clear = () => { setText(''); attached.set({ images: [], files: [], quotes: kept }); };
+    if (draft) { ctrl.startNew(message, sent, clear, sentFiles); return; }
     clear();
-    if (!(await ctrl.send(t, sent, s.mode, sentFiles))) { setText(t); attached.set({ images: sent, files: sentFiles }); }
+    if (!(await ctrl.send(message, sent, s.mode, sentFiles))) { setText(t); attached.set({ images: sent, files: sentFiles, quotes: sentQuotes }); }
   };
 
   const pickFiles = e => {
@@ -274,7 +292,7 @@ export function Composer({ ctrl }) {
     if (e.key === 'Escape' && bang && !e.isComposing) { e.preventDefault(); setText(leaveBang(text)); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
       e.preventDefault();
-      if (bang ? bang.command : (e.currentTarget.value.trim() || images.length || files.length)) form.current.requestSubmit();
+      if (bang ? bang.command : (e.currentTarget.value.trim() || images.length || files.length || quotes.length)) form.current.requestSubmit();
     }
   };
 
@@ -286,6 +304,7 @@ export function Composer({ ctrl }) {
   const attachLabel = takesFiles ? 'Attach files' : 'Attach images';
   return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} data-bang=${bang ? '' : undefined} onSubmit=${submit}>
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
+      ${quotes.length ? html`<${Quotes} quotes=${quotes} here=${ctrl.id} />` : null}
       ${images.length || files.length || preparing ? html`<${Attachments} images=${images} files=${files} preparing=${preparing} />` : null}
       ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
       <div class="composer-row">
