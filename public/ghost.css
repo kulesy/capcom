@@ -283,13 +283,10 @@
   height: 1rem;
 }
 
-[data-look="ghost"] .brand { grid-template-columns: auto minmax(0, 1fr); column-gap: 0.5rem; }
+[data-look="ghost"] .brand { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 0.5rem; }
 
 [data-look="ghost"] .brand-mark {
   display: block;
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  align-self: center;
   width: 1.5rem;
   height: 1.5rem;
 }

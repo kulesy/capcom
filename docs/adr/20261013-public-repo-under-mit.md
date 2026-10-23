@@ -28,7 +28,7 @@ Under which licence, and with what history, should Capcom go public?
 Chosen option: "Public under MIT", because MIT is permissive and the owner wants others to be able to run and change their own copy.
 
 - `LICENSE` is MIT.
-- Machine-specific values go in a git-ignored `config.local.json`, which overrides `config.json` (`lib/config.mjs`). The machine name shown in the list header and the path to `claude` are two examples.
+- Machine-specific values go in a git-ignored `config.local.json`, which overrides `config.json` (`lib/config.mjs`). The machine name and the path to `claude` are two examples.
 - `npm run install-agent` fills in `launchd/capcom.plist.template` with the reader's own paths. It replaces the personal launchd file.
 - The docs describe remote access in general terms: a reverse proxy or a private network the reader trusts.
 - The owner had the history squashed to one fresh commit before the repo went public, so the earlier personal setup stayed unpublished.

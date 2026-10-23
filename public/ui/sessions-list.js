@@ -4,7 +4,7 @@
 // do it all.
 import { ask } from './ask.js';
 import { dragRows, pointIn } from './drag.js';
-import { HOME, STATION } from './env.js';
+import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
@@ -752,7 +752,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   <nav class="list" aria-label="Sessions" ref=${nav} onKeyDown=${escapeList}>
     <header class="list-head">
       <${ProjectsToggle} projects=${projects} />
-      <div class="brand"><${Shell} class="brand-mark" /><h1>GhostShell</h1><span class="station">${STATION}</span></div>
+      <div class="brand"><${Shell} class="brand-mark" /><h1>GhostShell</h1></div>
       <div class="list-actions">
         <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label=${addMenu.label} data-tip=${addMenu.label} data-tip-key=${keyHint(mod, 'N')} aria-haspopup="menu" aria-expanded=${shown?.key === 'add'} aria-controls=${shown?.key === 'add' ? layerId(shown.id) : null} data-state=${shown?.key === 'add' ? 'open' : 'closed'} ...${addTrigger}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" data-tip="Find a session" data-tip-key=${keyHint(mod, 'K')} onClick=${onFind}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>

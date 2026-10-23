@@ -83,7 +83,7 @@
   <nav class="list" aria-label="Sessions">
     <header class="list-head">
       <button class="btn projects-toggle" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Projects" aria-expanded="false" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.75 4v12" stroke="currentColor" stroke-width="1.6"/></svg></button>
-      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><h1>GhostShell</h1><span class="station">{{station}}</span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><h1>GhostShell</h1></div>
       <div class="list-actions">
         <button class="btn add" data-variant="ghost" data-size="icon-sm" type="button" aria-label="New session or group" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button class="btn find" data-variant="ghost" data-size="icon-sm" type="button" aria-label="Find a session" disabled><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6 17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -98,7 +98,7 @@
   <main class="chat"><section class="empty"><div class="emblem" aria-hidden="true"></div><p>Pick a session, or start a new one.</p></section></main>
 </div>
 <script>try { if (localStorage.getItem('capcom.projectsDocked') === 'true' && matchMedia('(min-width: 56rem)').matches) { document.querySelector('#boot .rail').hidden = false; document.querySelector('#boot .projects-toggle').setAttribute('aria-expanded', 'true') } } catch {}</script>
-<div id="root" data-home="{{home}}" data-station="{{station}}"></div>
+<div id="root" data-home="{{home}}"></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>

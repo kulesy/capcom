@@ -552,13 +552,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 
 .brand h1, .rail-title { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.25rem; }
 
-.brand h1, .station { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.station {
-  color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
-  font-size: 0.75rem;
-  line-height: 1rem;
-}
+.brand h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .list-actions { display: flex; align-items: center; gap: 0.25rem; }
 

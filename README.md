@@ -556,10 +556,11 @@ timeouts. To change a value on one machine, put it in `config.local.json` in the
 optional and git-ignored, and its values replace the ones in `config.json`.
 
 ```json
-{ "station": "studio", "claude": "/usr/local/bin/claude" }
+{ "claude": "/usr/local/bin/claude", "chrome": false }
 ```
 
-- `station` is the machine name shown in the header of the session list. It defaults to the short hostname.
+- `station` is the machine's name, sent with the session index. The page does not show it. It defaults to
+  the short hostname.
 - `claude` is the CLI to run. It defaults to `claude`, found on `PATH`.
 - `chrome` is `true` by default. Set it to `false` to start every session without Claude in Chrome.
 - `desktopHandoff` is `false` by default. Set it to `true` to hand new sessions to Claude Desktop (see
