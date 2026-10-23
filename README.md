@@ -112,10 +112,10 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
 - **The list** shows one view at a time, which you pick in the projects sidebar (see "Projects" below).
   Home shows routines first, then pinned sessions, your groups that are in no project, the sessions
   started here, ungrouped ones and terminal sessions. A project's view shows pinned sessions, then that
-  project's groups, with no header for the project, because the sidebar already names it. Each section
-  sorts as you set it in Claude Desktop: by last turn, by when the session was made or by title, either
-  way round. A group made in GhostShell, which Desktop has no sort for, lists its newest session first. A
-  group shows when it is empty, so one that was just made can be found and filled, and a project with no groups says so beside a New group button.
+  project's groups, with no header for the project, because the sidebar already names it. Every group
+  lists its sessions by title, A to Z, and a family goes by its head's title. The other sections sort as
+  you set them in Claude Desktop: by last turn, by when the session was made or by title, either way
+  round. A group shows when it is empty, so one that was just made can be found and filled, and a project with no groups says so beside a New group button.
   The other sections show only when they hold a session. A session's row is one line on a mouse, as in
   Claude Desktop: the title, and a mark at the right end that says what the session needs from you. The
   mark is amber when the session needs your input, blue when it has something you have not read, grey

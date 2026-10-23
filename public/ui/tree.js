@@ -1,5 +1,5 @@
 // The rules of the sidebar tree that need no page, so node can test them.
-import { sortFamily, sortRows } from './order.js';
+import { GROUP_SORT, sortFamily, sortRows } from './order.js';
 
 // The stop the arrows go to. `at` is the focused stop, or -1 when none is, and then up and down land on `start`.
 // It returns -1 when the key is not for the walk or there is no stop that way.
@@ -81,6 +81,13 @@ const setChildren = ({ children, ...bare }, list) => (list.length ? { ...bare, c
 
 // A row's children go in the order of the list the row is in.
 const reorder = (row, sort) => (row.children ? { ...row, children: sortFamily(row, row.children, sort) } : row);
+
+// The list with every group sorted by title, which later edits then follow through the sort each group now holds. The server sends a
+// group with Desktop's sort, and the other lists keep theirs.
+export const sortGroups = ix => ({
+  ...ix,
+  groups: ix.groups.map(g => ({ ...g, sort: GROUP_SORT, sessions: sortRows(g.sessions.map(r => reorder(r, GROUP_SORT)), GROUP_SORT) })),
+});
 
 // The list with a session taken out of every place it shows. A routine whose latest run it was shows its next run instead,
 // and a routine with no run left is gone. The sessions nested under it move up into its place, unless it keeps them
