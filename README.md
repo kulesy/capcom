@@ -336,13 +336,14 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   `!` in a terminal neither starts a turn nor ends one, because Claude does not reply to it.
 - **Notices.** The CLI saves some of its own messages as user turns: a background task that finished,
   failed or was stopped, a line from a monitor, a message from another session or a subagent, the CLI's
-  report on a message this chat sent to another session, and a command you ran with `!`. GhostShell shows each
+  report on a message this chat sent to another session. GhostShell shows each
   as a compact notice instead of a message from you. A notice has a lamp (green when a task finished or a
   message was delivered, amber while a message waits for approval, red when a task failed or a message was
   not delivered, grey otherwise), a title such as "Background task finished", and a line saying what
   happened. The task ids, the output file, the CLI's note and any text meant for Claude alone sit behind a
   Details toggle. Only known kinds of message become notices, so text you type that mentions a tag stays
-  your message.
+  your message. A command you ran with `!` is not a notice. It shows as a command block with its output,
+  as in Terminal.
 - **Messages between chats.** Chats message each other with the CLI's `SendMessage` tool and find each
   other with `ListAgents`. The CLI delivers a message when the sender and the receiving chat are in the
   same kind of permission mode, both bypassing permission prompts or both asking. An idle chat then starts
@@ -446,6 +447,41 @@ Things to know:
   that folder (falling back to `permissions.defaultMode` in `~/.claude/settings.json`), Desktop's
   effort level, and the model from `~/.claude/settings.json`. You can change the mode, model, effort and fast mode
   per chat from the prompt box.
+
+## Terminal
+
+A terminal panel opens beside the chat, in the session's folder. It is not a full terminal. Each command
+is its own process on pipes, as Claude's Bash tool runs one, so `cd` carries from one command to the next
+and an exported variable does not. A full-screen program such as `vim`, `top` or `less` does not work.
+[The decision record](docs/adr/20261023-terminal-without-a-pty.md) says why GhostShell has no PTY.
+
+- **Where it starts.** A command typed in the panel, or run from a code block, starts in the panel's
+  folder. That is the session's folder to begin with, and it follows `cd`. If the folder has gone, the
+  command starts in the session's folder. A `!` command always starts in the session's folder and does not
+  move the panel. A session whose folder is gone runs nothing.
+- **Environment.** A command gets the environment of your interactive login shell, which GhostShell reads once
+  and keeps for 10 minutes, so `PATH`, version managers and your own variables are there. GhostShell's own
+  settings (`PORT`, `CAPCOM_STATE`) are not. `PAGER` and `GIT_PAGER` are `cat`.
+- **Output.** A command's output shows as it arrives. Stderr is tinted. A command can be sent input while
+  it runs, and Ctrl+C in the panel stops it. Stop ends the command and every job it started. A run keeps
+  1,000,000 characters and drops the oldest, and the panel keeps the last 100 runs of a session. A session
+  runs 8 commands at once and GhostShell 32.
+- **Code blocks.** Every code block has Copy. A block of shell commands also has Run, which runs the block's
+  text in the panel when you click it. Nothing runs without a click.
+- **`!` in the prompt box.** Text that starts with `!` runs as a command instead of being sent. GhostShell runs
+  it, because the headless CLI GhostShell drives takes `!echo hi` as a prompt and has no shell mode. When the
+  command ends, GhostShell sends Claude the command and its output in the CLI's own form (colour codes
+  removed, each of output and errors cut to 30,000 characters in the middle), and Claude answers as it
+  does in the CLI. With `respondToBashCommands` set to `false` in `~/.claude/settings.json`, GhostShell holds
+  the result and sends it with your next message. The transcript shows the command as a block with its
+  output, whether GhostShell, the CLI or Desktop ran it.
+- **Ending.** GhostShell stops every command when it exits or restarts, and keeps nothing across a restart.
+  A GhostShell that is killed outright (SIGKILL) cannot, and leaves its commands running.
+- **Who can run one.** Only a signed-in page can. The routes that start, feed or stop a command
+  (`api/sessions/<id>/terminal/...`) take POST only, with a JSON body, from a request whose `Origin` is
+  present and matches GhostShell's own address, so a form or script on another site cannot start one, whether
+  or not the sign-in cookie comes with it.
+  The folder is always the server's own. See Remote access.
 
 ## Routines
 
@@ -632,7 +668,9 @@ header only on a connection from this Mac (127.0.0.1 or ::1), so a client that r
 could not switch `Secure` on. GhostShell listens on 127.0.0.1 only, so the test passes for every connection today.
 An http address keeps working, because it sends no such header. The cookie is also `HttpOnly` and
 `SameSite=Lax`, so a signed-in browser that follows a link to GhostShell from another website arrives signed in,
-and the cookie is not sent with a form or script request from that website.
+and the cookie is not sent with a form or script request from that website. The terminal routes ask for
+more than the cookie. They refuse a request with no `Origin` header, one that is not JSON and any method
+but the one they name, so a stray request that carried the cookie still runs nothing.
 
 The browser keeps each picture it has shown for a year, so a chat opens fast. A picture comes with
 `Vary: Cookie`, so the browser reuses its copy only while it holds the sign-in cookie it fetched the picture

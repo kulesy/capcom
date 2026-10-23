@@ -1,13 +1,13 @@
 # Show the CLI's own user turns as compact notices, from a closed list of known tags
 
-- Status: Accepted, amended 2026-10-16
+- Status: Accepted, amended 2026-10-16 and 2026-10-23
 - Deciders: Eli
 - Date: 2026-10-16
 - Tags: transcripts, notices, background-tasks, task-notification
 
 ## Context and Problem Statement
 
-The CLI saves some messages it wrote itself as user turns. When a background task ends, it saves a `<task-notification>` block, as a user entry when Claude is idle and as a `queued_command` attachment when Claude is mid-turn. Messages from another session or a subagent, lines from a monitor and commands run with `!` are saved the same way. Capcom showed each as a message from the owner, with the raw XML as its text. A sweep of the transcripts changed in the last 14 days found 2,611 task notifications in 371 sessions.
+The CLI saves some messages it wrote itself as user turns. When a background task ends, it saves a `<task-notification>` block, as a user entry when Claude is idle and as a `queued_command` attachment when Claude is mid-turn. Messages from another session or a subagent, lines from a monitor and commands run with `!` are saved the same way (a command run with `!` stopped being a notice on 2026-10-23, see the amendment). Capcom showed each as a message from the owner, with the raw XML as its text. A sweep of the transcripts changed in the last 14 days found 2,611 task notifications in 371 sessions.
 
 How should the page show them?
 
@@ -29,7 +29,7 @@ How should the page show them?
 Chosen option: "Parse a closed list of known tags into a `system` item that the page draws as a notice", because it shows what happened in one line and cannot mistake the owner's own typing for a notice.
 
 - **Parser.** `lib/notices.mjs` turns the text of a user turn into a `system` item: a title, an optional state (done, failed or stopped), a line of text, an optional output block and labelled details. `userItem` in `lib/transcripts.mjs` calls it. The load and the live update read through the same parser, so they agree.
-- **Known tags.** `task-notification`, `bash-input`, `bash-stdout` and `bash-stderr`, `cross-session-message`, `ci-monitor-event`, `agent-message` and `side-sessions-event`. A task notice is titled by its status, as in "Background task finished" or "2 background tasks stopped". A monitor line has no status and reads "Background update".
+- **Known tags.** `task-notification`, `cross-session-message`, `ci-monitor-event`, `agent-message` and `side-sessions-event`. A task notice is titled by its status, as in "Background task finished" or "2 background tasks stopped". A monitor line has no status and reads "Background update".
 - **Details.** The task ids, the tool call id, the output file, the CLI's note and text addressed to Claude alone sit behind a Details toggle, with the escapes the CLI adds undone. Ids that start with `__orphan_summary__` are the CLI's own markers and never show.
 - **Lamp.** Green for finished, red for failed, grey otherwise, in the page's existing lamp style.
 - **Mid-turn.** The reader accepts `commandMode: 'task-notification'` on a `queued_command` attachment, next to `prompt`. Checked on CLI 2.1.301.
@@ -38,6 +38,8 @@ Chosen option: "Parse a closed list of known tags into a `system` item that the 
 - **Checked.** After the change, no user message in those transcripts begins with a tag.
 
 **Amended 2026-10-16.** A message from another session now also arrives as a meta user entry whose `origin` has kind `peer`, or, when Claude is mid-turn, as a `queued_command` attachment with `commandMode: 'prompt'` whose prompt is the bare `<cross-session-message>` tag. `metaNotice` in `lib/notices.mjs` reads both, as the attachment carries `isMeta` and the `origin` itself, and the CLI's own reports on a message this chat sent (meta entries or meta attachments that start with `[Cross-session delivery notice]`) become notices too. See [Show messages between chats by sender](20261016-peer-messages-between-chats.md).
+
+**Amended 2026-10-23.** A command run with `!` is no longer a notice. Its `<bash-input>`, `<bash-stdout>` and `<bash-stderr>` tags read as a `bash` item with the command, its output and its errors, because the page now draws a command as a block with Run and Copy, and Capcom hands its own `!` commands to Claude in the same shape. `bashFrom` in `lib/notices.mjs` reads the tags, `userItems` in `lib/transcripts.mjs` puts the item before a user item for any text after them, and the `bash-*` tags are off the list above. See [Run terminal commands on pipes with no PTY](20261023-terminal-without-a-pty.md).
 
 ### Consequences
 
@@ -66,3 +68,4 @@ Chosen option: "Parse a closed list of known tags into a `system` item that the 
 ## Links
 
 - [Send pasted images as content blocks](20261015-images-in-the-prompt-box.md), which reads the other kind of `queued_command` prompt
+- [Run terminal commands on pipes with no PTY](20261023-terminal-without-a-pty.md), which turned the `!` command tags into `bash` items
