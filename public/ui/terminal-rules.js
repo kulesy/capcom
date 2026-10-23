@@ -6,9 +6,9 @@ const SHELL_BLOCKS = new Set(['bash', 'sh', 'zsh', 'shell']);
 // The server refuses a longer command, so a block that long gets no Run button.
 export const MAX_COMMAND = 100_000;
 
-// What the owner cannot see in a block: bidi controls, zero-width characters and C0 or C1 controls other than tab and newline.
-// A command holding any of them is not the command the block shows, so Run refuses it.
-const HIDDEN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f؜​-‏‪-‮⁠⁦-⁩﻿]/;
+// What the owner cannot see in a block: controls other than tab and newline, format and line-separator characters, and the rest a browser
+// draws as nothing. A command holding any of them is not the command the block shows, so Run refuses it.
+const HIDDEN = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
 
 export const hasHiddenCharacters = text => HIDDEN.test(text);
 

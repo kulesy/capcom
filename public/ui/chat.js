@@ -56,7 +56,8 @@ function blockClick(ctrl, e) {
     return;
   }
   if (button.dataset.code !== 'run' || !e.isTrusted || button.getAttribute('aria-disabled') === 'true') return;
-  if (!ctrl.store.get().terminal || !button.closest('.msg.claude:not(.live)')) return;
+  // A file open in the panel is drawn like a reply but is not one, so its blocks have Copy only.
+  if (!ctrl.store.get().terminal || !button.closest('.msg.claude:not(.live, .file-doc)')) return;
   const block = runnableBlock(code.dataset.lang, code.textContent);
   if (block && !block.hidden) runFromClick(ctrl.term, block.command, 'block', button);
 }

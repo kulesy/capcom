@@ -1915,7 +1915,9 @@ button.thumb {
 
 .code-tools [data-code="run"] { display: none; }
 
-.session[data-terminal] .msg.claude:not(.live) .code-tools [data-code="run"] { display: inline-flex; }
+.session[data-terminal] .msg.claude:not(.live, .file-doc) .code-tools [data-code="run"] { display: inline-flex; }
+
+.session[data-terminal] .msg.claude:not(.live, .file-doc) .code-block:has([data-code="run"]) pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .live .code-tools { display: none; }
 

