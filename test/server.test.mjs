@@ -127,7 +127,7 @@ test('the Geist fonts are served before sign-in, byte for byte, as font/woff2, b
 
 test('every file served from public/ carries a tag, and a request that sends it back gets a 304 with no body and the same tag and cache rule', async () => {
   const s = await start();
-  const files = ['/app.js', '/app.css', '/ui/widget.js', '/vendor/preact.mjs', '/vendor/tabler-icons.min.css', '/vendor/tabler-icons.woff2', '/icon.png', '/manifest.webmanifest'];
+  const files = ['/app.js', '/app.css', '/ui/widget.js', '/vendor/preact.mjs', '/vendor/tabler-icons.min.css', '/vendor/tabler-icons.woff2', '/icon.png', '/favicon.png', '/manifest.webmanifest'];
   for (const file of files) {
     const first = await request(s, 'GET', file);
     assert.equal(first.status, 200, file);
