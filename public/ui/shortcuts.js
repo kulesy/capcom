@@ -1,11 +1,13 @@
 // Capcom's own keys. Chrome runs Cmd+N as New Window before a tab's page sees it, but hands an installed app's page every
 // key first, so Cmd+N starts a session only in the app. Chrome reserves Cmd+A nowhere, so on a Mac it archives in a tab too.
 // See docs/adr/20261014-desktop-like-prompt-box-flow.md.
-const APP = '(display-mode: standalone)';
+import { INSTALLED } from './title-rules.js';
+
 const FIELD = 'input, textarea, select, [contenteditable]';
 
-// A full-screen app window reports full screen rather than standalone, so it counts as a tab.
-export const inApp = () => matchMedia(APP).matches;
+// An app window with its controls drawn over the page reports window-controls-overlay, not standalone. A full-screen app window
+// reports full screen, so it counts as a tab.
+export const inApp = () => matchMedia(INSTALLED).matches;
 
 export const onMac = () => navigator.platform.startsWith('Mac');
 
@@ -43,7 +45,7 @@ export const archiveHint = () => (onMac() ? keyHint('Cmd', 'A') : null);
 
 // Calls fn when Capcom moves between a tab and the app's window, as Open in Chrome and full screen do. Returns the undo.
 export function onAppChange(fn) {
-  const query = matchMedia(APP);
+  const query = matchMedia(INSTALLED);
   query.addEventListener('change', fn);
   return () => query.removeEventListener('change', fn);
 }

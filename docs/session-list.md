@@ -53,7 +53,7 @@ Each opens an empty chat, and the first message starts the session in the home f
 
 ### Cmd+N in a tab and in the app
 
-In a browser tab Chrome runs Cmd+N as New Window before the page sees the key, so it still opens a window there. In the app's window Chrome gives the page the key first, so there Cmd+N starts a session instead. GhostShell tells a tab from the app's window with the `(display-mode: standalone)` media query, and treats a full-screen app window as a tab, because Chrome reports it as full screen.
+In a browser tab Chrome runs Cmd+N as New Window before the page sees the key, so it still opens a window there. In the app's window Chrome gives the page the key first, so there Cmd+N starts a session instead. GhostShell tells a tab from the app's window with the `(display-mode: standalone)` and `(display-mode: window-controls-overlay)` media queries, and treats a full-screen app window as a tab, because Chrome reports it as full screen.
 
 In the app Cmd+N still opens a second GhostShell window on the sign-in page and while a widget has focus, because GhostShell's page never sees the key there. File > New Window in the menu bar opens one too.
 

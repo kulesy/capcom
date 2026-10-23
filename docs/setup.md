@@ -48,6 +48,6 @@ GhostShell keeps the public keys in `passkeys.json` in its state folder. A new p
 
 ## Install as an app
 
-GhostShell has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own window and Dock icon. Window managers then see it as its own app rather than as the browser. On the Mac, install it from http://localhost:4310, because Chrome only offers Install on a secure address, and it treats localhost as one.
+GhostShell has a web app manifest, so Chrome or Safari can install it as an app of its own, with its own window and Dock icon. Window managers then see it as its own app rather than as the browser. An installed window opens with Chrome's normal title bar. Click the toggle in that title bar to draw the window's controls over the page, and GhostShell's logo then sits in the title bar. On the Mac, install it from http://localhost:4310, because Chrome only offers Install on a secure address, and it treats localhost as one.
 
 To keep the server running without a terminal, see [always on](always-on.md).

@@ -1,8 +1,6 @@
 <div align="center">
 
-<img alt="GhostShell's app icon: a four-plate shell round one eye, white on a dark rounded tile." src="public/icon-512.png" width="128">
-
-<h1>GhostShell</h1>
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-dark.svg"><img alt="GhostShell" src="docs/media/logo-light.svg" width="180"></picture></h1>
 
 <p><strong>A browser chat client for every Claude Code session on your Mac.</strong></p>
 

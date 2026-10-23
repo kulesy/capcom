@@ -8,11 +8,20 @@
 <link rel="icon" href="favicon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f6f6f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181818" media="(prefers-color-scheme: dark)">
 <link rel="stylesheet" href="app.css">
 </head>
 <body class="gate">
 <div class="gate-card">
   <header class="gate-header">
+    <svg class="shell gate-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle class="shell-core" cx="12" cy="12" r="10" />
+      <g class="shell-turn"><g transform="rotate(0 12 12)"><path class="shell-plate" d="M8.95,8.17L12,6.91L15.05,8.17L16.66,6.56Q14,3.88 12,0.5Q10,3.88 7.34,6.56Z" /></g><g transform="rotate(90 12 12)"><path class="shell-plate" d="M8.95,8.17L12,6.91L15.05,8.17L16.67,6.55Q13.95,3.65 12,0Q10.05,3.65 7.33,6.55Z" /></g><g transform="rotate(180 12 12)"><path class="shell-plate" d="M8.95,8.17L12,6.91L15.05,8.17L16.66,6.56Q14,3.88 12,0.5Q10,3.88 7.34,6.56Z" /></g><g transform="rotate(270 12 12)"><path class="shell-plate" d="M8.95,8.17L12,6.91L15.05,8.17L16.67,6.55Q13.95,3.65 12,0Q10.05,3.65 7.33,6.55Z" /></g></g>
+      <circle class="shell-socket" cx="12" cy="12" r="4.3" />
+      <circle class="shell-glow" cx="12" cy="12" r="3.8" />
+      <circle class="shell-eye" cx="12" cy="12" r="2.5" />
+    </svg>
     <h1>GhostShell</h1>
     <p class="quiet">Sign in to talk to your sessions on this Mac.</p>
   </header>

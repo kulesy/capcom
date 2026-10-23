@@ -17,7 +17,7 @@ const lists = [];
 globalThis.matchMedia = query => {
   const on = new Map();
   const list = {
-    get matches() { return query === `(display-mode: ${mode})`; },
+    get matches() { return query.split(',').some(part => part.trim() === `(display-mode: ${mode})`); },
     addEventListener(type, fn) {
       if (!on.has(type)) on.set(type, new Set());
       on.get(type).add(fn);
@@ -68,6 +68,13 @@ test('Cmd+N starts a session only in the app, so a tab and a full-screen window 
   assert.equal(shortcut(press('n', CMD)), 'new');
   assert.equal(shortcut(press('N', CMD)), 'new', 'caps lock');
   for (mode of ['browser', 'fullscreen', 'minimal-ui']) assert.equal(shortcut(press('n', CMD)), null, mode);
+});
+
+test('an app window with its controls drawn over the page counts as the app', () => {
+  mode = 'window-controls-overlay';
+  assert.equal(shortcut(press('n', CMD)), 'new');
+  assert.equal(inApp(), true);
+  assert.equal(modifier(), 'Cmd');
 });
 
 test('Ctrl+K and Cmd+K open the search in a tab and in the app', () => {
