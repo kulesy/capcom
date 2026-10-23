@@ -1,4 +1,5 @@
 import { md } from '../md.mjs';
+import { BangRuns } from './bash.js';
 import { closeFile, openFile } from './file-view.js';
 import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
@@ -81,8 +82,8 @@ function Live({ ctrl, box, pin, fileUrl }) {
 export function Transcript({ ctrl }) {
   const box = useRef(null);
   const fromBottom = useRef(0);
-  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session, fileLinks } = useFields(
-    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session', 'fileLinks',
+  const { items, chips, sending, hasEarlier, loadingEarlier, loaded, jump, earlierSeq, session, fileLinks, terminal } = useFields(
+    ctrl.store, 'items', 'chips', 'sending', 'hasEarlier', 'loadingEarlier', 'loaded', 'jump', 'earlierSeq', 'session', 'fileLinks', 'terminal',
   );
   // Until the server says it serves linked files, a path in a reply stays text.
   const fileUrl = fileLinks ? ctrl.fileUrl : null;
@@ -156,7 +157,8 @@ export function Transcript({ ctrl }) {
       ${ctrl.draft ? html`<p class="new-hint" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
-        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} />`)}
+        ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} />`)}
+        ${ctrl.term ? html`<${BangRuns} ctrl=${ctrl} items=${items} hasEarlier=${hasEarlier} />` : null}
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, files: m.files, sending: true }} onImage=${viewImage} />`)}
       </ol>
       <${Live} ctrl=${ctrl} box=${box} pin=${pin} fileUrl=${fileUrl} />

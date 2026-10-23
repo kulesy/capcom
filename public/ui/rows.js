@@ -1,5 +1,6 @@
 // The rows of the transcript. Each is memoised, so a row draws again only when its own item changes.
 import { md } from '../md.mjs';
+import { BashItem } from './bash.js';
 import { HOME } from './env.js';
 import { clip, duration, lf, modelLabel, pre, preview, serverLabel, tilde, toolLabel } from './format.js';
 import { FileCard } from './file-card.js';
@@ -125,11 +126,12 @@ function Thumbs({ images = [], files = [], url, onOpen }) {
 }
 
 const sameRow = (a, b) => a.chip === b.chip && a.cwd === b.cwd && a.onChip === b.onChip && a.imageUrl === b.imageUrl && a.onImage === b.onImage && a.connectors === b.connectors && a.onPrompt === b.onPrompt && a.running === b.running && a.fileUrl === b.fileUrl
+  && a.term === b.term && a.terminal === b.terminal
   && (a.item === b.item || (a.item.kind === 'group' && b.item.kind === 'group' && sameRows(a.item.rows, b.item.rows)));
 
 export const isChip = i => i.kind === 'tool' && /__spawn_task$/.test(i.name);
 
-export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl }) {
+export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onImage, connectors, onPrompt, running, fileUrl, term, terminal }) {
   if (i.kind === 'user') return html`<li class=${`msg user${i.sending ? ' sending' : ''}`}>${i.images?.length || i.files?.length ? html`<${Thumbs} images=${i.images} files=${i.files} url=${imageUrl} onOpen=${onImage} />` : null}${i.text ? html`<div class="bubble">${lf(i.text)}</div>` : null}</li>`;
   if (i.kind === 'assistant') return html`<li class="msg claude" dangerouslySetInnerHTML=${{ __html: md(i.text, fileUrl) }}></li>`;
   if (i.kind === 'tool') {
@@ -142,6 +144,7 @@ export const Row = memo(function Row({ item: i, chip, cwd, onChip, imageUrl, onI
   if (i.kind === 'thinking') return html`<${ThinkRow} t=${i} fileUrl=${fileUrl} />`;
   if (i.kind === 'group') return html`<${ToolGroup} rows=${i.rows} imageUrl=${imageUrl} onImage=${onImage} connectors=${connectors} running=${running} fileUrl=${fileUrl} />`;
   if (i.kind === 'system') return html`<${SystemNotice} n=${i} />`;
+  if (i.kind === 'bash') return html`<${BashItem} item=${i} term=${term} terminal=${terminal} />`;
   if (i.kind === 'model') return html`<li class="divider">Model set to ${modelLabel(i.model)}</li>`;
   if (i.kind === 'routine') return html`<li class="divider">Started by the ${i.name} routine</li>`;
   if (i.kind === 'divider') return html`<li class="divider">${i.text}</li>`;

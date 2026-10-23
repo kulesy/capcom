@@ -1,6 +1,7 @@
 // The transcript as a list of display items. These are plain functions on plain data: items are never changed in
 // place, so a row can tell by identity whether it needs to draw again.
 import { chromeTool, fullToolLabel, plural } from './format.js';
+import { joinBash } from './terminal-rules.js';
 
 let counter = 0;
 const nextKey = () => `i${++counter}`;
@@ -187,7 +188,7 @@ export function display(items) {
     else out.push(...run);
     run = [];
   };
-  for (const i of items) {
+  for (const i of joinBash(items)) {
     if (groupable(i)) run.push(i);
     else { close(); out.push(i); }
   }

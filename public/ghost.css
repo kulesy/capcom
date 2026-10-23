@@ -97,7 +97,8 @@
     .tool-io, .system, .approval, .approval pre, .hold, .dock .notice, .composer-box, .attachment,
     .attached > .preparing, .context-pop, .context-load > span, .folder, [data-slot="command"],
     [data-slot="command-input"], .chip, [data-slot="command-item"], .slash-menu, kbd, [data-slot="tooltip-content"],
-    .viewer-img, .offer, .diff, .option, .preview, .chip-card, .widget iframe.card, .widget-note, .widget-wait, .widget-ask
+    .viewer-img, .offer, .diff, .option, .preview, .chip-card, .widget iframe.card, .widget-note, .widget-wait, .widget-ask,
+    .code-block, .run, .bash, .term-field, .term-error, .panel-tab
   ),
   [data-look="ghost"] .sub-rows > li:last-child::before { corner-shape: bevel; }
 

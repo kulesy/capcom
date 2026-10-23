@@ -12,12 +12,13 @@ import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { TYPES } from './images.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import { buttonLabel, buttonOf, modelMenu } from './model-rules.js';
+import { bangMode, leaveBang } from './terminal-rules.js';
 import { openViewer } from './viewer.js';
 
 const MODES = [['manual', 'Manual'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 // NOTE: [16 Oct 2026] EK - Grammarly's extension leaves a field alone when it carries these attributes.
 // Without them it puts its own buttons inside the message box.
-const NO_GRAMMARLY = { 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' };
+export const NO_GRAMMARLY = { 'data-gramm': 'false', 'data-gramm_editor': 'false', 'data-enable-grammarly': 'false' };
 
 const isBusy = s => s?.state === 'working' || s?.state === 'waiting';
 
@@ -78,7 +79,7 @@ export function focusNextComposer() {
 }
 
 export function Composer({ ctrl }) {
-  const { status, starting, folder } = useFields(ctrl.store, 'status', 'starting', 'folder');
+  const { status, starting, folder, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'folder', 'terminal', 'session');
   const images = useStore(attached, a => a.images);
   const files = useStore(attached, a => a.files);
   const preparing = useStore(attached, a => a.preparing);
@@ -101,10 +102,12 @@ export function Composer({ ctrl }) {
   const [shown, setShown] = useState(null);
   const opened = useRef(0);
   const s = status || { state: 'idle', pending: [], mode: 'manual' };
+  // A text that starts with ! is a command to run in the session's folder, where the session has a terminal.
+  const bang = bangMode({ text, terminal, draft });
   // Images or files alone are a message too.
-  const ready = !!text.trim() || images.length > 0 || files.length > 0;
+  const ready = bang ? !!bang.command : !!text.trim() || images.length > 0 || files.length > 0;
   // While Claude works and the box is empty, the Send button is the Stop button. Typing or attaching turns it back into Send.
-  const stop = isBusy(status) && !draft && !ready;
+  const stop = isBusy(status) && !draft && !ready && !bang;
 
   // The / list opens while the first word of the message is being typed, with the caret in it.
   const typed = caret === null ? null : typedCommand(text, caret);
@@ -204,10 +207,28 @@ export function Composer({ ctrl }) {
     return () => { for (const [type, fn] of Object.entries(on)) document.removeEventListener(type, fn); };
   }, []);
 
+  // The command shows in the transcript at once, and the text comes back to be fixed if the server turns the command away.
+  const runCommand = async (typed, command) => {
+    setText('');
+    const running = ctrl.term.run(command, 'bang');
+    ctrl.store.set(s => ({ jump: s.jump + 1 }));
+    const problem = await running;
+    if (problem) {
+      setText(typed);
+      ctrl.notice(problem);
+    }
+  };
+
   const submit = async e => {
     e.preventDefault();
-    const t = area.current.value.trim();
+    const typed = area.current.value;
+    const t = typed.trim();
     const { images: sent, files: sentFiles } = attached.get();
+    const asked = bangMode({ text: typed, terminal: ctrl.store.get().terminal, draft });
+    if (asked) {
+      if (asked.command) await runCommand(typed, asked.command);
+      return;
+    }
     if ((!t && !sent.length && !sentFiles.length) || attached.get().preparing || sentFiles.some(f => f.uploading)) return;
     const clear = () => { setText(''); attached.set({ images: [], files: [] }); };
     if (draft) { ctrl.startNew(t, sent, clear, sentFiles); return; }
@@ -261,9 +282,11 @@ export function Composer({ ctrl }) {
   // Enter sends where there is a keyboard. On a touch screen it makes a new line, as does Shift+Enter anywhere.
   const onKeyDown = e => {
     if (slashKey(e)) { e.preventDefault(); return; }
+    // Esc leaves command mode, and is kept from the page's Esc, which would stop Claude.
+    if (e.key === 'Escape' && bang && !e.isComposing) { e.preventDefault(); setText(leaveBang(text)); return; }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer: fine)').matches) {
       e.preventDefault();
-      if (e.currentTarget.value.trim() || images.length || files.length) form.current.requestSubmit();
+      if (bang ? bang.command : (e.currentTarget.value.trim() || images.length || files.length)) form.current.requestSubmit();
     }
   };
 
@@ -271,9 +294,9 @@ export function Composer({ ctrl }) {
   const onBoxMouseDown = e => { if (!e.target.closest(CONTROLS)) e.preventDefault(); };
   const onBoxClick = e => { if (!e.target.closest(CONTROLS)) area.current.focus({ preventScroll: true }); };
 
-  const sendLabel = starting ? 'Starting' : stop ? 'Stop' : 'Send';
+  const sendLabel = starting ? 'Starting' : stop ? 'Stop' : bang ? 'Run command' : 'Send';
   const attachLabel = takesFiles ? 'Attach files' : 'Attach images';
-  return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} onSubmit=${submit}>
+  return html`<form class="composer" id="composer" ref=${form} data-over=${over || null} data-bang=${bang ? '' : undefined} onSubmit=${submit}>
     <div class="composer-box input-group" onMouseDown=${onBoxMouseDown} onClick=${onBoxClick}>
       ${images.length || files.length || preparing ? html`<${Attachments} images=${images} files=${files} preparing=${preparing} />` : null}
       ${open ? html`<${SlashMenu} matches=${commands ? matches : null} error=${error} at=${at} follow=${follow} onPick=${choose} onSelect=${n => { if (n !== at) setChoice({ query, at: n }); }} />` : null}
@@ -282,14 +305,15 @@ export function Composer({ ctrl }) {
         <input type="file" key=${takesFiles ? 'files' : 'images'} ref=${picker} ...${takesFiles ? {} : { accept: TYPES.join(',') }} multiple hidden onChange=${pickFiles} />
         <div class="composer-field">
           <textarea class="input-group-control" id="text" ...${NO_GRAMMARLY} ref=${area} rows="1" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded=${open}
-            aria-controls=${open ? 'slash-list' : undefined} aria-activedescendant=${at >= 0 ? `slash-${at}` : undefined} aria-describedby=${hint ? 'slash-hint' : undefined}
-            placeholder="Type / for commands" aria-label="Message" value=${text}
+            aria-controls=${open ? 'slash-list' : undefined} aria-activedescendant=${at >= 0 ? `slash-${at}` : undefined} aria-describedby=${bang ? 'bang-hint' : hint ? 'slash-hint' : undefined}
+            placeholder=${terminal && !draft ? 'Type / for commands, or ! to run a command' : 'Type / for commands'} aria-label="Message" value=${text}
             onInput=${onInput} onKeyDown=${onKeyDown} onKeyUp=${track} onClick=${track} onFocus=${onFocus} onBlur=${() => setFocused(false)}
             oncompositionstart=${() => setComposing(true)} oncompositionend=${onCompositionEnd}></textarea>
           ${hint ? html`<div class="composer-hint" aria-hidden="true"><span>${text}</span>${hint}</div><span class="sr" id="slash-hint">Arguments: ${hint}</span>` : null}
         </div>
-        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0 || uploading)} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : html`<${Arrow} />`}</button>
+        <button class="btn send" data-size="icon-sm" id="send" type=${stop ? 'button' : 'submit'} data-act=${starting ? 'starting' : stop ? 'stop' : 'send'} aria-label=${sendLabel} data-tip=${sendLabel} disabled=${!stop && (!ready || starting || preparing > 0 || (uploading && !bang))} onClick=${stop ? ctrl.stop : undefined}>${starting ? html`<${Ring} />` : stop ? html`<${Square} />` : bang ? draw(icons.play, 'icon') : html`<${Arrow} />`}</button>
       </div>
+      ${terminal && !draft ? html`<p class="bang-hint" id="bang-hint" hidden=${!bang}>Runs in ${session?.cwd ? tilde(session.cwd, HOME) : 'the session folder'}. Claude sees the result.</p><span class="sr" role="status">${bang ? 'Command mode. Enter runs the command.' : ''}</span>` : null}
     </div>
     <div class="composer-bar">
       <div class="composer-left">

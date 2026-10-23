@@ -26,6 +26,13 @@ test('thinking with no tool call beside it stays a row of its own, one for each 
   assert.deepEqual(display([a, b, reply]), [a, b, reply]);
 });
 
+test('a command run in an older CLI, which logs its input and its output as two items, is one row and ends a run of tools', () => {
+  const [before, input, output, after] = [tool('Read'), item('bash', { command: 'ls', stdout: '', stderr: '' }), item('bash', { command: '', stdout: 'a', stderr: '' }), tool('Grep')];
+  const rows = display([before, input, output, after]);
+  assert.deepEqual(rows.map(r => r.kind), ['group', 'bash', 'group']);
+  assert.deepEqual([rows[1].command, rows[1].stdout], ['ls', 'a']);
+});
+
 test('a message or a card ends a run, so the thinking after it starts the next one', () => {
   const rows = display([tool('Bash'), said('Result'), think('more'), tool('Grep'), tool('mcp__capcom__spawn_task'), tool('Read')]);
   assert.deepEqual(rows.map(r => r.kind), ['group', 'assistant', 'group', 'tool', 'group']);

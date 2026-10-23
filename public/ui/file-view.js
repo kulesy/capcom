@@ -1,40 +1,59 @@
-// The file viewer: a file that a reply links to, read in a dialog over the page. A picture opens in the image viewer instead.
+// The file viewer: a file that a reply links to, read in the panel beside the chat. A picture opens in the image viewer instead.
 import { md } from '../md.mjs';
 import { api } from './api.js';
-import { Dialog } from './dialog.js';
 import { fileSize, grouped, lf } from './format.js';
 import { useStore } from './hooks.js';
 import { html, useLayoutEffect, useMemo, useRef, useState } from './html.js';
+import { draw, icons } from './menu.js';
+import { hidePanel, panelOf, panels, selectTab, showPanel } from './panel-state.js';
 import { createStore } from './store.js';
 import { NewTab, openViewer } from './viewer.js';
 
 const shown = createStore({ open: null });
 
-// A file that arrives faster than this opens with no loading dialog flashing in front of it.
+// A file that arrives faster than this opens with no loading state flashing in the panel.
 const WAIT_MS = 300;
 
 let count = 0;
 
 const route = (chat, what, path) => `api/sessions/${encodeURIComponent(chat)}/${what}?path=${encodeURIComponent(path)}`;
 
-// Opens the file at `path` that chat `id` links to, at `line` if given. `from` is the link, which gets the focus back.
+// Opens the file at `path` that chat `id` links to, at `line` if given. `from` is the link, which gets the focus back. The panel shows
+// the file once it has answered or been waited for, and the waiting shows as "Loading".
 export function openFile({ id, path, line, from }) {
   const n = ++count;
   const mine = () => shown.get().open?.n === n;
   const patch = change => { if (mine()) shown.set(s => ({ open: { ...s.open, ...change } })); };
+  let before = null;
+  const reveal = () => {
+    if (!mine() || before) return;
+    before = panelOf(panels.get(), id);
+    showPanel(id, 'file', from);
+  };
   shown.set({ open: { n, chat: id, path, line, from, late: false, preview: null, error: '' } });
-  setTimeout(() => patch({ late: true }), WAIT_MS);
+  setTimeout(() => { patch({ late: true }); reveal(); }, WAIT_MS);
   api(route(id, 'preview', path)).then(preview => {
     if (!mine()) return;
     if (preview.kind === 'image' && !preview.tooLarge) {
       const src = route(id, 'file', path);
       shown.set({ open: null });
+      // The panel was opened to wait for a picture, which the viewer shows instead, so it goes back to how it was.
+      if (before) { if (before.open) selectTab(id, before.tab); else hidePanel(id); }
       openViewer([{ key: src, src, alt: preview.name }], 0, from);
-    } else patch({ preview });
-  }, e => patch({ error: e.message }));
+    } else {
+      patch({ preview });
+      reveal();
+    }
+  }, e => {
+    patch({ error: e.message });
+    reveal();
+  });
 }
 
 export const closeFile = () => shown.set({ open: null });
+
+// The file this chat has open, once it is ready to show, else null. The panel offers its File tab while there is one.
+export const useFile = chat => useStore(shown, s => (s.open?.chat === chat && (s.open.late || s.open.preview || s.open.error) ? s.open : null));
 
 const Download = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 3.5v9M6 8.5l4 4 4-4M4 15.5h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 const Code = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M7.5 6 3.5 10l4 4M12.5 6l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
@@ -64,10 +83,11 @@ function Document({ text }) {
   return html`<div class="msg claude file-doc" dangerouslySetInnerHTML=${{ __html: markup }}></div>`;
 }
 
-// Where the focus goes when the dialog closes: the link clicked, or that link drawn again if its reply has been redrawn since.
-const backTo = (from, path) => (from?.isConnected ? from : [...document.querySelectorAll('a[data-file]')].find(a => a.dataset.file === path));
+// Where the focus goes when the file closes: the link clicked, or that link drawn again if its reply has been redrawn since.
+export const backTo = (from, path) => (from?.isConnected ? from : [...document.querySelectorAll('a[data-file]')].find(a => a.dataset.file === path));
 
-function FileView({ open, chat, path, line, from, preview, error }) {
+// The file's head and body, which the panel shows in its File tab. `onClose` closes the file.
+export function FileTab({ file: { chat, path, line, preview, error }, onClose }) {
   const body = useRef(null);
   const [source, setSource] = useState(line != null);
   const name = preview?.name ?? path.split('/').pop();
@@ -102,29 +122,19 @@ function FileView({ open, chat, path, line, from, preview, error }) {
       ${preview.truncated ? html`<p class="file-end">Showing the first ${grouped(lines)} lines of ${fileSize(preview.size)}. <a href=${url} target="_blank" rel="noopener">Open in new tab</a></p>` : null}`;
   }
 
-  return html`<${Dialog} part="file-view" open=${open} labelledBy="file-title" initial=${body} restoreTo=${() => backTo(from, path)} onClose=${closeFile}>
+  return html`<div class="file-view">
     <div class="file-head">
       <div class="file-title">
-        <h2 id="file-title" class="file-name">${name}</h2>
+        <h3 id="file-title" class="file-name">${name}</h3>
         <div class="file-where"><span class="file-path" title=${path}><bdi>${path}</bdi></span>${preview ? html`<span class="file-size">${fileSize(preview.size)}</span>` : null}</div>
       </div>
-      ${openable ? html`<div class="file-actions">
-        ${kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
-        <a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>
-        <a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>
-      </div>` : null}
+      <div class="file-actions">
+        ${openable && kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
+        ${openable ? html`<a class="btn" data-variant="outline" data-size="icon-sm" href=${url} target="_blank" rel="noopener" aria-label="Open in new tab" data-tip="Open in new tab"><${NewTab} /></a>
+        <a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>` : null}
+        <button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label="Close file" data-tip="Close file" onClick=${onClose}>${draw(icons.x, 'icon')}</button>
+      </div>
     </div>
     <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-kind=${kind} tabindex=${reads ? 0 : -1} role=${reads ? 'region' : undefined} aria-label=${reads ? `Contents of ${name}` : undefined}>${content}</div>
-  <//>`;
-}
-
-// The dialog stays until its exit animation has played, and the next file replaces it at once. It opens only once the file has
-// answered or been waited for, and the waiting shows as "Loading".
-export function FileViewHost() {
-  const head = useStore(shown, s => s.open);
-  const visible = head && (head.late || head.preview || head.error) ? head : null;
-  const last = useRef(null);
-  if (visible) last.current = visible;
-  const view = visible ?? last.current;
-  return view ? html`<${FileView} key=${view.n} open=${!!visible} ...${view} />` : null;
+  </div>`;
 }
