@@ -47,6 +47,8 @@ Chosen option: "Build all four changes", because the owner wants Capcom to work 
 
 **Amended again 2026-10-22.** The search's chips are a Radix tab list. Only the chosen chip is a tab stop, so Tab goes from the field to the chips once and on to the close button, the left and right arrows move the focus and the choice together and wrap at the ends, and Home and End go to the first and last chip. In the list, Alt with the up or down arrow jumps to the previous or next group of results, and Cmd with them to the first or last result, as in cmdk. Capcom leaves out cmdk's Ctrl+J, K, N and P keys, because Ctrl+K and Ctrl+N are Capcom's own. Opening a result from the search leaves the focus in the opened chat's prompt box when the device has a fine pointer, so Cmd+K, a few letters and Enter put the owner back to typing, and on a touch screen the keyboard stays closed. The question and the note name the session in curly quotes, as in Archived “Fix the login”. A finger or a mouse drags the note to the right or down, and it goes when the drag passes 45px or is quick, and springs back otherwise.
 
+**Amended 2026-10-23.** The owner had the folder picker removed, because a new session should always start at the root, which the page reads as the home folder. "+ New session" now opens an empty chat with only the prompt box, and the first message starts the session in the home folder, with the mode and effort Desktop would use there. The server's `api/folders` route stays, but nothing in the page calls it.
+
 ### Consequences
 
 - ✅ New sessions, settings and stopping work as they do in Desktop.

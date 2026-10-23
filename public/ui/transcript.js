@@ -154,7 +154,7 @@ export function Transcript({ ctrl }) {
   const live = !!turn && !sending.length;
   return html`<div class="scroller">
     <div class="transcript" id="transcript" ref=${box} role="region" aria-label="Messages" tabindex="0" onClick=${openLink}>
-      ${ctrl.draft ? html`<p class="new-hint" id="newHint">Pick a folder, then say what Claude should do. The session starts there.</p>` : null}
+      ${ctrl.draft ? html`<p class="new-hint" id="newHint">Say what Claude should do. Your first message starts the session.</p>` : null}
       <button class="btn earlier" data-variant="outline" id="earlier" type="button" hidden=${!hasEarlier} disabled=${loadingEarlier} onClick=${loadEarlier}>Load earlier</button>
       <ol class="items" id="items">
         ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} term=${ctrl.term} terminal=${terminal} />`)}

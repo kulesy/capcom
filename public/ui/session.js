@@ -50,7 +50,7 @@ const endedByChat = new Map();
 export function createChat({ id = null, draft = false, row = null, refreshIndex }) {
   const first = !draft && startedHere?.id === id ? startedHere : null;
   if (first) startedHere = null;
-  // Until a new session starts, the box holds its settings here; the ones left alone follow the folder's defaults.
+  // Until a new session starts, the box holds its settings here; the ones left alone follow the home folder's defaults.
   const touched = draft ? new Set() : null;
   const store = createStore({
     items: [], orphans: new Map(), chips: new Map(), start: 0, end: 0, hasEarlier: false, loaded: false, fileLinks: false, terminal: false,
@@ -58,10 +58,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     live: '', think: null, work: null, turnStart: 0, outside: null, outsideStart: 0, holdsEnded: endedByChat.get(id) || [],
     sending: first ? [{ text: first.text, images: first.images, files: first.files }] : [], notice: '', starting: false, loadingEarlier: false,
     session: row && { title: row.title, cwd: row.cwd, branch: row.branch, routine: row.routine },
-    folder: HOME, folders: [], jump: 0, earlierSeq: 0, context: null,
+    jump: 0, earlierSeq: 0, context: null,
   });
   const state = store.get;
-  // A new session has no folder to run in yet, so it has no terminal.
+  // A new session has no id until it starts, so it has no terminal.
   const term = draft ? null : createTerminal({ id, enabled: () => state().terminal });
   let closed = false;
   let es = null;
@@ -93,10 +93,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     document.addEventListener('visibilitychange', onVisible);
     if (draft) {
       loadDefaults();
-      try {
-        const { folders } = await api('api/folders');
-        if (!closed) store.set({ folders });
-      } catch (e) { notice(e.message); }
       return;
     }
     try {
@@ -362,12 +358,10 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   // ---- starting a session ------------------------------------------------------------------------------
 
-  const setFolder = folder => store.set({ folder });
-
-  // A new session starts the way Desktop would start one in that folder: its mode for the folder, and its effort.
+  // A new session starts the way Desktop would start one in the home folder: its mode there, and its effort.
   async function loadDefaults() {
     try {
-      const d = await api(`api/defaults?cwd=${enc(state().folder.trim())}`);
+      const d = await api(`api/defaults?cwd=${enc(HOME)}`);
       if (closed) return;
       patchStatus({ ...(!touched.has('mode') && { mode: d.mode }), ...(!touched.has('model') && { model: d.model, shownModel: d.shownModel }), ...(!touched.has('effort') && { effort: d.effort }) });
     } catch {}
@@ -380,7 +374,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     store.set({ starting: true, notice: '' });
     try {
       const { id: created } = await api('api/new', {
-        cwd: state().folder.trim(), text, mode: s.mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
+        cwd: HOME, text, mode: s.mode, ...(images.length && { images: payload(images) }), ...(files.length && { files: files.map(f => f.id) }),
         ...(touched.has('model') && { model: s.shownModel }), ...(touched.has('effort') && { effort: s.effort }), ...(touched.has('fast') && { fast: s.fast }),
       });
       onCreated();
@@ -400,6 +394,6 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
 
   return {
     id, draft: draft ? { touched } : null, store, term, open, close, fetchNew, loadEarlier, earlierImages, loadContext,
-    send, prompt, stop, decide, dismissHold, chip, setMode, pick, setFolder, loadDefaults, startNew, notice, imageUrl, fileUrl,
+    send, prompt, stop, decide, dismissHold, chip, setMode, pick, startNew, notice, imageUrl, fileUrl,
   };
 }

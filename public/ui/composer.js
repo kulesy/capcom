@@ -1,4 +1,4 @@
-// The prompt box: the text, the images and files attached to it, the settings under it, and the folder picker for a session that is not started yet.
+// The prompt box: the text, the images and files attached to it, and the settings under it.
 import { hintFor, matching, pick, typedCommand } from './command-rules.js';
 import { SlashMenu, useCommands, useModels } from './commands.js';
 import { ContextMeter } from './context.js';
@@ -54,18 +54,6 @@ function Pick({ id, label, value, options, disabled, onChange }) {
     </select></label>`;
 }
 
-let recentOpen = false;
-
-export function FolderBar({ ctrl }) {
-  const { folder, folders } = useFields(ctrl.store, 'folder', 'folders');
-  const choose = e => { ctrl.setFolder(e.target.value); ctrl.loadDefaults(); };
-  return html`<div class="folderbar" id="folderBar">
-    <label class="folder-field">Folder <input class="input" id="folder" type="text" autocomplete="off" spellcheck=${false} value=${folder} onInput=${e => ctrl.setFolder(e.target.value)} onChange=${ctrl.loadDefaults} /></label>
-    <details class="recent" open=${recentOpen} onToggle=${e => { recentOpen = e.currentTarget.open; }}><summary>Recent folders</summary><div class="folders" id="folders">
-      ${folders.map((f, i) => html`<label class="folder" key=${f}><input type="radio" name="folder" value=${f} defaultChecked=${i === 0} onChange=${choose} /> ${tilde(f, HOME) || '~'}</label>`)}
-    </div></details></div>`;
-}
-
 // Starting a session replaces this box with the new session's, so focus is handed on to the box that mounts next.
 let keepFocus = false;
 
@@ -79,7 +67,7 @@ export function focusNextComposer() {
 }
 
 export function Composer({ ctrl }) {
-  const { status, starting, folder, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'folder', 'terminal', 'session');
+  const { status, starting, terminal, session } = useFields(ctrl.store, 'status', 'starting', 'terminal', 'session');
   const images = useStore(attached, a => a.images);
   const files = useStore(attached, a => a.files);
   const preparing = useStore(attached, a => a.preparing);
@@ -112,7 +100,7 @@ export function Composer({ ctrl }) {
   // The / list opens while the first word of the message is being typed, with the caret in it.
   const typed = caret === null ? null : typedCommand(text, caret);
   const query = typed ? typed.query : null;
-  const target = draft ? { cwd: folder.trim() } : { id: ctrl.id };
+  const target = draft ? { cwd: HOME } : { id: ctrl.id };
   const { commands, error } = useCommands(target, query !== null && focused);
   const matches = useMemo(() => (commands && query !== null ? matching(commands, query) : []), [commands, query]);
   const open = query !== null && focused && !composing && dismissed !== query && (!commands || matches.length > 0);

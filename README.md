@@ -127,8 +127,8 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   the running tool finishes and adjusts before its next step.
 - **New sessions** start from New session, the first item in the + menu at the top of the list, from
   the search's New session action, with Ctrl+N, or with Cmd+N in the installed app. Each opens an empty
-  chat with a folder picker above the prompt box (the home folder, or a recent one), and the first
-  message starts the session in that folder. The + and the keys work while the list is still loading.
+  chat, and the first message starts the session in the home folder. The + and the keys work while
+  the list is still loading.
   The search shows its action once the list has arrived. In a browser tab Chrome runs Cmd+N as New
   Window before the page sees the key, so it still opens a window there. In the app's window Chrome
   gives the page the key first, so there Cmd+N starts a session instead. GhostShell tells a tab from the

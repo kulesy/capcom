@@ -1,7 +1,7 @@
 // The chat pane: header, transcript and the dock under it. It owns one chat controller for as long as it is on screen.
 import { Approvals } from './approvals.js';
 import { copyText } from './clipboard.js';
-import { Composer, FolderBar } from './composer.js';
+import { Composer } from './composer.js';
 import { HOME } from './env.js';
 import { folderName, settingsLine } from './format.js';
 import { Holds } from './holds.js';
@@ -32,7 +32,7 @@ function ChatHead({ ctrl, kind }) {
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
   const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
   const meta = draft
-    ? 'Starts Claude Code in the folder you pick'
+    ? 'Starts Claude Code in your home folder'
     : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
   const lamp = html`<span class="lamp" id="chatLamp" data-state=${state === 'idle' && outside ? 'working' : state} aria-hidden="true"></span>`;
   return html`<header class="chat-head">
@@ -106,7 +106,6 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, m
       <${Approvals} ctrl=${ctrl} />
       <${Holds} ctrl=${ctrl} />
       <${Notice} ctrl=${ctrl} />
-      ${ctrl.draft ? html`<${FolderBar} ctrl=${ctrl} />` : null}
       <${Composer} ctrl=${ctrl} />
     </div>
     <${Panel} ctrl=${ctrl} />

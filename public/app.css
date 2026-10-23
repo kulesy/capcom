@@ -1534,7 +1534,7 @@ body.dragging .rows .more { opacity: 0; }
 
 .scope-rule { height: 1px; margin-inline: 0.5rem; background: var(--sidebar-border); }
 
-.group-head, .row, .scope, .more, .fold, .chip, .option, .folder {
+.group-head, .row, .scope, .more, .fold, .chip, .option {
   transition-property: color, background-color, border-color, box-shadow;
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -2638,31 +2638,6 @@ button.thumb {
 .context-load > span:nth-child(8) { width: 80%; }
 
 .context-load > span:nth-child(9) { width: 54%; }
-
-.folderbar { display: grid; gap: 0.4rem; margin-bottom: 0.65rem; }
-
-.folder-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 500; line-height: 1; }
-
-.folder-field .input { font-family: var(--font-mono); }
-
-.folders { display: grid; gap: 0.25rem; }
-
-.folder {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: var(--radius-md);
-  font: 400 0.8125rem/1.3 var(--font-mono);
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-@media (hover: hover) {
-  .folder:hover { background: var(--accent); }
-}
-
-.folderbar .folders { max-height: 30vh; overflow-y: auto; }
 
 /* Below 16px, iOS zooms the page when a picker is tapped. */
 @media (pointer: coarse) {
@@ -4177,7 +4152,3 @@ html.viewing, html.viewing body { overflow: hidden; }
     filter: blur(var(--tw-exit-blur, 0));
   }
 }
-
-.recent summary { cursor: pointer; font-size: 0.875rem; font-weight: 500; color: var(--muted-foreground); }
-
-.recent .folders { margin-top: 0.4rem; }

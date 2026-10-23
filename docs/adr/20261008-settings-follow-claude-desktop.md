@@ -34,6 +34,8 @@ New sessions start in the home folder, with recent folders one tap away. The set
 
 The owner can still change the mode, model and effort for one chat from the prompt box.
 
+**Amended 2026-10-23.** The owner had the folder picker removed, so recent folders are no longer one tap away. A new session always starts in the home folder, and the page asks `api/defaults` for that folder's settings. The server's `api/folders` route stays, but nothing in the page calls it. See [Match Desktop's flow for new sessions, settings, stopping and tool calls](20261014-desktop-like-prompt-box-flow.md).
+
 ### Consequences
 
 - ✅ A new session opens with the settings Desktop would give it in that folder.

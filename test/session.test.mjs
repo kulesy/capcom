@@ -10,7 +10,7 @@ class FakeStream {
   close() {}
   emit(type, data) { this.heard[type]({ data: JSON.stringify(data) }); }
 }
-globalThis.document = { getElementById: () => ({ dataset: {} }), addEventListener() {}, removeEventListener() {}, hidden: false };
+globalThis.document = { getElementById: () => ({ dataset: { home: '/Users/someone' } }), addEventListener() {}, removeEventListener() {}, hidden: false };
 globalThis.EventSource = FakeStream;
 globalThis.fetch = async url => {
   const body = String(url).endsWith('/chips') ? { chips: [] } : { items: [], start: 0, end: 0, hasEarlier: false };
@@ -154,12 +154,10 @@ test('a new chat holds fast mode as a pick and sends it to the new session only 
   try {
     await withChanges(() => ({ status: 200, ok: true, json: async () => ({ id: 'made' }) }), async sent => {
       const plain = createChat({ draft: true, refreshIndex() {} });
-      plain.setFolder('/work');
       await plain.startNew('hello', [], () => {});
       assert.equal('fast' in sent[0][1], false);
 
       const fast = createChat({ draft: true, refreshIndex() {} });
-      fast.setFolder('/work');
       assert.equal(fast.store.get().status.fast, false, 'a new chat starts with it off');
       await fast.pick('fast', true);
       assert.equal(fast.store.get().status.fast, true);
@@ -169,6 +167,32 @@ test('a new chat holds fast mode as a pick and sends it to the new session only 
       assert.equal(sent[1][1].fast, true);
     });
   } finally {
+    delete globalThis.location;
+  }
+});
+
+test('a new chat asks for the home folder\'s defaults, never lists folders, and starts its session in the home folder', async () => {
+  globalThis.location = {};
+  const real = globalThis.fetch;
+  const asked = [];
+  const reply = body => ({ status: 200, ok: true, json: async () => body });
+  globalThis.fetch = async (url, init) => {
+    const address = String(url);
+    asked.push([address, init?.method === 'POST' ? JSON.parse(init.body) : null]);
+    return reply(address === 'api/new' ? { id: 'made-in-home' } : { mode: 'plan', model: 'claude-opus-5-5', shownModel: 'claude-opus-5-5', effort: 'high' });
+  };
+  try {
+    const chat = createChat({ draft: true, refreshIndex() {} });
+    await chat.open();
+    assert.deepEqual(asked.map(([address]) => address), ['api/defaults?cwd=%2FUsers%2Fsomeone']);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(chat.store.get().status.mode, 'plan', 'the mode is the one Desktop would use in the home folder');
+    await chat.startNew('hello', [], () => {});
+    assert.deepEqual(asked.map(([address]) => address), ['api/defaults?cwd=%2FUsers%2Fsomeone', 'api/new']);
+    assert.equal(asked[1][1].cwd, '/Users/someone');
+    chat.close();
+  } finally {
+    globalThis.fetch = real;
     delete globalThis.location;
   }
 });
@@ -683,14 +707,12 @@ test('a new chat posts the ids of its files with the first message, and remember
   try {
     await withChanges(() => ({ status: 200, ok: true, json: async () => ({ id: 'made-with-files' }) }), async sent => {
       const chat = createChat({ draft: true, refreshIndex() {} });
-      chat.setFolder('/work');
       await chat.startNew('hello', [], () => {}, [attachedFile('u1', 'a.html')]);
       assert.deepEqual(sent[0][1].files, ['u1']);
       const next = createChat({ id: 'made-with-files', refreshIndex() {} });
       assert.deepEqual(next.store.get().sending.map(m => [m.text, m.files.map(f => f.name)]), [['hello', ['a.html']]]);
 
       const plain = createChat({ draft: true, refreshIndex() {} });
-      plain.setFolder('/work');
       await plain.startNew('hello', [], () => {});
       assert.equal('files' in sent[1][1], false);
     });
@@ -801,7 +823,6 @@ test('a slash command with files that the server refuses leaves no bubble, tells
     globalThis.location = {};
     try {
       const draft = createChat({ draft: true, refreshIndex() {} });
-      draft.setFolder('/work');
       let cleared = 0;
       await draft.startNew('/compact', [], () => { cleared++; }, [attachedFile('u1', 'a.html')]);
       assert.equal(cleared, 0, 'the box keeps its text and files');
