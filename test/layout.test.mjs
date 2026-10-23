@@ -357,3 +357,57 @@ test('every other edit keeps the parents, the nulls included', () => {
   f.layout.removeProject('cp-b');
   assert.deepEqual(f.onDisk().parents, parents);
 });
+
+const SESSION = '0f3c2a9e-6b1d-4c58-9e27-5a8d41b7c3f0';
+const OTHER = '9d6e1b84-2c7a-4f03-8b59-e1a07c4d2f66';
+
+test('a group keeps its session link when it is read, and a link that is not a UUID, or that an earlier group holds, is dropped with the group kept', () => {
+  const group = (id, session) => ({ id, name: id, ...(session !== undefined && { session }) });
+  const { layout } = folder({
+    ...OLD,
+    groups: [group('cg-a', SESSION), group('cg-b', SESSION), group('cg-c', OTHER), group('cg-d', 'not-a-uuid'), group('cg-e', 5), group('cg-f', ''), group('cg-g', SESSION.toUpperCase()), group('cg-h', null), group('cg-i')],
+  });
+  assert.deepEqual(layout.read().groups, [group('cg-a', SESSION), group('cg-b'), group('cg-c', OTHER), group('cg-d'), group('cg-e'), group('cg-f'), group('cg-g'), group('cg-h'), group('cg-i')]);
+});
+
+test('booking a group\'s session writes a new id once, returns the same one after, and keeps everything else in the file, including keys this version does not know', () => {
+  const f = folder({ ...WITH_PROJECTS, later: { kept: true } });
+  let minted = 0;
+  const mint = () => { minted++; return SESSION; };
+  assert.equal(f.layout.claimGroupSession('cg-a', mint), SESSION);
+  assert.equal(f.layout.claimGroupSession('cg-a', mint), SESSION);
+  assert.equal(minted, 1, 'the id is made only for a group that has none');
+  assert.deepEqual(f.onDisk(), { ...WITH_PROJECTS, later: { kept: true }, projects: WITH_PROJECTS.projects, groups: WITH_PROJECTS.groups.map(g => (g.id === 'cg-a' ? { ...g, session: SESSION } : g)), titles: WITH_PROJECTS.titles, parents: {} });
+});
+
+test('booking again writes nothing, and a group with a session that was dropped on read is booked a new one', () => {
+  const f = folder({ ...OLD, groups: [{ id: 'cg-a', name: 'A', session: SESSION }, { id: 'cg-b', name: 'B', session: SESSION }] });
+  backdate(f);
+  assert.equal(f.layout.claimGroupSession('cg-a', () => assert.fail('a group with a session is not booked another')), SESSION);
+  assert.equal(rewritten(f), false);
+  assert.equal(f.layout.claimGroupSession('cg-b', () => OTHER), OTHER);
+  assert.deepEqual(f.layout.read().groups.map(g => g.session), [SESSION, OTHER]);
+});
+
+test('booking for a group that is not there is a 404, an id that is not new is refused, and a refusal writes nothing', () => {
+  const f = folder({ ...OLD, groups: [{ id: 'cg-a', name: 'A', session: SESSION }, { id: 'cg-b', name: 'B' }] });
+  const before = fs.readFileSync(f.file, 'utf8');
+  assert.throws(() => f.layout.claimGroupSession('cg-none', () => OTHER), { status: 404, message: 'Unknown group.' });
+  assert.throws(() => f.layout.claimGroupSession('s1', () => OTHER), { status: 404 });
+  for (const bad of [SESSION, 'nope', undefined, 5]) assert.throws(() => f.layout.claimGroupSession('cg-b', () => bad), { status: 500 }, String(bad));
+  assert.equal(fs.readFileSync(f.file, 'utf8'), before);
+});
+
+test('every other edit keeps a group\'s session, and so does moving it between projects', () => {
+  const f = folder({ ...WITH_PROJECTS, groups: WITH_PROJECTS.groups.map(g => (g.id === 'cg-a' ? { ...g, session: SESSION } : g)) });
+  f.layout.move('s1', 'cg-b');
+  f.layout.pin('s2', true);
+  f.layout.archive('s4');
+  f.layout.nest('s3', 's2');
+  f.layout.addGroup('Notes');
+  f.layout.removeProject('cp-a');
+  f.layout.moveGroup('cg-a', 'cp-b');
+  assert.equal(f.layout.read().groups.find(g => g.id === 'cg-a').session, SESSION);
+  f.layout.moveGroup('cg-a', null);
+  assert.equal(f.layout.read().groups.find(g => g.id === 'cg-a').session, SESSION);
+});
