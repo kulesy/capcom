@@ -1,6 +1,7 @@
 // Ctrl+K searches from anywhere, in shadcn's command dialog. Chips pick what to look through, and the left and right arrows move
 // between them. Archived sessions are only found here, under their own chip, most recently archived first, and only here is one
-// unarchived, by its button or with Shift+Enter. Home and the projects are found here too, and opening one shows its view in the list.
+// unarchived, by its button or with Shift+Enter. Home, the projects and the groups are found here too, and opening one shows its
+// view in the list. What a search lists, and in what order, is search-rules.js's.
 import { api } from './api.js';
 import { focusNextComposer } from './composer.js';
 import { Dialog } from './dialog.js';
@@ -10,55 +11,14 @@ import { useModifier } from './hooks.js';
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from './html.js';
 import { draw, icons } from './menu.js';
 import { UNTITLED } from './order.js';
-import { HOME_VIEW, viewsNamed } from './scopes.js';
+import { HOME_VIEW } from './scopes.js';
+import { emptyText, sectionsFor } from './search-rules.js';
 import { FIRST, holdAt, holdBeside, holdStep, selectedIn } from './selection.js';
 import { newSession } from './sessions-list.js';
 import { keyHint } from './shortcuts.js';
 import { say } from './toast.js';
-import { everyRow } from './tree.js';
 
-const CHIPS = [['all', 'All'], ['sessions', 'Sessions'], ['projects', 'Projects'], ['routines', 'Routines'], ['archived', 'Archived']];
-const RECENT = 8;
-const SHOWN = 50;
-
-const matcher = words => r => {
-  const text = `${r.title} ${r.cwd} ${r.branch} ${r.routine || ''}`.toLowerCase();
-  return words.every(w => text.includes(w));
-};
-
-function newestFirst(ix) {
-  const seen = new Set();
-  return everyRow(ix).filter(r => !seen.has(r.id) && seen.add(r.id)).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
-}
-
-const item = r => ({ key: r.id, r });
-const viewItem = v => ({ key: `view:${v.id ?? 'home'}`, view: v });
-
-// What the spotlight shows for a chip and a query: titled sections of items, each a session, a view of the list or an action.
-function sectionsFor(chip, ix, archived, query, mod) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const keep = words.length ? matcher(words) : () => true;
-  const live = newestFirst(ix);
-  if (chip === 'archived') return [{ title: 'Archived', items: archived.filter(keep).map(item) }];
-  if (chip === 'routines') return [{ title: 'Routines', items: ix.routines.map(g => ({ ...g.latest, runs: g.earlier.length + 1 })).filter(keep).map(item) }];
-  if (chip === 'sessions') return [{ title: 'Sessions', items: live.filter(r => !r.routine).filter(keep).slice(0, SHOWN).map(item) }];
-  const views = viewsNamed(ix, words).map(viewItem);
-  if (chip === 'projects') return [{ title: 'Projects', items: views }];
-  // With no project Home is the only view, and there is nothing to choose between, so All leaves the section out.
-  const projects = ix.projects.length ? [{ title: 'Projects', items: views }] : [];
-  if (!words.length) {
-    return [
-      { title: 'Recents', items: live.slice(0, RECENT).map(item) },
-      ...projects,
-      { title: 'Actions', items: [{ key: 'new', action: 'New session', hint: keyHint(mod, 'N'), hash: '#/new' }] },
-    ];
-  }
-  return [
-    ...projects,
-    { title: 'Sessions', items: live.filter(keep).slice(0, SHOWN).map(item) },
-    { title: 'Archived', items: archived.filter(keep).slice(0, SHOWN).map(item) },
-  ];
-}
+const CHIPS = [['all', 'All'], ['projects', 'Projects'], ['groups', 'Groups'], ['sessions', 'Sessions'], ['routines', 'Routines'], ['archived', 'Archived']];
 
 const Search = () => html`<svg data-part="command-input-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>`;
 
@@ -72,6 +32,12 @@ function Words({ it }) {
     const meta = [v.id === HOME_VIEW ? 'Everything outside projects' : 'Project', v.lamp && STATE_LABEL[v.lamp]].filter(Boolean).join(' · ');
     return html`<span class="lamp" data-state=${v.lamp || 'idle'} aria-hidden="true"></span><span data-part="hit-title">${v.name}</span>
       <span data-part="hit-meta">${meta}</span>${v.count === undefined ? null : html`<span data-part="hit-time">${v.count}</span>`}`;
+  }
+  if (it.group) {
+    const { group: g } = it;
+    const meta = [g.meta, g.lamp && STATE_LABEL[g.lamp]].filter(Boolean).join(' · ');
+    return html`<span class="lamp" data-state=${g.lamp || 'idle'} aria-hidden="true"></span><span data-part="hit-title">${g.name}</span>
+      <span data-part="hit-meta">${meta}</span><span data-part="hit-time">${g.count}</span>`;
   }
   const { r } = it;
   const meta = r.runs ? `${r.runs} run${r.runs > 1 ? 's' : ''}` : [folderName(r.cwd, HOME), r.branch, r.archived ? 'archived' : STATE_LABEL[r.state]].filter(Boolean).join(' · ');
@@ -88,7 +54,8 @@ function Hit({ it, id, selected, onPick, onMove, onUnarchive }) {
     <button class="btn unarchive" data-variant="outline" data-size="xs" type="button" aria-label=${`Unarchive ${title}`} onClick=${() => onUnarchive(it)}>Unarchive</button></div>`;
 }
 
-// `onShow(id)` shows a view of the list, a project id or null for Home, and closes the search. Opening anything else closes it here.
+// `onShow(id, group)` shows a view of the list, a project id or null for Home, with a group in it in sight when `group` names one, and
+// closes the search. Opening anything else closes it here.
 // The dialog is always drawn and the search inside it is made afresh for each opening, so what was typed last time is gone.
 export function Spotlight({ open, ix, archive, onShow, onClose }) {
   return html`<${Dialog} open=${open} part="command-dialog-content" labelledBy="command-title" describedBy="command-description" onClose=${() => onClose()}>
@@ -117,7 +84,7 @@ function Palette({ ix, archive, onShow, onClose }) {
   const sections = useMemo(() => {
     if (!ix) return [];
     const kept = archived.filter(r => !gone.includes(r.id));
-    return sectionsFor(chip, ix, kept, query, mod).filter(s => s.items.length);
+    return sectionsFor(chip, ix, kept, query, keyHint(mod, 'N')).filter(s => s.items.length);
   }, [ix, archived, gone, chip, query, mod]);
   const flat = sections.flatMap(s => s.items);
   const keys = flat.map(it => it.key);
@@ -140,8 +107,8 @@ function Palette({ ix, archive, onShow, onClose }) {
   }, [pick, sections]);
 
   const open = it => {
-    if (it.view) {
-      onShow(it.view.id);
+    if (it.view || it.group) {
+      onShow(it.view ? it.view.id : it.group.view, it.group?.id);
       return;
     }
     onClose();
@@ -226,7 +193,7 @@ function Palette({ ix, archive, onShow, onClose }) {
   const index = new Map(flat.map((it, i) => [it, i]));
   return html`<div data-part="command-dialog-header">
       <h2 id="command-title" data-slot="dialog-title">Search</h2>
-      <p id="command-description" data-slot="dialog-description">Find a session, a project or an action.</p>
+      <p id="command-description" data-slot="dialog-description">Find a session, a group, a project or an action.</p>
     </div>
     <div data-slot="command" data-part="command-dialog-command">
       <div data-slot="command-input-wrapper">
@@ -240,13 +207,13 @@ function Palette({ ix, archive, onShow, onClose }) {
       </div>
       <div data-slot="command-list" cmdk-list="" id="command-list" role="listbox" aria-label="Results" tabindex="-1" ref=${list}>
         ${sections.length
-          ? sections.map(s => html`<div key=${s.title} data-slot="command-group" cmdk-group="" role="presentation">
-              <div cmdk-group-heading="" aria-hidden="true" id=${`group-${s.title}`}>${s.title}</div>
-              <div cmdk-group-items="" role="group" aria-labelledby=${`group-${s.title}`}>
+          ? sections.map(s => html`<div key=${s.key} data-slot="command-group" cmdk-group="" role="presentation">
+              <div cmdk-group-heading="" aria-hidden="true" id=${`group-${s.key}`}>${s.title}</div>
+              <div cmdk-group-items="" role="group" aria-labelledby=${`group-${s.key}`}>
                 ${s.items.map(it => html`<${Hit} key=${it.key} it=${it} id=${`result-${index.get(it)}`} selected=${index.get(it) === pick} onPick=${open} onMove=${moved(index.get(it))} onUnarchive=${unarchive} />`)}
               </div>
             </div>`)
-          : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? 'Nothing matches.' : 'Loading sessions'}</div>`}
+          : html`<div data-slot="command-empty" cmdk-empty="" role="presentation">${ix ? emptyText(chip, query) : 'Loading sessions'}</div>`}
       </div>
       <footer data-part="command-footer">
         <span>Close <kbd>Esc</kbd></span><span>Change type <kbd>←</kbd><kbd>→</kbd></span><span>Open <kbd>↵</kbd></span>

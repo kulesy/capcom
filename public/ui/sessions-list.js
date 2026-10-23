@@ -16,6 +16,7 @@ import { UNTITLED } from './order.js';
 import { anchorAt, archiveNote, extend, inOrder, NO_PICK, prune, sessions, stayAfter, step, stopDetail, toggle as toggleRow, unarchiveNote } from './pick.js';
 import { ProjectsPanel, ProjectsToggle } from './projects.js';
 import { groupsIn, HOME_VIEW } from './scopes.js';
+import { findPlaces, findSessions } from './search-rules.js';
 import { Shell } from './shell.js';
 import { archiveHint, keyHint, onMac, shortcut } from './shortcuts.js';
 import { say } from './toast.js';
@@ -307,12 +308,16 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
   }, [back]);
 
   // A view picked in the search gets the focus on its first group, or the New group button of a project with none, then on the first
-  // header, then on the opener, once the list shows it. A focus still waiting for a row gives way to it.
+  // header, then on the opener, once the list shows it. A group picked gets it on its own header, unfolded if it was folded. A focus
+  // still waiting for a row gives way to it.
   useLayoutEffect(() => {
     if (!projects.landing) return;
-    const { view: landed } = projects.landing;
-    const first = ix && landed && groupsIn(ix, landed)[0];
-    const to = (first && nav.current.querySelector(headOf(first.id))) || (landed && nav.current.querySelector('.new-group'))
+    const { view: landed, group } = projects.landing;
+    const groups = ix ? groupsIn(ix, landed) : [];
+    const found = groups.find(g => g.id === group);
+    if (found && collapsed[found.id]) toggle(found.id, false);
+    const first = landed && groups[0];
+    const to = (found && nav.current.querySelector(headOf(found.id))) || (first && nav.current.querySelector(headOf(first.id))) || (landed && nav.current.querySelector('.new-group'))
       || box.current.querySelector('.group-head') || projects.opener.current;
     to?.focus();
     setAfter(null);
@@ -512,9 +517,9 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
 
   const undoManyAction = (ids, reopen) => ({ label: 'Undo', onClick: () => undoMany({ ids, reopen }) });
 
-  // The menu of a row, opened by a right click or a long press at the pointer, or by the menu key under the row. Move to opens the
-  // places in a menu beside it. A chat the list shows running is stopped as it is archived, and the item says so. Archive on a chat
-  // that turns out to be running asks first, as the key does.
+  // The menu of a row, opened by a right click or a long press at the pointer, or by the menu key under the row. Move to and Nest under
+  // open a menu beside it with a search box. A chat the list shows running is stopped as it is archived, and the item says so. Archive
+  // on a chat that turns out to be running asks first, as the key does.
   latestMenu.current = (id, row, point, entry = null) => {
     const r = findRow(ix, id);
     if (!r) return;
@@ -543,6 +548,7 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     const targets = sessionTargets(ix, r);
     const parent = findRow(ix, r.parent);
     const under = nestTargets(ix, r);
+    const nestItem = t => ({ label: t.title || UNTITLED, run: () => nestSession(id, title, t.id, t.title || UNTITLED) });
     const choice = (label, section, where) => ({ label, run: () => moveRow(id, title, section, where) });
     const entries = targets.map(t => (t.group
       ? { group: t.group, items: t.items.map(i => choice(i.label, i.section, `${i.label} in ${t.group}`)) }
@@ -563,8 +569,8 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
       items: [
         { label: 'Rename', icon: icons.pencil, run: () => setForm({ kind: 'session', session: id }) },
         ...(parent ? [{ label: `Move out of “${parent.title || UNTITLED}”`, icon: icons.indentDecrease, run: () => nestSession(id, title, null, parent.title || UNTITLED) }] : []),
-        ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(t => ({ label: t.title || UNTITLED, run: () => nestSession(id, title, t.id, t.title || UNTITLED) })) }] : []),
-        ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places }] : []),
+        ...(under.length ? [{ label: 'Nest under', icon: icons.indentIncrease, items: under.map(nestItem), find: q => findSessions(under, q).map(f => nestItem(f.row)), findLabel: 'Search sessions' }] : []),
+        ...(places.length ? [{ label: 'Move to', icon: icons.folderInput, items: places, find: q => findPlaces(targets, q).map(p => ({ ...choice(p.label, p.section, p.where), value: p.value })), findLabel: 'Search places' }] : []),
         { label: picked ? 'Deselect' : 'Select', icon: icons.squareCheck, run: () => setPick(p => toggleRow(p, id)) },
         { separator: true },
         { label: running ? 'Stop and archive' : 'Archive', icon: icons.archive, danger: running, hint: archiveHint(), run: () => archiveRow(id, title, { ask: !running }) },

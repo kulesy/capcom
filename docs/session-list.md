@@ -71,6 +71,14 @@ Drag a row onto a group to move it there, onto Pinned to pin it, or onto Ungroup
 
 Move to in a row's menu makes the same moves without a drag. It opens a second menu of Pinned, the groups (a project's groups sit under the project's name) and the loose list the session came from, with the place the session is already in left out. It lists the groups of every project, so it also moves a session to a view that is not on screen. A routine's run that was moved into a group or pinned can go back to Routines from there.
 
+Its search box takes the focus when a key opens the menu. Type part of a place's name, or the start of a word in its project's name, and the menu becomes one list: a place in a matching project first, then a place with a matching name. The first result is lit, and Enter moves the session there. An empty box shows the menu as it was.
+
+Each result says where it is:
+
+- A place in a project shows that project beside it.
+- A place outside projects shows Home, when a project has places.
+- Pinned and Routines show nothing.
+
 ### Renaming and deleting groups
 
 There is no screen yet to rename, delete or reorder groups. Edit `layout.json` for those: GhostShell reads it on every refresh, and shows the error at the top of the list if it cannot.
@@ -83,7 +91,7 @@ Nested sessions show under a parent session in the list, indented, with a line f
 
 Drop a row on the middle of another row to nest it there. A row takes a nest only in the middle half of its height, so a row dropped on the top or bottom quarter lands in the section the row is in, as it did before. While you drag, the row that would take the nest lights up and says "Nest here" left of its mark.
 
-Nest under in any session's menu opens a second menu of the other top level sessions in the same section, so a phone nests without a drag.
+Nest under in any session's menu opens a second menu of the other top level sessions in the same section, so a phone nests without a drag. Its search box finds a session by its title, and works as the one in Move to does.
 
 Nesting goes one level deep: a session that holds others takes them along when you nest it, and a drop on a nested row nests under that row's parent. A routine's run and an archived session cannot be a parent.
 
@@ -169,19 +177,33 @@ New project is the button at the bottom of the sidebar. It asks for a name, show
 
 ## Finding a session
 
-Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a search laid out like Desktop's. Chips pick what to look through: All, Sessions, Projects, Routines and Archived, and the left and right arrows move between them from either end of the text.
+Ctrl+K (or Cmd+K), or the search icon at the top of the session list, opens a search laid out like Desktop's. Chips pick what to look through: All, Projects, Groups, Sessions, Routines and Archived, and the left and right arrows move between them from either end of the text.
 
-With nothing typed, All shows recent sessions, then Home and each project, then a New session action. Typing filters by title, folder, branch or routine, and Home and the projects by their name. The up and down arrows and Enter open a result, and Esc closes the search.
+With nothing typed, All shows recent sessions, then Home and each project, then a New session action. The Groups chip lists every group, Home's first and then each project's in the sidebar's order, or says "No groups yet." when there is none. The Sessions chip lists the newest first.
+
+Typing filters by title, folder, branch or routine, and Home, the projects and the groups by their name. The up and down arrows and Enter open a result, and Esc closes the search.
+
+### The order of results
+
+Every search ranks what it finds the same way: a project first, then a group, then a session, then a session nested under another. In a tie the order the list shows wins.
+
+- Under All the sections are Projects, Groups, Sessions, Sub sessions and Archived.
+- The Sessions chip gives Sessions and Sub sessions.
+- The Projects and Groups chips give their own section.
+
+Move to's search box uses the same order: a place in a matching project, then a place with a matching name.
 
 ### Archived results
 
-Archived sessions stay out of the list and turn up here, under their own chip, most recently archived first, and after the live matches in any search. See [unarchiving](#unarchiving).
+Archived sessions stay out of the list and turn up here, under their own chip, most recently archived first, and after the live matches in any search, the ones that are not nested before the ones that are. See [unarchiving](#unarchiving).
 
-### Home and projects as results
+### Projects and groups as results
 
-Home and the projects are results too, under All and under the Projects chip. Each has its lamp, and a project has its number of sessions. Opening one closes the search and shows that view in the list.
+Home, the projects and the groups are results too. Each has its lamp. A project has its number of sessions. A group has the project it is in, or Home, and its number of sessions.
 
-The focus goes to Home's first header, to a project's first group header, or to New group in a project with no groups. In a window 56rem wide or more an open chat stays open. In a narrower window the list takes the chat's place. With no project, All leaves the Projects section out, and the chip lists Home alone.
+Opening a project or a group closes the search and shows that view in the list. The focus goes to the group's header, after unfolding the group if it was folded. For a project it goes to Home's first header, to a project's first group header, or to New group in a project with no groups.
+
+In a window 56rem wide or more an open chat stays open. In a narrower window the list takes the chat's place. With no project, All leaves the Projects section out, and the Projects chip lists Home alone.
 
 ## Archiving
 
@@ -247,7 +269,15 @@ With no chat open, up or down steps into the list. Tab reaches the dots on a hea
 
 ### Menus
 
-In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab leaves it. In a row's menu the right arrow on Move to opens its list of places, and the left arrow there goes back.
+In a menu the up and down arrows, Home and End move between items, Esc closes it, and Tab does nothing, so the focus stays in the menu. In a row's menu the right arrow on Move to or Nest under opens its list with the focus in a search box.
+
+In that box:
+
+- The up and down arrows, Home and End light a result, and Enter picks it.
+- The left arrow at the start of the box goes back.
+- The letters you type reach the box and no item's key.
+- The mouse moving onto the list gives the box the focus.
+- A touch leaves the keyboard down until you tap the box.
 
 ### The projects sidebar
 

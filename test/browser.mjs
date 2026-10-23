@@ -175,6 +175,25 @@ export async function launch(chromium) {
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     }
 
+    // Moves the mouse to the middle of `selector`, as a pointer does that passes over it.
+    async function hover(selector) {
+      await settled();
+      const { x, y } = await centre(selector);
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    }
+
+    // Presses the left button on the middle of `selector` and holds it, so a test sees what the press does before the click. `up` lets go.
+    let held = null;
+    async function down(selector) {
+      await settled();
+      held = await centre(selector);
+      for (const type of ['mouseMoved', 'mousePressed']) await call('Input.dispatchMouseEvent', { type, ...held, button: 'left', clickCount: 1 });
+    }
+
+    async function up() {
+      await call('Input.dispatchMouseEvent', { type: 'mouseReleased', ...held, button: 'left', clickCount: 1 });
+    }
+
     // One turn of the wheel over the middle of `selector`, a negative deltaY scrolling up.
     async function wheel(selector, deltaY) {
       await settled();
@@ -188,6 +207,9 @@ export async function launch(chromium) {
       until,
       press,
       click,
+      hover,
+      down,
+      up,
       wheel,
       close: async () => {
         problemsOf.delete(sessionId);

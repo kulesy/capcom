@@ -75,14 +75,15 @@ function fit(a, s, bounds, { side, align, offset, pad }) {
 // Where a menu goes. `anchor` is the rect it hangs from ({ x, y, width, height }, with no size for a point), `size` the menu's own,
 // `view` the room it may use. It returns the top left, the side and alignment it ended up on, the CSS transform origin that grows it
 // from the anchor, and `room`, the height it may have there. A menu taller than that is placed again at that height. The last step
-// keeps the menu inside the view even where no side fits, which Floating UI leaves to the page.
-export function place({ anchor, size, view, side, align = 'center', offset = 0, pad = 0, dpr = 1 }) {
+// keeps the menu inside the view even where no side fits, which Floating UI leaves to the page. `held` is an earlier result: the menu then
+// keeps its side and top left, and only moves to stay in the view, which is how a menu whose size changes stays where it opened.
+export function place({ anchor, size, view, side, align = 'center', offset = 0, pad = 0, dpr = 1, held = null }) {
   const bounds = { x: 0, y: 0, ...view };
   let s = { ...size };
   let found;
   let room;
   for (let pass = 0; pass < 3; pass++) {
-    found = fit(anchor, s, bounds, { side, align, offset, pad });
+    found = held ? { side: held.side, align: held.align, at: { x: held.x, y: held.y } } : fit(anchor, s, bounds, { side, align, offset, pad });
     const o = past(found.at, s, bounds, pad);
     room = Math.max(0, isVertical(found.side) ? Math.min(s.height - o[found.side], bounds.height - 2 * pad) : bounds.height - 2 * pad);
     if (room >= s.height) break;

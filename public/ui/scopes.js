@@ -32,11 +32,13 @@ const rowsIn = (ix, view) => withKids(view === HOME_VIEW
 // A group's own session is in no list, so its state is added here: the lamp lights when it works or waits.
 const groupStates = (ix, view) => groupsIn(ix, view).flatMap(g => (g.session ? [g.session.state] : []));
 
+const lampFrom = states => (states.includes('waiting') ? 'waiting' : states.includes('working') ? 'working' : null);
+
 // 'waiting' if a chat in the view needs you, else 'working' if one is running, else null.
-export function lampOf(ix, view) {
-  const states = [...rowsIn(ix, view).map(r => r.state), ...groupStates(ix, view)];
-  return states.includes('waiting') ? 'waiting' : states.includes('working') ? 'working' : null;
-}
+export const lampOf = (ix, view) => lampFrom([...rowsIn(ix, view).map(r => r.state), ...groupStates(ix, view)]);
+
+// The same for one group: its sessions and its own chat.
+export const groupLamp = g => lampFrom([...withKids(g.sessions).map(r => r.state), ...(g.session ? [g.session.state] : [])]);
 
 export const countOf = (ix, project) => groupsIn(ix, project).reduce((n, g) => n + withKids(g.sessions).length, 0);
 

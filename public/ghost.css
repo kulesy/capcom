@@ -190,6 +190,8 @@
 [data-look="ghost"] .menu,
 [data-look="ghost"] .menu:focus-visible { box-shadow: var(--menu-shadow), inset 0 1px 0 var(--edge-light); }
 
+[data-look="ghost"] .menu-search { box-shadow: inset 0 1px 0 var(--edge-light); }
+
 [data-look="ghost"] .context-pop,
 [data-look="ghost"] .context-pop:focus-visible,
 [data-look="ghost"] .slash-menu { box-shadow: var(--shadow-md), inset 0 1px 0 var(--edge-light); }
@@ -213,35 +215,35 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--background) 22%, transparent), inset 0 1px 0 var(--edge-light);
 }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) {
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) {
   background-color: var(--popover-foreground);
   color: var(--popover);
 }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) svg { color: inherit; }
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) svg { color: inherit; }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
   color: color-mix(in oklab, var(--popover) 70%, transparent);
 }
 
-[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-state="open"]):not([data-disabled]) {
+[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) {
   background-color: var(--destructive);
   color: var(--popover);
 }
 
-[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
+[data-look="ghost"] .menu-item[data-variant="destructive"]:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) :is(.menu-value, .menu-shortcut) {
   color: var(--popover);
 }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state] {
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) .menu-switch[data-state] {
   background-color: color-mix(in oklab, var(--popover) 30%, transparent);
 }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] { background-color: var(--popover); }
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] { background-color: var(--popover); }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state] .menu-switch-thumb { background-color: var(--popover); }
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) .menu-switch[data-state] .menu-switch-thumb { background-color: var(--popover); }
 
-[data-look="ghost"] .menu-item:is(:focus, [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] .menu-switch-thumb { background-color: var(--popover-foreground); }
+[data-look="ghost"] .menu-item:is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled]) .menu-switch[data-state="checked"] .menu-switch-thumb { background-color: var(--popover-foreground); }
 
 [data-look="ghost"] .menu-label {
   color: var(--muted-foreground);

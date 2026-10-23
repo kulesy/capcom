@@ -120,7 +120,7 @@ function winning(property, mode, ...places) {
 const DESTRUCTIVE_BUTTON = '.btn[data-variant="destructive"]';
 const INVALID_BUTTON = '.btn[aria-invalid="true"]';
 const DESTRUCTIVE_ITEM = '.menu-item[data-variant="destructive"]';
-const LIT = ':is(:focus, [data-state="open"]):not([data-disabled])';
+const LIT = ':is(:focus, [data-highlighted], [data-state="open"]):not([data-disabled])';
 const HINTS = ':is(.menu-value, .menu-shortcut)';
 
 const buttonRing = (mode, variant = '.btn') => winning('--btn-ring', mode, inApp('.btn'), inApp(variant), inGhost('.btn'), inGhost(variant));

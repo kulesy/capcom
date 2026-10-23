@@ -240,10 +240,10 @@ function App() {
   const projects = useProjects(ix, current, hash, toList);
   useEffect(() => { if (view === 'list') document.title = 'GhostShell'; }, [view]);
 
-  // A view picked in the search.
-  const showView = viewId => {
+  // A view picked in the search, or a group in one.
+  const showView = (viewId, groupId) => {
     setFinding(false);
-    projects.show(viewId);
+    projects.show(viewId, groupId);
   };
 
   // Ctrl+B or Cmd+B. The search closes with the focus on the button that opens the sidebar, once the search has let go of the focus.

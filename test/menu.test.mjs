@@ -80,6 +80,19 @@ test('positions are rounded to a device pixel', () => {
   assert.equal(dropdown(anchor, { dpr: 2 }).y, 46.5);
 });
 
+test('a menu placed again from an earlier result keeps its side and top left when its size changes, and only moves to stay in view', () => {
+  const phone = { width: 390, height: 844 };
+  const anchor = { x: 147, y: 700, width: 180, height: 32 };
+  const opened = place({ anchor, size: { width: 190, height: 300 }, view: phone, side: 'right', align: 'start', pad: 8 });
+  assert.deepEqual([opened.x, opened.y, opened.side], [8, 536, 'left']);
+  const again = size => place({ anchor, size, view: phone, side: 'right', align: 'start', pad: 8, held: opened });
+  const shorter = again({ width: 190, height: 80 });
+  assert.deepEqual([shorter.x, shorter.y, shorter.side, shorter.align], [opened.x, opened.y, 'left', opened.align]);
+  assert.equal(place({ anchor, size: { width: 190, height: 80 }, view: phone, side: 'right', align: 'start', pad: 8 }).y, 700);
+  const taller = again({ width: 190, height: 500 });
+  assert.deepEqual([taller.x, taller.y, taller.side], [8, 336, 'left']);
+});
+
 test('a view that does not start at the corner moves the room with it', () => {
   const zoomed = { x: 100, y: 50, width: 400, height: 300 };
   const at = place({ anchor: { x: 110, y: 60, width: 20, height: 20 }, size: { width: 150, height: 100 }, view: zoomed, side: 'bottom', align: 'start', offset: 4, pad: 8 });

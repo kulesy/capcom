@@ -2,7 +2,7 @@
 // worked out, and which views a search finds, for the rules that need no page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countOf, EVERY_VIEW, groupsIn, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn, viewsNamed, viewsOf } from '../public/ui/scopes.js';
+import { countOf, EVERY_VIEW, groupLamp, groupsIn, HOME_VIEW, holder, lampOf, NO_VIEW, othersWaiting, viewIn, viewsNamed, viewsOf } from '../public/ui/scopes.js';
 
 const row = (id, state = 'idle') => ({ id, title: id, state });
 const group = (id, project, sessions) => ({ id, name: id, project, sessions });
@@ -120,6 +120,16 @@ test('Home counts the sessions in a group whose project is gone, and a project d
 test('waiting beats working in the same view, wherever each comes from', () => {
   const ix = list({ routines: [{ name: 'Nightly', latest: row('run-3', 'working'), earlier: [] }], other: [row('terminal-1', 'waiting')] });
   assert.equal(lampOf(ix, HOME_VIEW), 'waiting');
+});
+
+test('a group has the lamp of its sessions, nested ones and its own chat, and waiting beats working', () => {
+  assert.equal(groupLamp(group('g', WEB, [row('a'), row('b', 'working')])), 'working');
+  assert.equal(groupLamp(group('g', WEB, [row('a', 'working'), row('b', 'waiting')])), 'waiting');
+  assert.equal(groupLamp(group('g', WEB, [{ ...row('a'), children: [{ ...row('kid', 'waiting'), parent: 'a' }] }])), 'waiting');
+  assert.equal(groupLamp({ ...group('g', WEB, [row('a')]), session: row('chat', 'working') }), 'working');
+  assert.equal(groupLamp({ ...group('g', WEB, [row('a', 'working')]), session: row('chat', 'waiting') }), 'waiting');
+  assert.equal(groupLamp(group('g', WEB, [row('a'), row('b', 'active')])), null);
+  assert.equal(groupLamp(group('g', WEB, [])), null);
 });
 
 test('a project counts the sessions in its groups, and nothing else', () => {

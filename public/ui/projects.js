@@ -54,13 +54,13 @@ export function useProjects(ix, current, hash, toList) {
     setSheet(false);
   };
 
-  // The search picks a view. The chat on screen counts as looked for, so its row cannot switch the view back, and `landing` has the
-  // list put the focus on the view's first group once it shows the view. Only a pick moves the focus; revealing a chat never does.
-  const show = id => {
+  // The search picks a view, and a group in it when it found one. The chat on screen counts as looked for, so its row cannot switch the
+  // view back, and `landing` has the list focus the group, or else the view's first group. Only a pick moves the focus.
+  const show = (id, group = null) => {
     revealed.current = current;
     choose(id);
     if (!wide) { toList(); setSheet(false); }
-    setLanding({ view: ix ? viewIn(ix, id) : id });
+    setLanding({ view: ix ? viewIn(ix, id) : id, group });
   };
 
   const toggle = () => {
