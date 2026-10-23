@@ -151,15 +151,33 @@ function join(runs) {
 
 const width = runs => runs.reduce((n, r) => n + r.text.length, 0);
 
+// A line holds at most this many pieces, so a line that changes colour at every character stays small. Past it, text joins the last piece
+// and takes its look.
+export const MAX_PIECES = 256;
+
+// `run` added to the end of a line, joined to the last piece when it looks the same or the line is full.
+function append(line, run) {
+  const last = line.runs.at(-1);
+  if (last && (line.runs.length >= MAX_PIECES || sameLook(last, run))) line.runs[line.runs.length - 1] = { ...last, text: last.text + run.text };
+  else line.runs.push(run);
+  line.width += run.text.length;
+}
+
+// `runs` with every piece from the last allowed one on joined into it.
+function limit(runs) {
+  if (runs.length <= MAX_PIECES) return runs;
+  const [first, ...rest] = runs.slice(MAX_PIECES - 1);
+  return [...runs.slice(0, MAX_PIECES - 1), { ...first, text: first.text + rest.map(r => r.text).join('') }];
+}
+
 // `text` written at column `col` of a line, over what is there.
 function write(line, col, run) {
-  const len = line.width;
-  if (col >= len) {
-    const gap = col - len;
-    line.runs = join([...line.runs, ...(gap ? [{ stream: run.stream, cls: '', css: '', text: ' '.repeat(gap) }] : []), run]);
-  } else {
-    line.runs = join([...before(line.runs, col), run, ...after(line.runs, col + run.text.length)]);
+  if (col >= line.width) {
+    if (col > line.width) append(line, { stream: run.stream, cls: '', css: '', text: ' '.repeat(col - line.width) });
+    append(line, run);
+    return;
   }
+  line.runs = limit(join([...before(line.runs, col), run, ...after(line.runs, col + run.text.length)]));
   line.width = width(line.runs);
 }
 

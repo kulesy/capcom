@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { plainOf, readable, renderAnsi } from '../public/ui/ansi.js';
+import { MAX_PIECES, plainOf, readable, renderAnsi } from '../public/ui/ansi.js';
 
 const out = text => ({ stream: 'out', text });
 const err = text => ({ stream: 'err', text });
@@ -106,6 +106,28 @@ test('only the last lines are drawn, and the number before them is reported', ()
   assert.equal(got.cut, 7);
   assert.deepEqual(got.lines.map(l => l[0].text), ['line 7', 'line 8', 'line 9']);
   assert.equal(renderAnsi([out('a\nb')]).cut, 0);
+});
+
+test('a line that changes colour at every character keeps all its text in no more than the most pieces a line holds', () => {
+  const text = Array.from({ length: 1000 }, (_, n) => `${ESC}[${31 + (n % 2)}m${n % 10}`).join('');
+  const [line] = renderAnsi([out(text)]).lines;
+  assert.equal(line.length, MAX_PIECES);
+  assert.equal(line.map(p => p.text).join(''), Array.from({ length: 1000 }, (_, n) => n % 10).join(''));
+  assert.deepEqual(line.slice(0, 3).map(p => [p.cls, p.text]), [['ansi-fg-1', '0'], ['ansi-fg-2', '1'], ['ansi-fg-1', '2']], 'the pieces before the limit keep their colours');
+  assert.equal(plain(out(text), out('\rXY')), `XY${Array.from({ length: 998 }, (_, n) => (n + 2) % 10).join('')}`, 'writing over a full line still keeps the rest');
+});
+
+test('256 KB of alternating colours on one line, fed in 4 KB chunks, is drawn in well under half a second with every character kept', () => {
+  let text = '';
+  for (let n = 0; text.length < 256 * 1024; n++) text += `${ESC}[${31 + (n % 2)}mx`;
+  const chunks = [];
+  for (let at = 0; at < text.length; at += 4096) chunks.push(out(text.slice(at, at + 4096)));
+  const started = performance.now();
+  const { lines } = renderAnsi(chunks);
+  const took = performance.now() - started;
+  assert.ok(took < 500, `drawing took ${Math.round(took)} ms`);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].reduce((n, p) => n + p.text.length, 0), text.replace(/\x1b\[\d+m/g, '').length);
 });
 
 test('a colour keeps 4.5:1 on the block it is drawn on, by being moved towards black on the light look and white on the dark one', () => {

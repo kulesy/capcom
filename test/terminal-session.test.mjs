@@ -126,6 +126,27 @@ test('a run posts its command and source as written, shows at once, and is one r
   });
 });
 
+test('a second press of the same command while the first is still starting runs nothing, and one after it has started runs again', async () => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  let n = 0;
+  await withServer({ answer: async (url, body) => { await held; return reply({ run: summary({ id: `d${++n}`, ...body }) }); } }, async sent => {
+    const { chat } = await openChat('t-double');
+    const first = chat.term.run('echo hi', 'block');
+    assert.equal(await chat.term.run('echo hi', 'block'), '');
+    assert.equal(posts(sent, '/terminal/run').length, 1, 'the second press posted nothing');
+    assert.equal(runs(chat).length, 1, 'and drew no second row');
+    const other = chat.term.run('echo hi', 'panel');
+    assert.equal(posts(sent, '/terminal/run').length, 2, 'the same command from another source is its own run');
+    release();
+    await Promise.all([first, other]);
+    assert.equal(runs(chat).length, 2);
+    await chat.term.run('echo hi', 'block');
+    assert.equal(posts(sent, '/terminal/run').length, 3, 'a press once the run has started is a new run');
+    chat.close();
+  });
+});
+
 test('the server\'s run event that comes before its answer takes the place of the waiting run, so it never shows twice', async () => {
   let release;
   const held = new Promise(resolve => { release = resolve; });

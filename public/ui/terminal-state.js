@@ -38,9 +38,11 @@ export function createTerminal({ id, enabled, call = api }) {
   }
 
   // The run shows at once, before the server has answered, because the first command after the server starts can wait a couple of seconds.
-  // Returns '' once the server has the run, or the server's reason when it refused.
+  // Returns '' once the server has the run, or the server's reason when it refused. The same command from the same source while one is
+  // still starting is a double click, and starts nothing.
   async function run(command, source) {
     if (!enabled()) return 'This session has no terminal.';
+    if (store.get().runs.some(r => r.pending && r.command === command && r.source === source)) return '';
     const key = `local-${++sequence}`;
     const waiting = {
       key, id: null, pending: true, command, cwd: store.get().cwd, source, startedAt: Date.now(), endedAt: null, exitCode: null,
