@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CATCH_UP_MS, dueAction, localIso, makeRoutines, makeScheduler, makeZoneFollower, PREAMBLE, stamp, wrapPrompt } from '../lib/routines.mjs';
+import { CATCH_UP_MS, dueAction, localIso, makeRoutines, makeScheduler, makeZoneFollower, PREAMBLE, routineId, stamp, upcoming, wrapPrompt } from '../lib/routines.mjs';
 import { nextFire } from '../lib/cron.mjs';
 import { readHead } from '../lib/transcripts.mjs';
 
@@ -47,6 +47,10 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
       waiting: id => r.waiting.has(id),
       stop: id => { r.stops.push(id); r.working.delete(id); r.waiting.delete(id); },
       check: routine => (routine.cwd === '/no/such/folder' ? 'The folder does not exist.' : null),
+      fieldProblems: routine => ({
+        ...(routine.cwd === '/no/such/folder' || !fs.existsSync(routine.cwd) ? { cwd: 'The folder does not exist.' } : {}),
+        ...(/\s/.test(routine.model ?? '') ? { model: 'Unknown model.' } : {}),
+      }),
     });
     return r.sched;
   };
@@ -813,4 +817,390 @@ test('run now replaces a stuck run, and refuses while the run is working', async
   await r.sched.runNow('demo');
   assert.deepEqual(r.stops, ['s1']);
   assert.equal(r.calls.length, 2);
+});
+
+// ---- ids, adding, editing and deleting -------------------------------------------------------------
+
+const MORNING = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 737, prompt: 'Look at the board.' };
+const promptsOf = r => path.join(r.state, 'routines');
+const rawOf = r => fs.readFileSync(path.join(r.state, 'routines.json'), 'utf8');
+const refused = (status, problems) => e => e.status === status && (problems === undefined || JSON.stringify(Object.keys(e.problems)) === JSON.stringify(problems));
+
+// A person or another program saving routines.json between two of Capcom's own writes.
+function handEdit(r, change) {
+  const file = path.join(r.state, 'routines.json');
+  const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  change(data);
+  fs.writeFileSync(file, JSON.stringify(data));
+}
+
+test('a routine id is its title in lower case letters and single dashes, and a number is added while it is taken', () => {
+  assert.equal(routineId('Morning check'), 'morning-check');
+  assert.equal(routineId('  Daily   Scrum -- prep  '), 'daily-scrum-prep');
+  const used = new Set(['demo', 'demo-2']);
+  assert.equal(routineId('Demo', id => used.has(id)), 'demo-3');
+  assert.equal(routineId('Demo', id => id !== 'demo-12'), 'demo-12');
+  assert.equal(routineId('Other', id => used.has(id)), 'other');
+});
+
+test('a routine id drops accents, emoji and punctuation, falls back to "routine", and is cut to 40 characters', () => {
+  for (const [title, id] of [
+    ['Café Résumé', 'cafe-resume'], ['Ünïcödé ﬁne', 'unicode-fine'], ['🚀 Launch day!!', 'launch-day'], ['a/b\\c..d', 'a-b-c-d'], ['Weekly: "report" (draft)', 'weekly-report-draft'],
+    ['', 'routine'], ['   ', 'routine'], ['!!!', 'routine'], ['日本語', 'routine'], ['😀😀', 'routine'], [undefined, 'routine'],
+    ['x'.repeat(60), 'x'.repeat(40)], [`${'a'.repeat(39)} b`, 'a'.repeat(39)], ['abcdefghij abcdefghij abcdefghij abcdefghij xyz', 'abcdefghij-abcdefghij-abcdefghij-abcdefg'],
+  ]) assert.equal(routineId(title), id, JSON.stringify(title));
+  for (const title of ['x'.repeat(200), '🚀🚀', 'Ça va? Très bien -- 100%', '../../etc/passwd', 'a\u0000b']) assert.match(routineId(title, id => !id.endsWith('-3')), /^[\w-]+$/);
+});
+
+test('the next fire times of a schedule are three local times with jitter, none for one that never fires, and a message for a bad one', () => {
+  assert.deepEqual(upcoming('30 7 * * 1-5', 737, T0), [localIso(FRIDAY), localIso(MONDAY), localIso(at(2026, 10, 20, 7, 42, 17))]);
+  assert.equal(upcoming('*/15 * * * *', 0, T0, 2).length, 2);
+  assert.deepEqual(upcoming('0 0 31 2 *', 0, T0), []);
+  assert.throws(() => upcoming('nonsense', 0, T0), /five fields/);
+  assert.throws(() => upcoming('61 * * * *', 0, T0), /outside/);
+});
+
+test('adding a routine writes its prompt in Capcom\'s own folder, points the routine at it, and starts the schedule from now', async () => {
+  const r = rig({ enabled: false });
+  r.clock.t = at(2026, 10, 16, 10);
+  const made = r.sched.add({ ...MORNING, cwd: r.state, model: 'haiku', effort: '', mode: null });
+  const file = path.join(promptsOf(r), 'morning-check.md');
+  assert.equal(made.id, 'morning-check');
+  assert.deepEqual([made.file, made.title, made.cron, made.jitterSeconds, made.cwd, made.model, made.effort, made.mode], [file, 'Morning check', '30 7 * * 1-5', 737, r.state, 'haiku', null, null]);
+  assert.deepEqual([made.enabled, made.enabledInDesktop, made.armedAt, made.lastRunAt, made.lastSessionId, made.problem], [true, false, localIso(r.clock.t), null, null, null]);
+  assert.equal(made.next, localIso(MONDAY));
+  assert.equal(fs.readFileSync(file, 'utf8'), 'Look at the board.\n');
+  assert.equal(fs.statSync(promptsOf(r)).mode & 0o777, 0o700);
+  assert.deepEqual(fs.readdirSync(promptsOf(r)), ['morning-check.md']);
+  assert.deepEqual(r.store.read().routines.map(x => x.id), ['demo', 'morning-check']);
+  await r.tickAt(at(2026, 10, 16, 10, 0, 30));
+  await r.tickAt(at(2026, 10, 16, 12));
+  assert.equal(r.calls.length, 0, 'a fire already past today is not run');
+  await r.tickAt(MONDAY + 5000);
+  assert.deepEqual(r.calls.map(c => c.routine.id), ['morning-check']);
+  assert.equal(r.calls[0].text, wrapPrompt('morning-check', file, 'Look at the board.\n'));
+  assert.ok(r.logs.includes('Routine morning-check: added and switched on'));
+});
+
+test('a routine added switched off is not armed, and one added with the defaults is on, with no jitter and no model', () => {
+  const r = rig({ enabled: false });
+  const off = r.sched.add({ ...MORNING, cwd: r.state, enabled: false });
+  assert.deepEqual([off.enabled, off.armedAt], [false, null]);
+  const plain = r.sched.add({ title: 'Plain', cron: '0 9 * * *', cwd: r.state, prompt: 'x' });
+  assert.deepEqual([plain.enabled, plain.jitterSeconds, plain.model, plain.effort, plain.mode, plain.id], [true, 0, null, null, null, 'plain']);
+  assert.equal(Date.parse(plain.armedAt), T0);
+});
+
+test('adding is refused with every bad field named, and nothing is written', () => {
+  const r = rig({ enabled: false });
+  const before = rawOf(r);
+  assert.throws(() => r.sched.add({}), refused(400, ['title', 'cron', 'cwd', 'prompt']));
+  assert.throws(() => r.sched.add({ title: '  ', cron: 'nonsense', jitterSeconds: 1.5, cwd: '/no/such/folder', model: 'bad model', prompt: '   ' }), refused(400, ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'prompt']));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, title: 'x'.repeat(121) }), refused(400, ['title']));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, jitterSeconds: 86400 }), refused(400, ['jitterSeconds']));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, jitterSeconds: '12' }), refused(400, ['jitterSeconds']));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, enabled: 'yes' }), e => e.status === 400 && /true or false/.test(e.message));
+  assert.throws(() => r.sched.add(null), e => e.status === 400);
+  try { r.sched.add({ title: '', cron: '61 * * * *', cwd: 'relative', prompt: '' }); } catch (e) {
+    assert.match(e.message, /^Nothing was saved\. Check the title, schedule, folder and prompt\.$/);
+    assert.match(e.problems.cron, /outside 0 to 59/);
+    assert.match(e.problems.title, /title/);
+  }
+  assert.equal(rawOf(r), before);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  const long = r.sched.add({ ...MORNING, cwd: r.state, title: '🚀'.repeat(120), jitterSeconds: 86399 });
+  assert.deepEqual([[...long.title].length, long.jitterSeconds], [120, 86399]);
+});
+
+test('a second routine with the same title gets -2, then -3, and a prompt file kept from a deleted routine counts as taken', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  assert.deepEqual([r.sched.add(input).id, r.sched.add(input).id, r.sched.add(input).id], ['morning-check', 'morning-check-2', 'morning-check-3']);
+  r.sched.remove('morning-check-2');
+  assert.equal(fs.existsSync(path.join(promptsOf(r), 'morning-check-2.md')), true);
+  assert.equal(r.sched.add(input).id, 'morning-check-4', 'the kept file of morning-check-2 and the routines still there are all taken');
+  r.sched.remove('morning-check');
+  r.sched.remove('morning-check-3');
+  r.sched.remove('morning-check-4');
+  fs.writeFileSync(path.join(promptsOf(r), 'morning-check-5.md'), 'Kept by hand.\n');
+  assert.equal(r.sched.add(input).id, 'morning-check-6', 'no routine holds the first ids now, but their files are kept');
+  assert.equal(fs.readFileSync(path.join(promptsOf(r), 'morning-check-5.md'), 'utf8'), 'Kept by hand.\n');
+  const junk = fs.mkdtempSync(path.join(base, 'junk-'));
+  fs.renameSync(path.join(promptsOf(r), 'morning-check.md'), path.join(junk, 'morning-check.md'));
+  assert.equal(r.sched.add(input).id, 'morning-check', 'free again once its file is moved away');
+  assert.equal(r.sched.add({ ...input, title: 'Demo' }).id, 'demo-2', 'an id from routines.json is taken too');
+});
+
+test('adding never writes over a kept prompt file', () => {
+  const r = rig({ enabled: false });
+  fs.mkdirSync(promptsOf(r));
+  fs.writeFileSync(path.join(promptsOf(r), 'morning-check.md'), 'Old prompt.\n');
+  const made = r.sched.add({ ...MORNING, cwd: r.state });
+  assert.equal(made.id, 'morning-check-2');
+  assert.equal(fs.readFileSync(path.join(promptsOf(r), 'morning-check.md'), 'utf8'), 'Old prompt.\n');
+});
+
+test('editing the prompt of a Desktop routine copies it to Capcom\'s folder and leaves Desktop\'s file as it was', async () => {
+  const r = rig({ enabled: false });
+  const old = new Date(2026, 5, 1, 12);
+  fs.utimesSync(r.file, old, old);
+  const mtime = fs.statSync(r.file).mtimeMs;
+  const edited = r.sched.edit('demo', { prompt: 'Check the other thing.\n\nSecond paragraph.' });
+  const ours = path.join(promptsOf(r), 'demo.md');
+  assert.equal(edited.file, ours);
+  assert.equal(fs.readFileSync(ours, 'utf8'), 'Check the other thing.\n\nSecond paragraph.\n');
+  assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw, 'Desktop\'s file is byte for byte as it was');
+  assert.equal(fs.statSync(r.file).mtimeMs, mtime);
+  assert.deepEqual(fs.readdirSync(path.dirname(r.file)).sort(), ['SKILL.md', 'routines', 'routines.json']);
+  assert.deepEqual(r.sched.prompt('demo'), { file: ours, text: 'Check the other thing.\n\nSecond paragraph.', ours: true, copyTo: null });
+  r.sched.setEnabled('demo', true);
+  await r.tickAt(MONDAY + 5000);
+  assert.equal(r.calls[0].text, wrapPrompt('demo', ours, 'Check the other thing.\n\nSecond paragraph.'));
+});
+
+test('the prompt of a Desktop routine is its body without the frontmatter, and says where a change would be saved', () => {
+  const r = rig();
+  assert.deepEqual(r.sched.prompt('demo'), { file: r.file, text: 'Check the thing.', ours: false, copyTo: path.join(promptsOf(r), 'demo.md') });
+  fs.unlinkSync(r.file);
+  const gone = r.sched.prompt('demo');
+  assert.deepEqual([gone.text, gone.ours, gone.file, gone.error], ['', false, r.file, `Cannot read ${r.file}.`]);
+  assert.throws(() => r.sched.prompt('nope'), refused(404));
+});
+
+test('a prompt that has not changed writes nothing, whatever the spacing round it', () => {
+  const r = rig();
+  for (const same of ['Check the thing.', '\n  Check the thing.\n\n', 'Check the thing.\r\n']) {
+    r.sched.edit('demo', { prompt: same, title: 'Same prompt' });
+    assert.equal(fs.existsSync(promptsOf(r)), false, JSON.stringify(same));
+  }
+  assert.equal(r.demo().file, r.file);
+  assert.equal(r.demo().title, 'Same prompt');
+  assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw);
+});
+
+test('a second prompt edit overwrites Capcom\'s copy in place and leaves no temporary file', () => {
+  const r = rig();
+  r.sched.edit('demo', { prompt: 'First.' });
+  const ours = path.join(promptsOf(r), 'demo.md');
+  const first = fs.statSync(ours).mode & 0o777;
+  r.sched.edit('demo', { prompt: 'Second.' });
+  assert.equal(r.demo().file, ours);
+  assert.equal(fs.readFileSync(ours, 'utf8'), 'Second.\n');
+  assert.deepEqual(fs.readdirSync(promptsOf(r)), ['demo.md']);
+  assert.equal(first, 0o600);
+  assert.equal(fs.readFileSync(r.file, 'utf8'), r.raw);
+  r.sched.edit('demo', { prompt: 'Second.' });
+  assert.equal(r.sched.prompt('demo').text, 'Second.');
+});
+
+test('nothing outside Capcom\'s prompt folder is ever written', () => {
+  const r = rig();
+  const outside = path.join(r.state, 'elsewhere.md');
+  assert.throws(() => r.store.writePrompt(outside, 'x'), /not in Capcom's prompt folder/);
+  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), '..', 'escape.md'), 'x'), /not in Capcom's prompt folder/);
+  assert.throws(() => r.store.writePrompt(path.join(promptsOf(r), 'a', 'b.md'), 'x'), /not in Capcom's prompt folder/);
+  assert.equal(fs.existsSync(outside), false);
+  assert.equal(fs.existsSync(path.join(r.state, 'escape.md')), false);
+  assert.throws(() => r.store.promptFile('../escape'), refused(400));
+});
+
+test('a change of schedule counts from the save, so a fire earlier today never runs, and the next real fire does', async () => {
+  const r = rig();
+  const save = at(2026, 10, 16, 9);
+  r.clock.t = save;
+  r.store.update('demo', { skipped: { fireAt: localIso(T0), at: localIso(T0), reason: 'earlier' } });
+  const out = r.sched.edit('demo', { cron: '0 8 * * 1-5' });
+  assert.deepEqual([r.demo().cron, Date.parse(r.demo().armedAt), r.demo().skipped, out.armedAt], ['0 8 * * 1-5', save, null, localIso(save)]);
+  await r.tickAt(save + 5000);
+  await r.tickAt(at(2026, 10, 16, 15));
+  assert.equal(r.calls.length, 0, 'the 08:12 fire passed an hour before the save');
+  await r.tickAt(at(2026, 10, 19, 8, 12, 30));
+  assert.equal(r.calls.length, 1);
+  assert.match(r.logs.at(-1), /due 2026-10-19 08:12:17/);
+});
+
+test('the same edit with a title only leaves the place in the schedule alone, so the fire still counts', async () => {
+  const r = rig();
+  r.clock.t = at(2026, 10, 16, 9);
+  const out = r.sched.edit('demo', { title: 'Renamed', cron: '30  7 * * 1-5', jitterSeconds: 737 });
+  assert.equal(Date.parse(r.demo().armedAt), T0);
+  assert.equal(out.title, 'Renamed');
+  await r.tickAt(at(2026, 10, 16, 9, 0, 5));
+  assert.equal(r.calls.length, 1, 'the 07:42 fire is caught up, as it was before the edit');
+});
+
+test('a jitter change re-arms too, and a schedule change on a routine that is off arms nothing', async () => {
+  const r = rig();
+  const save = at(2026, 10, 16, 9);
+  r.clock.t = save;
+  r.sched.edit('demo', { jitterSeconds: 60 });
+  assert.equal(Date.parse(r.demo().armedAt), save);
+  await r.tickAt(save + 5000);
+  assert.equal(r.calls.length, 0);
+  const off = rig({ enabled: false });
+  off.clock.t = save;
+  off.sched.edit('demo', { cron: '0 8 * * 1-5', jitterSeconds: 5 });
+  assert.deepEqual([off.demo().enabled, off.demo().armedAt, off.demo().cron, off.demo().jitterSeconds], [false, null, '0 8 * * 1-5', 5]);
+});
+
+test('switching on in an edit is checked after any prompt write, arms from now and clears a skip, and switching off clears the place', async () => {
+  const r = rig({ enabled: false });
+  fs.unlinkSync(r.file);
+  assert.throws(() => r.sched.edit('demo', { enabled: true, title: 'Not saved' }), e => e.status === 400 && /cannot be switched on\. Cannot read .*SKILL\.md/.test(e.message));
+  assert.deepEqual([r.demo().enabled, r.demo().title], [false, 'Demo routine']);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  r.clock.t = at(2026, 10, 16, 10);
+  const on = r.sched.edit('demo', { enabled: true, prompt: 'A new prompt.' });
+  assert.deepEqual([on.enabled, on.armedAt, on.problem, on.file], [true, localIso(r.clock.t), null, path.join(promptsOf(r), 'demo.md')]);
+  await r.tickAt(r.clock.t + 5000);
+  assert.equal(r.calls.length, 0);
+  await r.tickAt(MONDAY + 5000);
+  assert.equal(r.calls.length, 1);
+  const off = r.sched.edit('demo', { enabled: false });
+  assert.deepEqual([off.enabled, off.armedAt], [false, null]);
+  assert.throws(() => r.sched.edit('demo', { enabled: 1 }), e => e.status === 400 && /true or false/.test(e.message));
+  assert.ok(r.logs.includes('Routine demo: switched off'));
+});
+
+test('an edit that cannot switch the routine on is refused whole, and one that fixes the problem and switches on together works', () => {
+  const r = rig({ enabled: false });
+  r.store.update('demo', { cwd: '/no/such/folder' });
+  const before = rawOf(r);
+  assert.throws(() => r.sched.edit('demo', { enabled: true }), e => e.status === 400 && /cannot be switched on/.test(e.message));
+  assert.throws(() => r.sched.edit('demo', { enabled: true, prompt: 'New.' }), e => e.status === 400);
+  assert.equal(rawOf(r), before);
+  assert.equal(fs.existsSync(promptsOf(r)), false, 'a refused edit writes no prompt');
+  const fixed = r.sched.edit('demo', { cwd: r.state, enabled: true });
+  assert.deepEqual([fixed.enabled, fixed.cwd, fixed.problem], [true, r.state, null]);
+});
+
+test('a refused edit changes nothing and names every bad field it was sent, and a field it was not sent is left alone', () => {
+  const r = rig();
+  r.store.update('demo', { cwd: '/no/such/folder' });
+  const before = rawOf(r);
+  const renamed = r.sched.edit('demo', { title: 'Renamed' });
+  assert.deepEqual([renamed.title, renamed.cwd], ['Renamed', '/no/such/folder']);
+  const same = rawOf(r);
+  assert.throws(() => r.sched.edit('demo', { title: ' ', cron: 'every day', jitterSeconds: -1, cwd: '', model: 'two words', prompt: '', mode: 7 }), refused(400, ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'mode', 'prompt']));
+  assert.throws(() => r.sched.edit('demo', { cron: '0 8 * * 1-5', title: 'x'.repeat(121) }), refused(400, ['title']));
+  assert.throws(() => r.sched.edit('demo', { cwd: '/no/such/folder' }), refused(400, ['cwd']));
+  assert.throws(() => r.sched.edit('demo', 'nope'), e => e.status === 400);
+  assert.throws(() => r.sched.edit('nope', { title: 'x' }), refused(404));
+  assert.equal(rawOf(r), same);
+  assert.notEqual(before, same);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  assert.equal(r.sched.edit('demo', {}).title, 'Renamed');
+  assert.equal(rawOf(r), same, 'an empty edit writes nothing');
+  const choices = r.sched.edit('demo', { model: '', effort: null, mode: 'plan' });
+  assert.deepEqual([choices.model, choices.effort, choices.mode], [null, null, 'plan']);
+});
+
+test('deleting a routine is refused while a run is starting, working or only waiting, and works once it has ended, keeping the prompt file', async () => {
+  const r = rig({ enabled: false });
+  const made = r.sched.add({ ...MORNING, cwd: r.state, title: 'Run me' });
+  const file = made.file;
+  let release;
+  r.onStart = () => new Promise(done => { release = done; });
+  const first = r.sched.runNow('run-me');
+  await assert.rejects(Promise.resolve().then(() => r.sched.remove('run-me')), e => e.status === 409 && /Run me is still running/.test(e.message));
+  release();
+  const { sessionId } = await first;
+  r.onStart = null;
+  r.working.add(sessionId);
+  assert.throws(() => r.sched.remove('run-me'), refused(409));
+  r.waiting.add(sessionId);
+  assert.throws(() => r.sched.remove('run-me'), refused(409));
+  assert.deepEqual(r.store.read().routines.map(x => x.id), ['demo', 'run-me']);
+  assert.deepEqual(r.stops, [], 'nothing is stopped');
+  r.working.delete(sessionId);
+  r.waiting.delete(sessionId);
+  assert.equal(r.sched.remove('run-me'), 'run-me');
+  assert.deepEqual(r.store.read().routines.map(x => x.id), ['demo']);
+  assert.equal(fs.readFileSync(file, 'utf8'), 'Look at the board.\n', 'the prompt file is kept');
+  assert.throws(() => r.sched.remove('run-me'), refused(404));
+  assert.equal(r.sched.add({ ...MORNING, cwd: r.state, title: 'Run me' }).id, 'run-me-2');
+  assert.ok(r.logs.includes('Routine run-me: deleted'));
+});
+
+test('a deleted routine is forgotten, so one added later with the same id starts clean', async () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state, title: 'Again', cron: '0 7 * * 5', jitterSeconds: 0 };
+  r.clock.t = at(2026, 10, 15, 8);
+  r.sched.add(input);
+  await r.tickAt(at(2026, 10, 16, 7, 0, 5));
+  assert.equal(r.calls.length, 1);
+  r.sched.remove('again');
+  fs.renameSync(path.join(promptsOf(r), 'again.md'), path.join(promptsOf(r), 'old-again.md'));
+  r.clock.t = at(2026, 10, 16, 9);
+  r.sched.add(input);
+  await r.tickAt(at(2026, 10, 16, 9, 0, 30));
+  assert.equal(r.calls.length, 1, 'the run of the routine that was deleted does not count against the new one');
+  await r.tickAt(at(2026, 10, 23, 7, 0, 5));
+  assert.equal(r.calls.length, 2);
+});
+
+test('adding, editing and deleting keep a hand edit that came in between, because each write reads the file again', () => {
+  const r = rig();
+  const other = { id: 'other', title: 'Other', cron: '0 9 * * *', jitterSeconds: 0, file: r.file, cwd: r.state, enabled: false };
+  handEdit(r, data => data.routines.push(other));
+  r.sched.edit('demo', { title: 'Renamed' });
+  handEdit(r, data => { data.routines.find(x => x.id === 'other').title = 'Hand edited'; });
+  const added = r.sched.add({ ...MORNING, cwd: r.state });
+  assert.deepEqual(r.store.read().routines.map(x => [x.id, x.title]), [['demo', 'Renamed'], ['other', 'Hand edited'], [added.id, 'Morning check']]);
+  handEdit(r, data => { data.routines.find(x => x.id === 'other').cron = '0 10 * * *'; });
+  r.sched.remove(added.id);
+  handEdit(r, data => { data.routines.find(x => x.id === 'other').cwd = '/somewhere/else'; });
+  r.sched.edit('demo', { prompt: 'New.' });
+  const kept = r.store.read().routines.find(x => x.id === 'other');
+  assert.deepEqual([kept.title, kept.cron, kept.cwd], ['Hand edited', '0 10 * * *', '/somewhere/else']);
+  assert.deepEqual(r.store.read().routines.map(x => x.id), ['demo', 'other']);
+});
+
+test('the store adds and removes routines, and refuses an id that is there, one that is not, and a file it cannot read', () => {
+  const dir = fs.mkdtempSync(path.join(base, 'store-'));
+  const store = makeRoutines(dir);
+  const routine = { id: 'a', title: 'A', cron: '0 0 * * *', jitterSeconds: 0, file: store.promptFile('a'), cwd: dir, model: null, effort: null, mode: null, enabledInDesktop: false, enabled: true, armedAt: localIso(T0) };
+  assert.deepEqual(store.add(routine), { ...routine, lastRunAt: null, lastSessionId: null, lastError: null, skipped: null });
+  assert.throws(() => store.add(routine), refused(409));
+  assert.deepEqual(store.read().routines.map(x => x.id), ['a']);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, 'routines.json'), 'utf8')).routines[0]).slice(0, 4), ['id', 'title', 'cron', 'jitterSeconds']);
+  assert.throws(() => store.remove('b'), refused(404));
+  assert.equal(store.remove('a').id, 'a');
+  assert.deepEqual(fs.readdirSync(dir), ['routines.json'], 'no temporary file is left');
+  assert.deepEqual(store.read().routines, []);
+  assert.equal(store.ours(store.promptFile('a')), true);
+  assert.equal(store.ours(path.join(dir, 'a.md')), false);
+  assert.equal(store.ours(path.join(dir, 'routines', 'deeper', 'a.md')), false);
+  assert.equal(store.ours(undefined), false);
+  const broken = '{ not json';
+  fs.writeFileSync(path.join(dir, 'routines.json'), broken);
+  assert.throws(() => store.add({ ...routine, id: 'c' }), e => e.status === 500 && /cannot be read/.test(e.message));
+  assert.throws(() => store.remove('a'), e => e.status === 500);
+  assert.equal(fs.readFileSync(path.join(dir, 'routines.json'), 'utf8'), broken);
+});
+
+test('with a routines.json that cannot be read, adding, editing and deleting are refused, and no prompt is written', () => {
+  const r = rig();
+  const broken = '[]';
+  fs.writeFileSync(path.join(r.state, 'routines.json'), broken);
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state }), e => e.status === 500 && /cannot be read/.test(e.message));
+  assert.throws(() => r.sched.edit('demo', { prompt: 'x' }), e => e.status === 500);
+  assert.throws(() => r.sched.remove('demo'), e => e.status === 500);
+  assert.equal(fs.existsSync(promptsOf(r)), false);
+  assert.equal(rawOf(r), broken);
+});
+
+test('an edit never stops or changes a run that is working, and the next run uses the new values', async () => {
+  const r = rig();
+  await r.tickAt(FRIDAY + 5000);
+  r.working.add('s1');
+  const before = r.calls[0].routine;
+  r.sched.edit('demo', { title: 'Renamed', cwd: r.state, model: 'opus', effort: 'high', mode: 'plan', prompt: 'A new prompt.' });
+  assert.deepEqual(r.stops, []);
+  assert.deepEqual([before.title, before.model, before.effort, before.mode], ['Demo routine', 'haiku', 'low', 'bypassPermissions']);
+  assert.equal(r.sched.list().routines[0].running, true);
+  r.working.delete('s1');
+  await r.tickAt(MONDAY + 5000);
+  assert.deepEqual([r.calls[1].routine.title, r.calls[1].routine.model, r.calls[1].routine.effort, r.calls[1].routine.mode], ['Renamed', 'opus', 'high', 'plan']);
+  assert.ok(r.calls[1].text.includes('\nA new prompt.\n</scheduled-task>'));
 });

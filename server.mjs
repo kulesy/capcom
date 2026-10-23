@@ -9,6 +9,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream';
 import { cfg, ROOT } from './lib/config.mjs';
 import { lastReply, makeWindows, shapeUsage, transcriptFigure } from './lib/context.mjs';
+import { parseCron } from './lib/cron.mjs';
 import { loadDesktop } from './lib/desktop.mjs';
 import { dotOf } from './lib/dots.mjs';
 import { chainOf, familiesOf } from './lib/families.mjs';
@@ -26,7 +27,7 @@ import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { makeChips } from './lib/tools.mjs';
-import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
+import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
 import { titleText } from './public/ui/quote-rules.js';
@@ -358,18 +359,25 @@ function bookGroupSession(groupId) {
 // ---- routines ------------------------------------------------------------------------------------
 // Desktop's scheduled tasks, run from here. See docs/adr/20261015-capcom-runs-routines-itself.md.
 
-function routineProblem(r) {
-  if (!r.cwd || !fs.existsSync(r.cwd) || !fs.statSync(r.cwd).isDirectory()) return `The folder ${r.cwd} does not exist.`;
-  if (r.mode && !MODES.includes(r.mode)) return `Unknown permission mode ${r.mode}.`;
-  if (r.model && !MODEL.test(r.model)) return `Unknown model ${r.model}.`;
-  if (r.effort && !EFFORTS.includes(r.effort)) return `Unknown effort level ${r.effort}.`;
-  return null;
+// What is wrong with the folder, mode, model and effort of a routine, each under its field, in the order the first of them is told in.
+function routineProblems(r) {
+  const found = {};
+  if (typeof r.cwd !== 'string' || !path.isAbsolute(r.cwd)) found.cwd = `The folder ${r.cwd} must be a full path starting with /.`;
+  else if (!fs.existsSync(r.cwd)) found.cwd = `The folder ${r.cwd} does not exist.`;
+  else if (!fs.statSync(r.cwd).isDirectory()) found.cwd = `${r.cwd} is not a folder.`;
+  if (r.mode && !MODES.includes(r.mode)) found.mode = `Unknown permission mode ${r.mode}.`;
+  if (r.model && !MODEL.test(r.model)) found.model = `Unknown model ${r.model}.`;
+  if (r.effort && !EFFORTS.includes(r.effort)) found.effort = `Unknown effort level ${r.effort}.`;
+  return found;
 }
+
+const routineProblem = r => Object.values(routineProblems(r))[0] ?? null;
 
 // A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
 const routines = makeScheduler({
   store: makeRoutines(cfg.stateDir),
   check: routineProblem,
+  fieldProblems: routineProblems,
   start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
@@ -461,6 +469,14 @@ function sameOrigin(req) {
   if (!origin) return true;
   if (!host) return false;
   try { return new URL(origin).origin === new URL(`${overHttps(req) ? 'https' : 'http'}://${host}`).origin; } catch { return false; }
+}
+
+// NOTE: [23 Oct 2026] EK - The global check lets a request with no Origin through, so the routes that run something as the owner (the
+// terminal and the routine writes) insist on one. A browser always sends Origin with a cross-site write.
+function strictOrigin(req) {
+  if (!req.headers.origin || !sameOrigin(req)) return false;
+  const site = req.headers['sec-fetch-site'];
+  return site === undefined || site === 'same-origin';
 }
 
 // A JSON body, or null when it is not JSON or is too large.
@@ -735,21 +751,44 @@ async function askLists(req, res, key, list) {
   }
 }
 
-// GET api/routines lists them. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches one on or off.
+// GET api/routines lists them and POST adds one. GET api/routines/<id>/prompt reads one's prompt, PATCH api/routines/<id> edits it and
+// DELETE removes it. POST api/routines/<id>/run runs one now, and POST api/routines/<id>/enabled switches it on or off.
+// A routine runs a prompt as the owner, so the writes take the terminal's stricter origin check.
 async function routinesApi(req, res, parts) {
-  if (parts.length === 2) return req.method === 'GET' ? send(res, 200, routines.list()) : send(res, 405, { error: 'Method not allowed' });
   const [, , id, action] = parts;
-  if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad routine id' });
-  if (parts.length !== 4 || !['run', 'enabled'].includes(action)) return send(res, 404, { error: 'Not found' });
-  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
-  const raw = await readBody(req);
-  let body;
-  try { body = JSON.parse(raw || '{}') || {}; } catch { return send(res, 400, { error: 'Send JSON.' }); }
+  const adding = parts.length === 2;
+  if (!adding && !/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad routine id' });
+  const allowed = adding ? ['GET', 'POST'] : parts.length === 3 ? ['PATCH', 'DELETE'] : action === 'prompt' ? ['GET'] : ['run', 'enabled'].includes(action) ? ['POST'] : null;
+  if (parts.length > 4 || !allowed) return send(res, 404, { error: 'Not found' });
+  if (!allowed.includes(req.method)) return send(res, 405, { error: 'Method not allowed' }, 'application/json', { allow: allowed.join(', ') });
   try {
+    if (req.method === 'GET') return send(res, 200, adding ? routines.list() : routines.prompt(id));
+    if (!strictOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    if (req.method === 'DELETE') return send(res, 200, { removed: routines.remove(id) });
+    const body = await readJson(req, 300_000);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'Send a JSON body.' });
+    // A new password can land while the body is still arriving, so the session is checked again before anything is written.
+    if (!auth.check(req)) return send(res, 401, { error: 'Signed out.' });
+    if (adding) return send(res, 200, { routine: routines.add(body) });
+    if (req.method === 'PATCH') return send(res, 200, { routine: routines.edit(id, body) });
     if (action === 'run') return send(res, 200, await routines.runNow(id));
     return send(res, 200, { routine: routines.setEnabled(id, body.enabled) });
   } catch (e) {
-    return send(res, e.status || 500, { error: e.message });
+    return send(res, e.status || 500, { error: e.message, ...(e.problems && { problems: e.problems }) });
+  }
+}
+
+// GET api/schedule?cron=&jitter= gives the next three times a schedule fires, for the form that is being filled in. It reserves no routine id.
+function scheduleApi(req, res, u) {
+  if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed' }, 'application/json', { allow: 'GET' });
+  const cron = u.searchParams.get('cron') ?? '';
+  const jitter = Number(u.searchParams.get('jitter') || 0);
+  try {
+    parseCron(cron);
+    if (!validJitter(jitter)) throw new Error(JITTER_PROBLEM);
+    return send(res, 200, { next: upcoming(cron, jitter, Date.now()) });
+  } catch (e) {
+    return send(res, 400, { error: e.message });
   }
 }
 
@@ -864,11 +903,7 @@ async function terminalApi(req, res, id, [step, ...extra]) {
   }
   if (!TERMINAL_STEPS.includes(step)) return reply(404, { error: 'Not found' });
   if (req.method !== 'POST') return reply(405, { error: 'Method not allowed' }, { allow: 'POST' });
-  // NOTE: [23 Oct 2026] EK - The global check lets a request with no Origin through, so these routes insist on one. A command runs
-  // as the owner, and a browser always sends Origin with a cross-site POST.
-  if (!req.headers.origin || !sameOrigin(req)) return reply(403, { error: 'Cross-site request refused.' });
-  const site = req.headers['sec-fetch-site'];
-  if (site !== undefined && site !== 'same-origin') return reply(403, { error: 'Cross-site request refused.' });
+  if (!strictOrigin(req)) return reply(403, { error: 'Cross-site request refused.' });
   if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) return reply(415, { error: 'Send JSON.' });
   const body = await readJson(req);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { error: 'Send a JSON body.' });
@@ -899,6 +934,7 @@ async function terminalApi(req, res, id, [step, ...extra]) {
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
+  if (parts[1] === 'schedule' && parts.length === 2) return scheduleApi(req, res, u);
   if (parts[1] === 'passkeys') return passkeysApi(req, res, parts, u);
   if (req.method === 'GET' && u.pathname === '/api/sessions') {
     const withArchived = u.searchParams.get('archived') === '1';
@@ -924,8 +960,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page which of these a server knows, which an older one cannot say: group sessions, and deleting and ordering groups.
-    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, deleting and ordering groups, and adding, editing and deleting routines.
+    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true, routineEdits: true } });
   }
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's.
@@ -1140,8 +1176,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, fs.readFileSync(file.file), file.type, headers);
     }
     // NOTE: [16 Oct 2026] EK - The cookie is SameSite=Lax (lib/auth.mjs), so a link from another site arrives signed in.
-    // A GET must never write, and every write must be a POST past this check.
-    if (req.method === 'POST' && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    // A GET must never write, and every write must be a POST, PATCH or DELETE past this check.
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     if (!auth.hasPassword()) return send(res, 503, page('setup.html'), 'text/html; charset=utf-8');
     const secure = overHttps(req);
     const agent = req.headers['user-agent'];

@@ -83,10 +83,10 @@ test('moving, pinning, renaming, archiving or nesting a deleted group\'s session
   assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
 });
 
-test('the index tells each group its session and how many of its members are archived, and tells the page this server knows group sessions and how to edit groups', async () => {
+test('the index tells each group its session and how many of its members are archived, and tells the page this server knows group sessions, how to edit groups and how to edit routines', async () => {
   const { s, token } = await ready();
   const ix = await get(s, token, '/api/sessions');
-  assert.deepEqual(ix.features, { groupSessions: true, groupEdits: true });
+  assert.deepEqual(ix.features, { groupSessions: true, groupEdits: true, routineEdits: true });
   assert.deepEqual(ix.groups.map(g => [g.id, g.session, g.archived]), [['cg-work', { id: WORK, state: 'active' }, 2], ['cg-home', null, 1]]);
   assert.deepEqual((await get(s, token, '/api/sessions?archived=1')).groups.map(g => g.archived), [2, 1], 'the count is the same with the archive listed');
 });

@@ -1,0 +1,240 @@
+// Run with `npm test`. The routine routes over HTTP against the real server, with its own state folder under a temporary home. Prompt files and
+// folders are in that home, so nothing here reads or writes Desktop's scheduled tasks or Capcom's real state.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { as, request, restart, signIn, start, until } from './harness.mjs';
+
+const DESKTOP_FILE = '---\nname: desk\ndescription: A routine from Desktop\n---\n\nCheck the board.\n';
+const NEW = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 737, prompt: 'Look at the board.' };
+
+// A signed-in server whose routines.json already holds one routine from Desktop, which reads its prompt from a SKILL.md in the home.
+async function open() {
+  const first = await start({ claude: true });
+  const work = path.join(first.home, 'work');
+  const desk = path.join(first.home, 'desktop', 'desk', 'SKILL.md');
+  fs.mkdirSync(work);
+  fs.mkdirSync(path.dirname(desk), { recursive: true });
+  fs.writeFileSync(desk, DESKTOP_FILE);
+  fs.writeFileSync(path.join(first.state, 'routines.json'), JSON.stringify({
+    seededAt: '2026-10-16T00:00:00+11:00',
+    routines: [{ id: 'desk', title: 'Desktop routine', cron: '30 7 * * 1-5', jitterSeconds: 737, file: desk, cwd: work, model: null, effort: null, mode: null, enabledInDesktop: true, enabled: false }],
+  }, null, 2));
+  const s = await restart(first);
+  const { token } = await signIn(s);
+  const raw = () => fs.readFileSync(path.join(s.state, 'routines.json'), 'utf8');
+  return { s, token, work, desk, raw, prompts: path.join(s.state, 'routines') };
+}
+
+// A refused write is answered before its body is read, and the server may then close the socket, so each request gets a socket of its own.
+const send = (c, method, url, headers, json) => {
+  const all = { connection: 'close', ...headers };
+  for (const key of Object.keys(all)) if (all[key] === undefined) delete all[key];
+  return request(c.s, method, url, { headers: all, json });
+};
+const write = (c, method, url, json, headers) => send(c, method, url, { ...as(c.token), origin: c.s.origin, ...headers }, json);
+const read = (c, url) => send(c, 'GET', url, as(c.token));
+const routinesOf = async c => (await read(c, '/api/routines')).body().routines;
+
+test('a routine is added, read, edited, switched, run-checked and deleted over HTTP, and Desktop\'s file is never written', async () => {
+  const c = await open();
+  const first = (await read(c, '/api/routines')).body();
+  assert.deepEqual([first.problem, first.routines.map(r => [r.id, r.title, r.enabled, r.enabledInDesktop, r.problem])], [null, [['desk', 'Desktop routine', false, true, null]]]);
+  assert.deepEqual((await read(c, '/api/routines/desk/prompt')).body(), { file: c.desk, text: 'Check the board.', ours: false, copyTo: path.join(c.prompts, 'desk.md') });
+
+  const added = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, model: 'haiku', effort: 'high', mode: 'plan' });
+  assert.equal(added.status, 200, added.text);
+  const { routine } = added.body();
+  const file = path.join(c.prompts, 'morning-check.md');
+  assert.deepEqual([routine.id, routine.title, routine.file, routine.cwd, routine.model, routine.effort, routine.mode, routine.enabled, routine.enabledInDesktop, routine.problem], ['morning-check', 'Morning check', file, c.work, 'haiku', 'high', 'plan', true, false, null]);
+  assert.ok(Date.parse(routine.armedAt) <= Date.now() && Date.now() - Date.parse(routine.armedAt) < 60_000, 'armed from now');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'Look at the board.\n');
+  assert.deepEqual((await read(c, '/api/routines/morning-check/prompt')).body(), { file, text: 'Look at the board.', ours: true, copyTo: null });
+  assert.equal((await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine.id, 'morning-check-2');
+
+  const oldDesktop = fs.statSync(c.desk);
+  const edited = await write(c, 'PATCH', '/api/routines/desk', { prompt: 'Check the other board.', title: 'Renamed', jitterSeconds: 60 });
+  assert.equal(edited.status, 200, edited.text);
+  assert.deepEqual([edited.body().routine.title, edited.body().routine.file, edited.body().routine.jitterSeconds, edited.body().routine.id], ['Renamed', path.join(c.prompts, 'desk.md'), 60, 'desk']);
+  assert.equal(fs.readFileSync(path.join(c.prompts, 'desk.md'), 'utf8'), 'Check the other board.\n');
+  assert.equal(fs.readFileSync(c.desk, 'utf8'), DESKTOP_FILE);
+  assert.equal(fs.statSync(c.desk).mtimeMs, oldDesktop.mtimeMs);
+  assert.equal((await read(c, '/api/routines/desk/prompt')).body().text, 'Check the other board.');
+
+  const renamed = await write(c, 'PATCH', '/api/routines/morning-check', { title: 'Evening check' });
+  assert.deepEqual([renamed.body().routine.id, renamed.body().routine.title, renamed.body().routine.file], ['morning-check', 'Evening check', file]);
+  const off = await write(c, 'POST', '/api/routines/morning-check/enabled', { enabled: false });
+  assert.deepEqual([off.status, off.body().routine.enabled, off.body().routine.armedAt], [200, false, null]);
+  const on = await write(c, 'PATCH', '/api/routines/morning-check', { enabled: true });
+  assert.deepEqual([on.status, on.body().routine.enabled], [200, true]);
+
+  const gone = await write(c, 'DELETE', '/api/routines/morning-check-2');
+  assert.deepEqual([gone.status, gone.body()], [200, { removed: 'morning-check-2' }]);
+  assert.deepEqual((await routinesOf(c)).map(r => r.id), ['desk', 'morning-check']);
+  assert.equal(fs.readFileSync(path.join(c.prompts, 'morning-check-2.md'), 'utf8'), 'Look at the board.\n', 'the prompt file is kept');
+  const again = await write(c, 'DELETE', '/api/routines/morning-check-2');
+  assert.deepEqual([again.status, again.body().error], [404, 'No routine with that id.']);
+  assert.equal((await write(c, 'PATCH', '/api/routines/nope', { title: 'x' })).status, 404);
+  assert.equal((await read(c, '/api/routines/nope/prompt')).status, 404);
+  assert.equal((await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine.id, 'morning-check-3', 'the deleted routine\'s kept file still holds morning-check-2');
+});
+
+test('a prompt file that cannot be read comes back empty with the error, still as a 200', async () => {
+  const c = await open();
+  fs.unlinkSync(c.desk);
+  const res = await read(c, '/api/routines/desk/prompt');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body(), { file: c.desk, text: '', ours: false, copyTo: path.join(c.prompts, 'desk.md'), error: `Cannot read ${c.desk}.` });
+});
+
+test('a refused add or edit names every bad field under problems, with a one-line error, and writes nothing', async () => {
+  const c = await open();
+  const before = c.raw();
+  const bad = {
+    title: ' ', cron: '61 * * * *', jitterSeconds: 90_000, cwd: path.join(c.s.home, 'nowhere'), model: 'two words', effort: 'extreme', mode: 'sometimes', prompt: '  ',
+  };
+  const keys = ['title', 'cron', 'jitterSeconds', 'cwd', 'model', 'effort', 'mode', 'prompt'];
+  for (const [method, url] of [['POST', '/api/routines'], ['PATCH', '/api/routines/desk']]) {
+    const res = await write(c, method, url, bad);
+    assert.equal(res.status, 400, res.text);
+    const { error, problems } = res.body();
+    assert.deepEqual(Object.keys(problems), keys, method);
+    assert.ok(keys.every(k => typeof problems[k] === 'string' && problems[k].length > 0), method);
+    assert.equal(error, 'Nothing was saved. Check the title, schedule, jitter, folder, model, effort, permission mode and prompt.');
+    assert.match(problems.cron, /outside 0 to 59/);
+    assert.match(problems.cwd, /nowhere does not exist/);
+    assert.match(problems.model, /Unknown model two words/);
+    assert.match(problems.effort, /Unknown effort level extreme/);
+    assert.match(problems.mode, /Unknown permission mode sometimes/);
+  }
+  const empty = await write(c, 'POST', '/api/routines', {});
+  assert.deepEqual([empty.status, Object.keys(empty.body().problems)], [400, ['title', 'cron', 'cwd', 'prompt']]);
+  const one = await write(c, 'PATCH', '/api/routines/desk', { cron: 'nonsense' });
+  assert.deepEqual([one.status, Object.keys(one.body().problems), one.body().error], [400, ['cron'], 'Nothing was saved. Check the schedule.']);
+  const file = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.desk });
+  assert.deepEqual([file.status, file.body().problems.cwd], [400, `${c.desk} is not a folder.`]);
+  const relative = await write(c, 'POST', '/api/routines', { ...NEW, cwd: 'work' });
+  assert.match(relative.body().problems.cwd, /full path/);
+  const long = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, title: 'x'.repeat(121) });
+  assert.deepEqual([long.status, Object.keys(long.body().problems)], [400, ['title']]);
+  assert.equal(c.raw(), before);
+  assert.equal(fs.existsSync(c.prompts), false);
+  for (const [method, url, json] of [['POST', '/api/routines', 'text'], ['PATCH', '/api/routines/desk', [1]], ['POST', '/api/routines/desk/enabled', { enabled: 'yes' }]]) {
+    const res = await write(c, method, url, json);
+    assert.equal(res.status, 400, `${method} ${url}`);
+    assert.equal(typeof res.body().error, 'string');
+  }
+  assert.equal(c.raw(), before);
+});
+
+test('every routine write needs this site\'s own Origin, and a cross-site one is refused with a 403 before anything changes', async () => {
+  const c = await open();
+  const made = (await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine;
+  const before = c.raw();
+  const requests = [
+    ['POST', '/api/routines', { ...NEW, cwd: c.work, title: 'Cross site' }],
+    ['PATCH', `/api/routines/${made.id}`, { title: 'Cross site' }],
+    ['DELETE', `/api/routines/${made.id}`, undefined],
+    ['POST', `/api/routines/${made.id}/run`, {}],
+    ['POST', `/api/routines/${made.id}/enabled`, { enabled: false }],
+  ];
+  const refused = [
+    ['no Origin', { origin: undefined }],
+    ['another site\'s Origin', { origin: 'http://evil.example' }],
+    ['the same host on another port', { origin: `http://localhost:${c.s.port + 1}` }],
+    ['an opaque Origin', { origin: 'null' }],
+    ['Sec-Fetch-Site cross-site', { 'sec-fetch-site': 'cross-site' }],
+    ['Sec-Fetch-Site same-site', { 'sec-fetch-site': 'same-site' }],
+    ['Sec-Fetch-Site none', { 'sec-fetch-site': 'none' }],
+  ];
+  for (const [method, url, json] of requests) {
+    for (const [why, headers] of refused) {
+      const res = await write(c, method, url, json, headers);
+      assert.equal(res.status, 403, `${method} ${url} with ${why}`);
+      assert.deepEqual(res.body(), { error: 'Cross-site request refused.' });
+    }
+    const signedOut = await send(c, method, url, { origin: 'http://evil.example' }, json);
+    assert.equal(signedOut.status, 403, `${method} ${url} signed out from another site`);
+  }
+  assert.equal(c.raw(), before);
+  assert.equal(fs.existsSync(path.join(c.prompts, 'cross-site.md')), false);
+  const ok = await write(c, 'PATCH', `/api/routines/${made.id}`, { title: 'Same site' }, { 'sec-fetch-site': 'same-origin' });
+  assert.equal(ok.status, 200);
+  const signedOut = await send(c, 'DELETE', `/api/routines/${made.id}`, { origin: c.s.origin });
+  assert.equal(signedOut.status, 401);
+});
+
+test('a cross-site Origin is refused on every write method, PATCH and DELETE included, before the sign-in is looked at, and a GET is let through', async () => {
+  const c = await open();
+  for (const method of ['PATCH', 'DELETE', 'PUT', 'POST']) {
+    const res = await send(c, method, '/api/layout/rename', { ...as(c.token), origin: 'http://evil.example' }, { id: 'x', title: 'y' });
+    assert.equal(res.status, 403, method);
+  }
+  const get = await send(c, 'GET', '/api/routines', { ...as(c.token), origin: 'http://evil.example' });
+  assert.equal(get.status, 200, 'a GET writes nothing, so it is let through');
+  const head = await send(c, 'HEAD', '/api/routines', { ...as(c.token), origin: 'http://evil.example' });
+  assert.notEqual(head.status, 403);
+});
+
+test('a route with a bad id, an unknown path or the wrong method is refused plainly', async () => {
+  const c = await open();
+  assert.equal((await write(c, 'PATCH', '/api/routines/a%20b', {})).status, 400);
+  assert.equal((await write(c, 'POST', '/api/routines/desk/other', {})).status, 404);
+  assert.equal((await write(c, 'POST', '/api/routines/desk/run/extra', {})).status, 404);
+  assert.equal((await read(c, '/api/routines/desk/enabled')).status, 405);
+  const put = await write(c, 'PUT', '/api/routines/desk', {});
+  assert.deepEqual([put.status, put.headers.allow], [405, 'PATCH, DELETE']);
+  const get = await read(c, '/api/routines/desk');
+  assert.equal(get.status, 405);
+  const del = await write(c, 'DELETE', '/api/routines', undefined);
+  assert.equal(del.status, 405);
+  assert.equal((await write(c, 'POST', '/api/routines/desk/prompt', {})).status, 405);
+});
+
+test('the schedule route gives the next three fire times with the jitter, or the reason a schedule is refused', async () => {
+  const c = await open();
+  const ask = query => read(c, `/api/schedule?${new URLSearchParams(query)}`);
+  const res = await ask({ cron: '*/10 * * * *', jitter: '30' });
+  assert.equal(res.status, 200);
+  const { next } = res.body();
+  assert.equal(next.length, 3);
+  const times = next.map(t => Date.parse(t));
+  assert.ok(next.every(t => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(t)));
+  assert.ok(times[0] > Date.now() && times[0] - Date.now() <= 10 * 60_000 + 30_000);
+  assert.deepEqual([times[1] - times[0], times[2] - times[1]], [600_000, 600_000]);
+  assert.ok(times.every(t => new Date(t).getSeconds() === 30), 'the jitter is on every fire');
+  const plain = (await ask({ cron: '0 9 * * *' })).body().next;
+  assert.ok(plain.every(t => /T09:00:00/.test(t)), 'no jitter given means none');
+  assert.deepEqual((await ask({ cron: '0 0 31 2 *' })).body(), { next: [] });
+  for (const [query, why] of [[{ cron: 'nonsense' }, /five fields/], [{ cron: '61 * * * *' }, /outside 0 to 59/], [{}, /five fields/], [{ cron: '0 9 * * *', jitter: '86400' }, /0 to 86399/], [{ cron: '0 9 * * *', jitter: '1.5' }, /whole number/], [{ cron: '0 9 * * *', jitter: 'x' }, /whole number/]]) {
+    const bad = await ask(query);
+    assert.equal(bad.status, 400, JSON.stringify(query));
+    assert.match(bad.body().error, why);
+  }
+  assert.equal((await write(c, 'POST', '/api/schedule', {})).status, 405);
+  assert.equal((await send(c, 'GET', '/api/schedule?cron=0%209%20*%20*%20*')).status, 401);
+  assert.deepEqual((await routinesOf(c)).map(r => r.id), ['desk'], 'asking reserves no routine id');
+});
+
+test('a routine cannot be deleted while its run is starting, and can be once the start has failed', async () => {
+  const c = await open();
+  const made = (await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, enabled: false })).body().routine;
+  // The fake CLI names a session only for a message it knows, so this start stays open until it times out.
+  const running = write(c, 'POST', `/api/routines/${made.id}/run`, {}).catch(() => {});
+  await until(async () => (await routinesOf(c)).find(r => r.id === made.id).running);
+  const refused = await write(c, 'DELETE', `/api/routines/${made.id}`);
+  assert.equal(refused.status, 409);
+  assert.match(refused.body().error, /Morning check is still running/);
+  assert.deepEqual((await routinesOf(c)).map(r => r.id), ['desk', made.id]);
+  assert.ok(fs.existsSync(made.file));
+  void running;
+});
+
+test('the sessions list tells a page this server can add, edit and delete routines', async () => {
+  const c = await open();
+  const res = await read(c, '/api/sessions');
+  assert.equal(res.status, 200);
+  assert.equal(res.body().features.routineEdits, true);
+  assert.equal(res.body().features.groupEdits, true);
+});
