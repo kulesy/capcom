@@ -129,6 +129,9 @@ const press = async (page, selector) => {
 };
 const parts = (page, selector) => page.evaluate(`[...document.querySelector(${JSON.stringify(selector)}).children].map(el => el.textContent)`);
 
+const switchOf = id => `${row(id)} [role=switch]`;
+const hasFocus = (page, selector) => page.until(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`);
+
 const valueOf = (page, selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
 const listed = page => page.until(`document.querySelectorAll('.routine').length >= 2`);
 const rows = async page => page.evaluate(`(el => el && [...el.querySelectorAll('.routine')].length)(document.querySelector('.routine-list'))`);
@@ -149,7 +152,7 @@ test('the list shows the routines by title with their schedule in words, the nex
   assert.equal(await page.evaluate(`document.querySelector('${row('alpha')} [role=switch]').getAttribute('aria-checked')`), 'false');
   assert.equal(await text(page, '.chat-head h2'), 'Routines');
   assert.equal(await page.evaluate(`document.querySelector('#routine-new').getAttribute('href')`), '#/routines/new');
-  assert.equal(await page.evaluate(`document.title`), 'Routines · GhostShell');
+  await page.until(`document.title === 'Routines · GhostShell'`);
   assert.deepEqual(page.problems, []);
 });
 
@@ -283,6 +286,58 @@ test('Delete in the form asks first and takes the page back to the list without 
   await page.click('[data-slot="alert-dialog-action"]');
   await page.until(`location.hash === '#/routines' && !document.querySelector('${row('evening-look')}')`);
   assert.equal(await toast(page), 'Deleted “Evening look”.');
+  assert.deepEqual(page.problems, []);
+});
+
+test('back on the list the focus is on the saved routine\'s switch after a Save, changed or not, and on New routine after a Delete in the form', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/new' });
+  await page.until(`!!document.querySelector('#routine-form')`);
+  await type(page, '#routine-title', 'Focus check');
+  await type(page, '#routine-cron', '15 18 * * *');
+  await type(page, '#routine-cwd', app.work);
+  await type(page, '#routine-prompt', 'Look at where the focus goes.');
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('focus-check')}')`);
+  await hasFocus(page, switchOf('focus-check'));
+  const edit = async title => {
+    await page.evaluate(`location.hash = '#/routines/focus-check'`);
+    await page.until(`document.querySelector('#routine-title')?.value === 'Focus check'`);
+    if (title) await type(page, '#routine-title', title);
+  };
+  await edit();
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`location.hash === '#/routines' && !!document.querySelector('${row('focus-check')}')`);
+  await hasFocus(page, switchOf('focus-check'));
+  await edit('Focus check, renamed');
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`location.hash === '#/routines' && document.querySelector('${row('focus-check')} .routine-title')?.textContent === 'Focus check, renamed'`);
+  await hasFocus(page, switchOf('focus-check'));
+  await page.evaluate(`location.hash = '#/routines/focus-check'`);
+  await page.until(`!!document.querySelector('.routine-delete')`);
+  await page.until(`!document.querySelector('[data-sonner-toast]')`, 10_000);
+  await press(page, '.routine-delete');
+  await page.until(`!!document.querySelector('${DIALOG}')`);
+  await page.click('[data-slot="alert-dialog-action"]');
+  await page.until(`location.hash === '#/routines' && !document.querySelector('${row('focus-check')}')`);
+  await hasFocus(page, '#routine-new');
+  assert.deepEqual(page.problems, []);
+});
+
+test('a save whose reply comes after the owner has opened a session leaves the owner on that session', { skip, timeout }, async t => {
+  const page = await appPage(t, app.origin, { hash: '#/routines/alpha' });
+  await page.until(`document.querySelector('#routine-title')?.value === 'Alpha check'`);
+  // The reply is the page's own, so the routine is not changed on the server, and it comes after the owner has moved on.
+  await page.evaluate(`(of => { window.fetch = (url, init) => (init?.method === 'PATCH' && String(url).endsWith('api/routines/alpha')
+    ? new Promise(done => setTimeout(done, 800, new Response(JSON.stringify({ routine: { id: 'alpha' } }), { status: 200, headers: { 'content-type': 'application/json' } })))
+    : of(url, init)); })(window.fetch)`);
+  await type(page, '#routine-title', 'Alpha check, late');
+  await press(page, '.routine-buttons button[type=submit]');
+  await page.until(`document.querySelector('.routine-buttons button[type=submit]').disabled`);
+  await page.evaluate(`location.hash = '#/s/r1'`);
+  assert.equal(await toast(page), 'Saved “Alpha check, late”.');
+  await new Promise(done => setTimeout(done, 600));
+  assert.equal(await page.evaluate(`location.hash`), '#/s/r1');
+  assert.equal(await page.evaluate(`!!document.querySelector('#routines, #routine-form')`), false);
   assert.deepEqual(page.problems, []);
 });
 

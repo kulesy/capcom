@@ -373,11 +373,17 @@ function routineProblems(r) {
 
 const routineProblem = r => Object.values(routineProblems(r))[0] ?? null;
 
+// An id is kept for Desktop's task folder (looked for, never written) and for any routine whose runs the session list still holds,
+// so a new routine never takes over the runs of a deleted one or of a Desktop routine.
+const desktopTasksDir = path.join(os.homedir(), '.claude', 'scheduled-tasks');
+const routineIdTaken = id => fs.existsSync(path.join(desktopTasksDir, id)) || [...buildIndex().rows.values()].some(r => r.routine === id);
+
 // A run is a new session like any other, except that it is never handed to Desktop, whose window it would open at fire time.
 const routines = makeScheduler({
   store: makeRoutines(cfg.stateDir),
   check: routineProblem,
   fieldProblems: routineProblems,
+  idTaken: routineIdTaken,
   start: (r, text) => newSession({ cwd: r.cwd, text, mode: r.mode, model: r.model, effort: r.effort, title: r.title, routine: r.id }),
   working: id => { const chat = getChat(id); return !!chat && chat.state !== 'idle'; },
   waiting: id => getChat(id)?.state === 'waiting',
@@ -779,6 +785,7 @@ async function routinesApi(req, res, parts) {
 }
 
 // GET api/schedule?cron=&jitter= gives the next three times a schedule fires, for the form that is being filled in. It reserves no routine id.
+// A half-typed schedule is an ordinary answer while typing, so it is a 200 with the problem and the page's console stays clean.
 function scheduleApi(req, res, u) {
   if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed' }, 'application/json', { allow: 'GET' });
   const cron = u.searchParams.get('cron') ?? '';
@@ -786,9 +793,9 @@ function scheduleApi(req, res, u) {
   try {
     parseCron(cron);
     if (!validJitter(jitter)) throw new Error(JITTER_PROBLEM);
-    return send(res, 200, { next: upcoming(cron, jitter, Date.now()) });
+    return send(res, 200, { next: upcoming(cron, jitter, Date.now()), problem: null });
   } catch (e) {
-    return send(res, 400, { error: e.message });
+    return send(res, 200, { next: [], problem: e.message });
   }
 }
 

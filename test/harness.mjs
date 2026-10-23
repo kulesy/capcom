@@ -59,7 +59,7 @@ const freePort = () => new Promise(resolve => {
 // `ago` is the record's lastActivityAt and, unless `fileAgo` says otherwise, when the transcript was written. `edgeAgo` and `createdAgo` write the record's
 // lastTurnEdgeAt and createdAt, `forkedFrom` its forkedFromSessionId, `verdict` the status_category of its postTurnSummary, and `errorAgo` an error and when it
 // happened. `fields` is merged over the record last, so a key set to undefined is left out of it.
-// A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, and 'cli' has a transcript only, as a terminal
+// A source of 'desktop' (the default) has a Desktop record, 'capcom' is listed in started.json instead, with its `routine`, and 'cli' has a transcript only, as a terminal
 // session does. `groups` and `layout` are written as they are, and so is a session's `remoteMcpServersConfig`, a null included. A record has no such key without it.
 // `parent` is the id of the session Desktop links this one to, as a side chat: the record's `spawnedFrom` names it with `sideSession` true. `spawnedFrom` and
 // `lineageDetached` are written as they are, for the records Desktop does not count as a link.
@@ -117,7 +117,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
         fs.utimesSync(record, changed, changed);
       }
     }
-    if (source === 'capcom') started.push({ id, cwd: home, at, title });
+    if (source === 'capcom') started.push({ id, cwd: home, at, title, ...(routine && { routine }) });
     const transcript = path.join(transcripts, `${id}.jsonl`);
     fs.writeFileSync(transcript, `${JSON.stringify({ type: 'user', cwd: home, message: { role: 'user', content: title || 'hello' } })}\n`);
     fs.utimesSync(transcript, back(fileAgo) / 1000, back(fileAgo) / 1000);

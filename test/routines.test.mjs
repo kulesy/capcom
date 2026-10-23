@@ -33,7 +33,7 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
   store.seed({ routines: [exported(file, state, { ...(cron && { cron }), ...(jitter !== undefined && { jitterSeconds: jitter }) })] }, T0);
   if (enabled) store.update('demo', { enabled: true, armedAt: localIso(armed) });
   if (Object.keys(patch).length) store.update('demo', patch);
-  const r = { state, file, raw, store, clock: { t: T0 }, calls: [], logs: [], warns: [], working: new Set(), waiting: new Set(), stops: [], onStart: null };
+  const r = { state, file, raw, store, clock: { t: T0 }, calls: [], logs: [], warns: [], working: new Set(), waiting: new Set(), stops: [], taken: new Set(), onStart: null };
   r.boot = () => {
     r.sched = makeScheduler({
       store, now: () => r.clock.t, log: l => r.logs.push(l), warn: l => r.warns.push(l),
@@ -47,6 +47,7 @@ function rig({ cron, jitter, armed = T0, enabled = true, patch = {}, body = 'Che
       waiting: id => r.waiting.has(id),
       stop: id => { r.stops.push(id); r.working.delete(id); r.waiting.delete(id); },
       check: routine => (routine.cwd === '/no/such/folder' ? 'The folder does not exist.' : null),
+      idTaken: id => r.taken.has(id),
       fieldProblems: routine => ({
         ...(routine.cwd === '/no/such/folder' || !fs.existsSync(routine.cwd) ? { cwd: 'The folder does not exist.' } : {}),
         ...(/\s/.test(routine.model ?? '') ? { model: 'Unknown model.' } : {}),
@@ -843,6 +844,14 @@ test('a routine id is its title in lower case letters and single dashes, and a n
   assert.equal(routineId('Other', id => used.has(id)), 'other');
 });
 
+test('the id new is kept for the add form\'s route, so a routine titled New gets new-2', () => {
+  assert.equal(routineId('New'), 'new-2');
+  assert.equal(routineId('  NEW!  '), 'new-2');
+  assert.equal(routineId('New', id => id === 'new-2'), 'new-3');
+  assert.equal(routineId('New thing'), 'new-thing');
+  assert.equal(routineId('Newer'), 'newer');
+});
+
 test('a routine id drops accents, emoji and punctuation, falls back to "routine", and is cut to 40 characters', () => {
   for (const [title, id] of [
     ['Café Résumé', 'cafe-resume'], ['Ünïcödé ﬁne', 'unicode-fine'], ['🚀 Launch day!!', 'launch-day'], ['a/b\\c..d', 'a-b-c-d'], ['Weekly: "report" (draft)', 'weekly-report-draft'],
@@ -900,6 +909,7 @@ test('adding is refused with every bad field named, and nothing is written', () 
   assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, jitterSeconds: 86400 }), refused(400, ['jitterSeconds']));
   assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, jitterSeconds: '12' }), refused(400, ['jitterSeconds']));
   assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, enabled: 'yes' }), e => e.status === 400 && /true or false/.test(e.message));
+  assert.throws(() => r.sched.add({ ...MORNING, cwd: r.state, enabled: null }), e => e.status === 400 && /true or false/.test(e.message));
   assert.throws(() => r.sched.add(null), e => e.status === 400);
   try { r.sched.add({ title: '', cron: '61 * * * *', cwd: 'relative', prompt: '' }); } catch (e) {
     assert.match(e.message, /^Nothing was saved\. Check the title, schedule, folder and prompt\.$/);
@@ -910,6 +920,22 @@ test('adding is refused with every bad field named, and nothing is written', () 
   assert.equal(fs.existsSync(promptsOf(r)), false);
   const long = r.sched.add({ ...MORNING, cwd: r.state, title: '🚀'.repeat(120), jitterSeconds: 86399 });
   assert.deepEqual([[...long.title].length, long.jitterSeconds], [120, 86399]);
+});
+
+test('a title is read as a group\'s name is: one that draws nothing is refused, a bidi control is dropped, and an emoji keeps its joiners', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  for (const title of ['\u200b', ' \u200b\u2060 ', '\u202e\u2069', '\u2800', '\ufe0f', '\u200b\t\n']) {
+    assert.throws(() => r.sched.add({ ...input, title }), refused(400, ['title']), JSON.stringify(title));
+    assert.throws(() => r.sched.edit('demo', { title }), refused(400, ['title']), JSON.stringify(title));
+  }
+  assert.equal(rawOf(r).includes('Morning'), false);
+  assert.equal(r.sched.add({ ...input, title: '\u202eMorning\u202c \u2066check\u2069' }).title, 'Morning check');
+  assert.equal(r.sched.edit('demo', { title: 'A\u202ebc' }).title, 'Abc');
+  const family = '\u{1F468}\u200d\u{1F469}\u200d\u{1F467}';
+  assert.equal(r.sched.edit('demo', { title: ` ${family} day ` }).title, `${family} day`);
+  assert.throws(() => r.sched.add({ ...input, title: `\u202e${'x'.repeat(121)}` }), refused(400, ['title']));
+  assert.equal(r.sched.add({ ...input, title: `\u202e${'x'.repeat(120)}` }).title, 'x'.repeat(120), 'the length is counted once the controls are dropped');
 });
 
 test('a second routine with the same title gets -2, then -3, and a prompt file kept from a deleted routine counts as taken', () => {
@@ -929,6 +955,16 @@ test('a second routine with the same title gets -2, then -3, and a prompt file k
   fs.renameSync(path.join(promptsOf(r), 'morning-check.md'), path.join(junk, 'morning-check.md'));
   assert.equal(r.sched.add(input).id, 'morning-check', 'free again once its file is moved away');
   assert.equal(r.sched.add({ ...input, title: 'Demo' }).id, 'demo-2', 'an id from routines.json is taken too');
+});
+
+test('an id something outside routines.json holds is taken, and so is new', () => {
+  const r = rig({ enabled: false });
+  const input = { ...MORNING, cwd: r.state };
+  r.taken.add('morning-check').add('morning-check-2');
+  assert.equal(r.sched.add(input).id, 'morning-check-3');
+  assert.deepEqual(fs.readdirSync(promptsOf(r)), ['morning-check-3.md']);
+  const reserved = r.sched.add({ ...input, title: 'New' });
+  assert.deepEqual([reserved.id, reserved.file], ['new-2', path.join(promptsOf(r), 'new-2.md')]);
 });
 
 test('adding never writes over a kept prompt file', () => {
@@ -1004,6 +1040,14 @@ test('nothing outside Capcom\'s prompt folder is ever written', () => {
   assert.throws(() => r.store.promptFile('../escape'), refused(400));
 });
 
+test('a prompt is written where its path resolves to, so a .. in it is never opened as typed', () => {
+  const r = rig();
+  fs.mkdirSync(promptsOf(r), { recursive: true });
+  r.store.writePrompt(`${promptsOf(r)}/missing/../tidy.md`, 'Written.\n');
+  assert.deepEqual(fs.readdirSync(promptsOf(r)), ['tidy.md']);
+  assert.equal(fs.readFileSync(path.join(promptsOf(r), 'tidy.md'), 'utf8'), 'Written.\n');
+});
+
 test('a change of schedule counts from the save, so a fire earlier today never runs, and the next real fire does', async () => {
   const r = rig();
   const save = at(2026, 10, 16, 9);
@@ -1066,12 +1110,21 @@ test('an edit that cannot switch the routine on is refused whole, and one that f
   const r = rig({ enabled: false });
   r.store.update('demo', { cwd: '/no/such/folder' });
   const before = rawOf(r);
-  assert.throws(() => r.sched.edit('demo', { enabled: true }), e => e.status === 400 && /cannot be switched on/.test(e.message));
-  assert.throws(() => r.sched.edit('demo', { enabled: true, prompt: 'New.' }), e => e.status === 400);
+  assert.throws(() => r.sched.edit('demo', { enabled: true }), refused(400, ['cwd']));
+  assert.throws(() => r.sched.edit('demo', { enabled: true, prompt: 'New.' }), refused(400, ['cwd']));
   assert.equal(rawOf(r), before);
   assert.equal(fs.existsSync(promptsOf(r)), false, 'a refused edit writes no prompt');
   const fixed = r.sched.edit('demo', { cwd: r.state, enabled: true });
   assert.deepEqual([fixed.enabled, fixed.cwd, fixed.problem], [true, r.state, null]);
+});
+
+test('an edit that switches on names the saved folder when it is gone, though the edit did not send it, and still refuses what is not a field', () => {
+  const r = rig({ enabled: false });
+  r.store.update('demo', { cwd: '/no/such/folder', model: 'bad model' });
+  assert.throws(() => r.sched.edit('demo', { enabled: true }), e => refused(400, ['cwd', 'model'])(e) && /^Nothing was saved\. Check the folder and model\.$/.test(e.message) && /does not exist/.test(e.problems.cwd));
+  r.store.update('demo', { cwd: r.state, model: null, file: path.join(r.state, 'gone', 'SKILL.md') });
+  assert.throws(() => r.sched.edit('demo', { enabled: true }), e => e.status === 400 && e.problems === undefined && /cannot be switched on\. Cannot read/.test(e.message));
+  assert.equal(r.demo().enabled, false);
 });
 
 test('a refused edit changes nothing and names every bad field it was sent, and a field it was not sent is left alone', () => {

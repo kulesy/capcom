@@ -10,8 +10,9 @@ const DESKTOP_FILE = '---\nname: desk\ndescription: A routine from Desktop\n---\
 const NEW = { title: 'Morning check', cron: '30 7 * * 1-5', jitterSeconds: 737, prompt: 'Look at the board.' };
 
 // A signed-in server whose routines.json already holds one routine from Desktop, which reads its prompt from a SKILL.md in the home.
-async function open() {
-  const first = await start({ claude: true });
+// `sessions` are the runs the session list already holds.
+async function open(sessions) {
+  const first = await start({ claude: true, sessions });
   const work = path.join(first.home, 'work');
   const desk = path.join(first.home, 'desktop', 'desk', 'SKILL.md');
   fs.mkdirSync(work);
@@ -80,6 +81,30 @@ test('a routine is added, read, edited, switched, run-checked and deleted over H
   assert.equal((await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work })).body().routine.id, 'morning-check-3', 'the deleted routine\'s kept file still holds morning-check-2');
 });
 
+test('an id is taken while a Desktop task folder or any run in the session list still holds it, and new is never an id', async () => {
+  const c = await open([
+    { id: 'p1', title: 'Old run', routine: 'past-run', ago: 5 },
+    { id: 'p2', title: 'Our run', routine: 'our-run', source: 'capcom', ago: 5 },
+    { id: 'p3', title: 'Old run, archived', routine: 'archived-run', archived: true, ago: 5 },
+  ]);
+  const tasks = path.join(c.s.home, '.claude', 'scheduled-tasks');
+  fs.mkdirSync(path.join(tasks, 'desktop-only'), { recursive: true });
+  const idOf = async title => {
+    const res = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, title });
+    assert.equal(res.status, 200, res.text);
+    return res.body().routine.id;
+  };
+  assert.equal(await idOf('Desktop only'), 'desktop-only-2', 'a Desktop task folder holds its id');
+  assert.equal(await idOf('Past run'), 'past-run-2', 'the runs of a routine that routines.json no longer holds keep its id');
+  assert.equal(await idOf('Our run'), 'our-run-2', 'so do runs GhostShell started');
+  assert.equal(await idOf('Archived run'), 'archived-run-2', 'and archived ones');
+  assert.equal(await idOf('Desktop only'), 'desktop-only-3');
+  assert.equal(await idOf('New'), 'new-2', '#/routines/new is the add form');
+  assert.equal(await idOf('Fresh'), 'fresh');
+  assert.deepEqual(fs.readdirSync(tasks), ['desktop-only'], 'Desktop\'s folder is only looked for');
+  assert.deepEqual(fs.readdirSync(path.join(tasks, 'desktop-only')), []);
+});
+
 test('a prompt file that cannot be read comes back empty with the error, still as a 200', async () => {
   const c = await open();
   fs.unlinkSync(c.desk);
@@ -126,6 +151,44 @@ test('a refused add or edit names every bad field under problems, with a one-lin
     assert.equal(typeof res.body().error, 'string');
   }
   assert.equal(c.raw(), before);
+});
+
+test('a title that draws nothing is refused, and enabled null is refused rather than read as on', async () => {
+  const c = await open();
+  const before = c.raw();
+  for (const title of ['\u200b', '\u202e', ' \u2060\u2800 ']) {
+    for (const [method, url] of [['POST', '/api/routines'], ['PATCH', '/api/routines/desk']]) {
+      const res = await write(c, method, url, { ...NEW, cwd: c.work, title });
+      assert.deepEqual([res.status, Object.keys(res.body().problems)], [400, ['title']], `${method} ${JSON.stringify(title)}`);
+    }
+  }
+  const nulled = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, enabled: null });
+  assert.deepEqual([nulled.status, nulled.body().error], [400, 'Send enabled as true or false.']);
+  const patched = await write(c, 'PATCH', '/api/routines/desk', { enabled: null });
+  assert.deepEqual([patched.status, patched.body().error], [400, 'Send enabled as true or false.']);
+  assert.equal(c.raw(), before);
+  assert.equal(fs.existsSync(c.prompts), false);
+  const bidi = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, title: '\u202eMorning\u202c check' });
+  assert.deepEqual([bidi.status, bidi.body().routine.title, bidi.body().routine.enabled], [200, 'Morning check', true]);
+  const off = await write(c, 'POST', '/api/routines', { ...NEW, cwd: c.work, title: 'Left off', enabled: false });
+  assert.equal(off.body().routine.enabled, false);
+});
+
+test('switching a routine on in an edit while its saved folder is gone names the folder under problems, and leaves it off', async () => {
+  const c = await open();
+  const folder = path.join(c.s.home, 'soon-gone');
+  fs.mkdirSync(folder);
+  const made = (await write(c, 'POST', '/api/routines', { ...NEW, cwd: folder, enabled: false })).body().routine;
+  fs.renameSync(folder, path.join(c.s.home, 'moved-away'));
+  const before = c.raw();
+  const res = await write(c, 'PATCH', `/api/routines/${made.id}`, { enabled: true });
+  assert.equal(res.status, 400, res.text);
+  assert.deepEqual(Object.keys(res.body().problems), ['cwd']);
+  assert.match(res.body().problems.cwd, /soon-gone does not exist/);
+  assert.equal(res.body().error, 'Nothing was saved. Check the folder.');
+  assert.equal(c.raw(), before);
+  const fixed = await write(c, 'PATCH', `/api/routines/${made.id}`, { enabled: true, cwd: c.work });
+  assert.deepEqual([fixed.status, fixed.body().routine.enabled, fixed.body().routine.cwd], [200, true, c.work]);
 });
 
 test('every routine write needs this site\'s own Origin, and a cross-site one is refused with a 403 before anything changes', async () => {
@@ -206,11 +269,12 @@ test('the schedule route gives the next three fire times with the jitter, or the
   assert.ok(times.every(t => new Date(t).getSeconds() === 30), 'the jitter is on every fire');
   const plain = (await ask({ cron: '0 9 * * *' })).body().next;
   assert.ok(plain.every(t => /T09:00:00/.test(t)), 'no jitter given means none');
-  assert.deepEqual((await ask({ cron: '0 0 31 2 *' })).body(), { next: [] });
+  assert.deepEqual((await ask({ cron: '0 0 31 2 *' })).body(), { next: [], problem: null });
   for (const [query, why] of [[{ cron: 'nonsense' }, /five fields/], [{ cron: '61 * * * *' }, /outside 0 to 59/], [{}, /five fields/], [{ cron: '0 9 * * *', jitter: '86400' }, /0 to 86399/], [{ cron: '0 9 * * *', jitter: '1.5' }, /whole number/], [{ cron: '0 9 * * *', jitter: 'x' }, /whole number/]]) {
     const bad = await ask(query);
-    assert.equal(bad.status, 400, JSON.stringify(query));
-    assert.match(bad.body().error, why);
+    assert.equal(bad.status, 200, JSON.stringify(query));
+    assert.deepEqual(bad.body().next, []);
+    assert.match(bad.body().problem, why);
   }
   assert.equal((await write(c, 'POST', '/api/schedule', {})).status, 405);
   assert.equal((await send(c, 'GET', '/api/schedule?cron=0%209%20*%20*%20*')).status, 401);

@@ -9,7 +9,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
 import {
   byTitle, choices, deleteDetail, desktopNote, effortChoices, fireTime, formOf, jitterOf, JITTER_PROBLEM, modelChoices, newForm, NEW_ROUTINE_HASH,
-  promptSource, refusals, requestOf, routineHash, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits,
+  promptSource, refusals, requestOf, routineHash, routineRoute, ROUTINES_HASH, scheduleWords, skippedWords, supportsRoutineEdits,
 } from './routine-rules.js';
 import { say } from './toast.js';
 import { neighbour } from './tree.js';
@@ -17,6 +17,10 @@ import { neighbour } from './tree.js';
 const enc = encodeURIComponent;
 const routineUrl = id => `api/routines/${enc(id)}`;
 const sessionHash = id => `#/s/${enc(id)}`;
+
+// Where the list puts the focus when it is first drawn after a form closed over it, as { gone, to } like a delete in the list. The form
+// is gone by then, so it cannot do it, and the focus would fall to the page.
+let landing = null;
 
 const chevron = () => html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>`;
 const dots = () => html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="4.5" cy="10" r="1.6" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="currentColor"/><circle cx="15.5" cy="10" r="1.6" fill="currentColor"/></svg>`;
@@ -138,7 +142,11 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
   const [shown, setShown] = useState(null);
   const opened = useRef(0);
   const box = useRef(null);
-  const pending = useRef(null);
+  const pending = useRef(undefined);
+  if (pending.current === undefined) {
+    pending.current = landing;
+    landing = null;
+  }
   const list = routines ? byTitle(routines.routines) : null;
   const rowOf = id => box.current?.querySelector(`[data-routine="${CSS.escape(id)}"]`);
 
@@ -148,6 +156,7 @@ function RoutineList({ ix, routines, error, reload, refresh }) {
   }, [reload]);
 
   // Once a deleted routine has left the list, the focus goes to the row after it, or the one before it, or the New routine button.
+  // After a save in the form, the routine's own switch has it.
   useLayoutEffect(() => {
     const p = pending.current;
     if (!p || !list || list.some(r => r.id === p.gone)) return;
@@ -271,8 +280,8 @@ function RoutineForm({ id, routines, error, refresh }) {
     let current = true;
     const timer = setTimeout(async () => {
       try {
-        const { next } = await api(`api/schedule?cron=${enc(cron.trim())}&jitter=${jitter}`);
-        if (current) setPreview({ times: next, problem: '', done: true });
+        const { next, problem } = await api(`api/schedule?cron=${enc(cron.trim())}&jitter=${jitter}`);
+        if (current) setPreview({ times: next, problem: problem || '', done: true });
       } catch (e) {
         if (current) setPreview({ times: [], problem: e.message, done: true });
       }
@@ -310,23 +319,31 @@ function RoutineForm({ id, routines, error, refresh }) {
     setAttempt(({ n }) => ({ n: n + 1, key: first }));
   };
 
+  // Back to the list, unless the owner has opened something else while the server answered, which a late reply must not undo.
+  const leave = focus => {
+    const here = routineRoute(location.hash);
+    if (!here?.form || here.id !== id) return;
+    landing = focus;
+    location.hash = ROUTINES_HASH;
+  };
+
   const save = async e => {
     e.preventDefault();
     if (saving) return;
     if (jitter === null) return refuse({ jitterSeconds: JITTER_PROBLEM }, 'jitterSeconds');
     const body = requestOf(form, was);
     if (was && !Object.keys(body).length) {
-      location.hash = ROUTINES_HASH;
+      leave({ gone: null, to: id });
       return;
     }
     setSaving(true);
     setNotice('');
     setProblems({});
     try {
-      await api(adding ? 'api/routines' : routineUrl(id), body, adding ? 'POST' : 'PATCH');
+      const saved = await api(adding ? 'api/routines' : routineUrl(id), body, adding ? 'POST' : 'PATCH');
       say(`${adding ? 'Added' : 'Saved'} “${form.title.trim()}”.`);
       await refresh();
-      location.hash = ROUTINES_HASH;
+      leave({ gone: null, to: saved.routine?.id ?? id });
     } catch (err) {
       const { fields, first } = refusals(err);
       if (first) refuse(fields, first);
@@ -382,8 +399,8 @@ function RoutineForm({ id, routines, error, refresh }) {
     <div class="routine-buttons">
       <button class="btn" type="submit" disabled=${saving}>${saving ? 'Saving' : 'Save'}</button>
       <a class="btn" data-variant="outline" href=${ROUTINES_HASH}>Cancel</a>
-      ${adding ? null : html`<button class="btn routine-delete" data-variant="destructive" type="button" ref=${remover}
-        onClick=${() => deleteRoutine(routine, { refresh, back: () => remover.current, done: () => { location.hash = ROUTINES_HASH; } })}>Delete</button>`}
+      ${adding || !routine ? null : html`<button class="btn routine-delete" data-variant="destructive" type="button" ref=${remover}
+        onClick=${() => deleteRoutine(routine, { refresh, back: () => remover.current, done: () => leave({ gone: routine.id, to: null }) })}>Delete</button>`}
     </div>
   </form>`);
 }
