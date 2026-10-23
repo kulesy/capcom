@@ -24,6 +24,7 @@ import { chatFor, getChat, onTurn, startChat, sweep, activeStates } from './lib/
 import { listCommands, listModels } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
+import { handOffText, makeTerminal } from './lib/terminal.mjs';
 import { makeChips } from './lib/tools.mjs';
 import { makeRoutines, makeScheduler, makeZoneFollower } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
@@ -63,6 +64,11 @@ function dropFastOnRefusal(chat) {
   };
 }
 const viewers = new Map();
+// The terminal's events ride each open chat's own event stream, so a chat needs no second connection.
+const terminal = makeTerminal({
+  emit: (id, data) => { for (const fn of viewers.get(id) || []) fn({ type: 'terminal', data }); },
+  onEnd: (id, done) => handBashToClaude(id, done),
+});
 const outside = createOutside();
 const listOutside = createOutside({ keep: 256 });
 
@@ -565,7 +571,9 @@ function events(req, res, id) {
     if (ev.type === 'state' && ev.data.state !== 'idle') shown = '';
     write(ev.type, ev.data);
   };
-  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, findRow(id)), live: '', pending: [] }), outside: first });
+  const row = findRow(id);
+  write('status', { ...(chat ? chat.status() : { state: 'idle', running: false, ...settingsFor(id, row), live: '', pending: [] }), outside: first });
+  write('terminal', { type: 'state', ...terminal.snapshot(id, row?.cwd || '') });
   if (!viewers.has(id)) viewers.set(id, new Set());
   viewers.get(id).add(forward);
   chat?.listeners.add(forward);
@@ -813,6 +821,70 @@ async function uploadsApi(req, res) {
   }
 }
 
+// ---- the terminal --------------------------------------------------------------------------------
+// Commands run in the session's folder from a click or Enter on the page. See docs/adr/20261023-terminal-without-a-pty.md.
+
+const TERMINAL_HEADERS = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
+const TERMINAL_STEPS = ['run', 'input', 'stop', 'clear'];
+const isDirectory = p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+
+// A command run with ! is for Claude as well: it is sent at once, as the CLI does, or kept for the next message when the owner's
+// settings say Claude is not to reply to commands. Mid-turn the CLI queues it, as it does a typed message.
+function handBashToClaude(id, { run, stdout, stderr }) {
+  const row = findRow(id);
+  if (!row) return null;
+  const text = handOffText({ command: run.command, stdout, stderr });
+  if (readUserSettings().respondToBashCommands === false) {
+    terminal.hold(id, text);
+    return 'held';
+  }
+  ensureChat(id, row).send(text);
+  if (row.archived) unarchive(id);
+  return 'sent';
+}
+
+// GET api/sessions/<id>/terminal lists the runs and starts nothing. Run, input, stop and clear are POSTs that a page on another site
+// cannot make: they need this host's Origin, a JSON body, which a form cannot send, and no cross-site Sec-Fetch-Site.
+async function terminalApi(req, res, id, [step, ...extra]) {
+  const reply = (status, body, headers) => send(res, status, body, 'application/json', { ...TERMINAL_HEADERS, ...headers });
+  if (extra.length) return reply(404, { error: 'Not found' });
+  if (step === undefined) {
+    if (req.method !== 'GET') return reply(405, { error: 'Method not allowed' }, { allow: 'GET' });
+    const row = findRow(id);
+    return row ? reply(200, terminal.snapshot(id, row.cwd || '')) : reply(404, { error: NO_SESSION });
+  }
+  if (!TERMINAL_STEPS.includes(step)) return reply(404, { error: 'Not found' });
+  if (req.method !== 'POST') return reply(405, { error: 'Method not allowed' }, { allow: 'POST' });
+  // NOTE: [23 Oct 2026] EK - The global check lets a request with no Origin through, so these routes insist on one. A command runs
+  // as the owner, and a browser always sends Origin with a cross-site POST.
+  if (!req.headers.origin || !sameOrigin(req)) return reply(403, { error: 'Cross-site request refused.' });
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return reply(403, { error: 'Cross-site request refused.' });
+  if (!/^application\/json\s*(;|$)/i.test(req.headers['content-type'] || '')) return reply(415, { error: 'Send JSON.' });
+  const body = await readJson(req);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return reply(400, { error: 'Send a JSON body.' });
+  // A new password can land while the body is still arriving, so the session is checked again before anything runs.
+  if (!auth.check(req)) return reply(401, { error: 'Signed out.' });
+  const row = findRow(id);
+  if (!row) return reply(404, { error: NO_SESSION });
+  try {
+    if (step === 'run') {
+      if (!row.cwd || !isDirectory(row.cwd)) return reply(409, { error: 'This session\'s folder does not exist on this Mac.' });
+      return reply(200, { run: await terminal.run(id, { command: body.command, source: body.source, folder: row.cwd }) });
+    }
+    if (step === 'input') {
+      terminal.input(id, body.run, body.text, body.eof);
+      return reply(200, { ok: true });
+    }
+    if (step === 'stop') return reply(200, { run: terminal.stop(id, body.run) });
+    const runs = terminal.clear(id);
+    return reply(200, { cwd: terminal.cwd(id, row.cwd || ''), runs });
+  } catch (e) {
+    if (!e.status) throw e;
+    return reply(e.status, { error: e.message });
+  }
+}
+
 async function api(req, res, u) {
   const parts = u.pathname.split('/').filter(Boolean);
   if (parts[1] === 'routines') return routinesApi(req, res, parts);
@@ -935,11 +1007,12 @@ async function api(req, res, u) {
   const id = parts[2];
   if (!/^[\w-]+$/.test(id)) return send(res, 400, { error: 'Bad session id' });
   const action = parts[3];
+  if (action === 'terminal') return terminalApi(req, res, id, parts.slice(4));
   if (req.method === 'GET' && action === 'messages') {
     const row = findRow(id);
     const connectors = loadDesktop(cfg.desktopDir).connectors.get(id) || {};
-    // fileLinks tells the page that the file routes exist, so a page newer than this server draws no links that would 404.
-    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
+    // fileLinks and terminal tell the page that those routes exist, so a page newer than this server draws nothing that would 404.
+    return send(res, 200, { ...readMessages(id, u.searchParams), fileLinks: true, terminal: true, session: row && { id, title: row.title, cwd: row.cwd, branch: row.branch, source: row.source, routine: row.routine, connectors } });
   }
   if (req.method === 'GET' && action === 'events') return events(req, res, id);
   if (req.method === 'GET' && action === 'chips') return send(res, 200, { chips: chips.forSession(id) });
@@ -993,7 +1066,12 @@ async function api(req, res, u) {
     const row = findRow(id);
     if (!row) return send(res, 404, { error: 'No session with that id on this Mac.' });
     const chat = ensureChat(id, row, { mode: body.mode });
-    chat.send(withMentions(files, body.text || ''), images, documents);
+    // The result of a command run with ! that Claude was not to reply to goes in front of the next message, as its own paragraph.
+    // A slash command has to stay first to run, so the result waits for the message after it.
+    const held = !isSlashCommand(body.text || '') && terminal.held(id);
+    const text = withMentions(files, body.text || '');
+    chat.send(held ? [held, text].filter(t => t.trim()).join('\n\n') : text, images, documents);
+    if (held) terminal.release(id);
     uploads.record(id, files);
     const unarchived = row.archived && unarchive(id);
     return send(res, 200, { ...chat.status(), ...(unarchived && { unarchived }) });
@@ -1120,5 +1198,9 @@ server.listen(cfg.port, '127.0.0.1', () => {
   checkRoutines();
 });
 setInterval(() => sweep(cfg.idleMinutes), 60_000).unref();
+// Whatever the terminal started ends with Capcom, so a restart leaves nothing running behind. A signal ends the process through
+// exit, which kills the command groups; without a handler the default would end it first.
+process.on('exit', () => terminal.killAll());
+for (const name of ['SIGTERM', 'SIGINT']) process.on(name, () => process.exit(128 + os.constants.signals[name]));
 // With the hand-off on, sessions started before it existed are handed over the first time Capcom starts with it.
 if (cfg.desktopHandoff) for (const s of readStarted()) if (!s.desktopAt && !s.routine) handOff(s.id).catch(e => console.error(`Hand-off of ${s.id} failed: ${e.message}`));

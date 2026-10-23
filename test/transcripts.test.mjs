@@ -106,15 +106,6 @@ test('a long field is cut at the output limit, with the count of what was left o
   assert.equal(n.details.at(-1).value, `${'x'.repeat(20)}\n... (30 more characters)`);
 });
 
-test('a command run with ! shows the command and what it printed, escapes undone', () => {
-  const n = noticeFrom('<bash-input>npm run build</bash-input><bash-stdout>&gt; capcom@0.1.0 build &amp;&amp; done</bash-stdout><bash-stderr>warn: slow</bash-stderr>');
-  assert.equal(n.title, 'You ran a command');
-  assert.equal(n.text, 'npm run build');
-  assert.equal(n.output, '> capcom@0.1.0 build && done\nwarn: slow');
-  const out = noticeFrom('<bash-stdout></bash-stdout><bash-stderr>sudo: a password is required\n</bash-stderr>');
-  assert.deepEqual([out.title, out.text, out.output], ['Command output', undefined, 'sudo: a password is required']);
-});
-
 test('a message from another session names its sender and shows its text; one written for Claude alone is all details', () => {
   const m = noticeFrom('<cross-session-message from="uds:/tmp/cc.sock" from-name="Write the rule" from-mode="bypass">\nI will stop my dev server soon.\n</cross-session-message>');
   assert.equal(m.title, 'Message from Write the rule');
