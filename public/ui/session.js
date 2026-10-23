@@ -303,7 +303,7 @@ export function createChat({ id = null, draft = false, row = null, refreshIndex 
     try {
       const r = await api(`api/chips/${action}`, {
         sessionId: id, toolUseId: tool.id, title: tool.input?.title, tldr: tool.input?.tldr,
-        prompt: tool.input?.prompt, cwd: tool.input?.cwd, confirmCwd: folder,
+        prompt: tool.input?.prompt, cwd: tool.input?.cwd, confirmCwd: folder, effort: tool.input?.effort,
       });
       keep(r.chip);
       refreshIndex();

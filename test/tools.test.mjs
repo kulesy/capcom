@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
+import { EFFORTS, GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
 import {
   ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_MAX, parseGlyphs, PROMPT_MAX,
 } from '../public/ui/widget-frame.js';
@@ -234,6 +234,29 @@ test('a chip from a group\'s chat is refused for a folder that is missing, relat
     assert.match(result.content[0].text, why, cwd);
   }
   assert.deepEqual(made, []);
+});
+
+test('spawn_task offers an optional effort level in the ordinary and the group schema', () => {
+  const ordinary = call('tools/list').result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  const group = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: { stateDir: '/tmp/state' } }).result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  for (const schema of [ordinary, group]) {
+    assert.deepEqual(schema.properties.effort.enum, EFFORTS);
+    assert.equal(schema.required.includes('effort'), false);
+  }
+});
+
+test('a chip keeps the effort level it names, and one with none is stored without the key', () => {
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const spawn = args => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, { chips, cwd: '/tmp/work' }).result;
+  assert.equal(spawn({ effort: 'xhigh' }).isError, undefined);
+  assert.equal(made[0].effort, 'xhigh');
+  assert.equal(spawn({}).isError, undefined);
+  assert.equal(Object.hasOwn(made[1], 'effort'), false);
+  const refused = spawn({ effort: 'extreme' });
+  assert.equal(refused.isError, true);
+  for (const level of EFFORTS) assert.match(refused.content[0].text, new RegExp(level));
+  assert.equal(made.length, 2, 'an unknown level makes no chip');
 });
 
 test('a group tool that throws something unexpected tells the model a bare failure, and one that refuses tells it why', async () => {

@@ -315,3 +315,32 @@ test('a new session started with fast mode off asks for nothing about it and rem
   assert.deepEqual(picks(s), { [made.body().id]: { model: 'claude-sonnet-5-5' } });
   assert.deepEqual(flags(s), []);
 });
+
+test('a chip that carries an effort level starts its session at that level and saves it as the pick, one the server never stored takes the posted level, and an unknown level is refused before any CLI starts', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'maker', title: 'Maker', ago: 5 }], chips: [{ sessionId: 'maker', toolUseId: 'toolu_stored', prompt: 'begin a session', effort: 'xhigh' }] });
+  const { token } = await signIn(s);
+  const chip = json => post(s, token, '/api/chips/start', { sessionId: 'maker', title: 'Follow up', prompt: 'begin a session', cwd: s.home, ...json });
+  const bad = await chip({ toolUseId: 'toolu_bad', effort: 'extreme' });
+  assert.deepEqual([bad.status, bad.body()], [400, { error: 'Unknown effort level.' }]);
+  assert.deepEqual(cliCalls(s), []);
+
+  const stored = await chip({ toolUseId: 'toolu_stored' });
+  assert.equal(stored.status, 200, stored.text);
+  const posted = await chip({ toolUseId: 'toolu_posted', effort: 'low' });
+  assert.equal(posted.status, 200, posted.text);
+  assert.equal(posted.body().chip.effort, 'low');
+  assert.deepEqual(picks(s), { [stored.body().id]: { effort: 'xhigh' }, [posted.body().id]: { effort: 'low' } });
+  const [first, second] = starts(s).map(c => c.started);
+  for (const [args, level] of [[first, 'xhigh'], [second, 'low']]) assert.ok(args.some((arg, i) => arg === '--effort' && args[i + 1] === level), level);
+});
+
+test('a chip that carries an effort level keeps it when the posted body names another', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'maker', title: 'Maker', ago: 5 }], chips: [{ sessionId: 'maker', toolUseId: 'toolu_stored', prompt: 'begin a session', effort: 'high' }] });
+  const { token } = await signIn(s);
+  const res = await post(s, token, '/api/chips/start', { sessionId: 'maker', toolUseId: 'toolu_stored', title: 'Follow up', prompt: 'begin a session', cwd: s.home, effort: 'low' });
+  assert.equal(res.status, 200, res.text);
+  assert.equal(res.body().chip.effort, 'high');
+  assert.deepEqual(picks(s), { [res.body().id]: { effort: 'high' } });
+  const args = starts(s)[0].started;
+  assert.ok(args.some((arg, i) => arg === '--effort' && args[i + 1] === 'high'));
+});
