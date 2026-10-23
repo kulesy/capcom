@@ -130,6 +130,40 @@ test('256 KB of alternating colours on one line, fed in 4 KB chunks, is drawn in
   assert.equal(lines[0].reduce((n, p) => n + p.text.length, 0), text.replace(/\x1b\[\d+m/g, '').length);
 });
 
+function drawnIn(chunks) {
+  const started = performance.now();
+  const { lines } = renderAnsi(chunks);
+  return { took: performance.now() - started, text: lines.map(l => l.map(p => p.text).join('')).join('\n') };
+}
+
+test('writing over a 400K line 200K times with \\r is drawn in well under half a second, with the rest of the line kept', () => {
+  const { took, text } = drawnIn([out('a'.repeat(400000)), out('\rX'.repeat(200000))]);
+  assert.ok(took < 500, `drawing took ${Math.round(took)} ms`);
+  assert.equal(text, `X${'a'.repeat(399999)}`);
+});
+
+test('writing over the end of a 400K line 200K times with \\b is drawn in well under half a second, and so is walking back along it', () => {
+  const end = drawnIn([out('a'.repeat(400000)), out('\bX'.repeat(200000))]);
+  assert.ok(end.took < 500, `drawing took ${Math.round(end.took)} ms`);
+  assert.equal(end.text, `${'a'.repeat(399999)}X`);
+  const back = drawnIn([out('a'.repeat(400000)), out('\b\bX'.repeat(100000))]);
+  assert.ok(back.took < 500, `walking back took ${Math.round(back.took)} ms`);
+  assert.equal(back.text, `${'a'.repeat(299999)}${'X'.repeat(100000)}a`);
+});
+
+test('writing and cutting at the end of a 400K line 200K times is drawn in well under half a second', () => {
+  const { took, text } = drawnIn([out('a'.repeat(400000)), out('X\b\x1b[K'.repeat(200000))]);
+  assert.ok(took < 500, `drawing took ${Math.round(took)} ms`);
+  assert.equal(text, 'a'.repeat(400000), 'what was written and cut again leaves nothing');
+});
+
+test('a long line written over in a colour keeps each colour where it was written, and a gap after an erased line is plain', () => {
+  assert.deepEqual(draw(out(`${'a'.repeat(1000)}\r${ESC}[31mXY${ESC}[0m`)), [['ansi-fg-1|XY', 'a'.repeat(998)]]);
+  assert.deepEqual(draw(out(`${'a'.repeat(1000)}\r${ESC}[31mXY${ESC}[32m\b\bZ`)), [['ansi-fg-2|Z', 'ansi-fg-1|Y', 'a'.repeat(998)]]);
+  assert.deepEqual(draw(out(`${ESC}[31mabc\rX${ESC}[0m\tY`)), [['ansi-fg-1|X', '       Y']]);
+  assert.deepEqual(draw(out(`${ESC}[31mabc${ESC}[2K${ESC}[32mx`)), [['   ', 'ansi-fg-2|x']]);
+});
+
 test('a colour keeps 4.5:1 on the block it is drawn on, by being moved towards black on the light look and white on the dark one', () => {
   assert.deepEqual(readable([0, 0, 0], 'light'), [0, 0, 0], 'a colour that already reads is left alone');
   assert.deepEqual(readable([255, 255, 255], 'dark'), [255, 255, 255]);

@@ -116,41 +116,6 @@ function look(style) {
 
 const sameLook = (a, b) => a.stream === b.stream && a.cls === b.cls && a.css === b.css;
 
-// The pieces of `runs` before column `at`, or from it on.
-function before(runs, at) {
-  const out = [];
-  let col = 0;
-  for (const run of runs) {
-    if (col >= at) break;
-    out.push(col + run.text.length > at ? { ...run, text: run.text.slice(0, at - col) } : run);
-    col += run.text.length;
-  }
-  return out;
-}
-
-function after(runs, at) {
-  const out = [];
-  let col = 0;
-  for (const run of runs) {
-    if (col + run.text.length > at) out.push(col >= at ? run : { ...run, text: run.text.slice(at - col) });
-    col += run.text.length;
-  }
-  return out;
-}
-
-function join(runs) {
-  const out = [];
-  for (const run of runs) {
-    if (!run.text) continue;
-    const last = out.at(-1);
-    if (last && sameLook(last, run)) out[out.length - 1] = { ...last, text: last.text + run.text };
-    else out.push(run);
-  }
-  return out;
-}
-
-const width = runs => runs.reduce((n, r) => n + r.text.length, 0);
-
 // A line holds at most this many pieces, so a line that changes colour at every character stays small. Past it, text joins the last piece
 // and takes its look.
 export const MAX_PIECES = 256;
@@ -163,29 +128,53 @@ function append(line, run) {
   line.width += run.text.length;
 }
 
-// `runs` with every piece from the last allowed one on joined into it.
-function limit(runs) {
-  if (runs.length <= MAX_PIECES) return runs;
-  const [first, ...rest] = runs.slice(MAX_PIECES - 1);
-  return [...runs.slice(0, MAX_PIECES - 1), { ...first, text: first.text + rest.map(r => r.text).join('') }];
+const blank = () => ({ runs: [], width: 0, cells: null });
+
+// A line that is written over is held as one cell for each column, so a write costs the text it writes and not the length of the line.
+function edit(line) {
+  if (line.cells) return line.cells;
+  const cells = { text: [], looks: [] };
+  for (const run of line.runs) {
+    for (let i = 0; i < run.text.length; i++) { cells.text.push(run.text[i]); cells.looks.push(run); }
+  }
+  line.cells = cells;
+  line.runs = [];
+  return cells;
 }
 
-// `text` written at column `col` of a line, over what is there.
+// The pieces of a line. Cells of one look make a piece, and the cells past the last piece allowed join it.
+function pieces(line) {
+  if (!line.cells) return line.runs;
+  const { text, looks } = line.cells;
+  const runs = [];
+  let from = 0;
+  for (let i = 1; i <= text.length; i++) {
+    const last = runs.length === MAX_PIECES - 1;
+    if (i < text.length && (last || looks[i] === looks[from] || sameLook(looks[i], looks[from]))) continue;
+    const { stream, cls, css } = looks[from];
+    runs.push({ stream, cls, css, text: text.slice(from, i).join('') });
+    from = i;
+  }
+  return runs;
+}
+
+// `run` written at column `col` of a line, over what is there. A line held as cells is only written at or before its end.
 function write(line, col, run) {
-  if (col >= line.width) {
+  if (!line.cells && col >= line.width) {
     if (col > line.width) append(line, { stream: run.stream, cls: '', css: '', text: ' '.repeat(col - line.width) });
     append(line, run);
     return;
   }
-  line.runs = limit(join([...before(line.runs, col), run, ...after(line.runs, col + run.text.length)]));
-  line.width = width(line.runs);
+  const cells = edit(line);
+  for (let i = 0; i < run.text.length; i++) { cells.text[col + i] = run.text[i]; cells.looks[col + i] = run; }
+  line.width = cells.text.length;
 }
 
 // Lines of pieces for output chunks ({ stream, text }, in the order they came). A piece is { stream, cls, css, text }, with `cls` and `css`
 // drawing its colours and weight. Only the last `maxLines` lines are returned, with `cut` the number before them. Chunks of the page's own
 // echo (stream 'in') are drawn as they came.
 export function renderAnsi(chunks, { maxLines = 2000 } = {}) {
-  const lines = [{ runs: [], width: 0 }];
+  const lines = [blank()];
   let line = lines[0];
   let col = 0;
   const styles = {};
@@ -208,7 +197,7 @@ export function renderAnsi(chunks, { maxLines = 2000 } = {}) {
         continue;
       }
       const c = text[i];
-      if (c === '\n') { lines.push({ runs: [], width: 0 }); line = lines.at(-1); col = 0; i++; continue; }
+      if (c === '\n') { lines.push(blank()); line = lines.at(-1); col = 0; i++; continue; }
       if (c === '\r') { col = 0; i++; continue; }
       if (c === '\b') { col = Math.max(0, col - 1); i++; continue; }
       if (c === '\t') {
@@ -226,8 +215,12 @@ export function renderAnsi(chunks, { maxLines = 2000 } = {}) {
           if (csi[3] === 'm' && csi[2] === '') { style = applySgr(style, csi[1]); drawn = look(style); }
           else if (csi[3] === 'K' && csi[2] === '') {
             const mode = csi[1] === '' ? 0 : Number(csi[1]);
-            if (mode === 0) { line.runs = before(line.runs, col); line.width = width(line.runs); }
-            else if (mode === 2) { line.runs = []; line.width = 0; }
+            if (mode === 0 && col < line.width) {
+              const cells = edit(line);
+              cells.text.length = col;
+              cells.looks.length = col;
+              line.width = col;
+            } else if (mode === 2) Object.assign(line, blank());
           }
           continue;
         }
@@ -241,9 +234,9 @@ export function renderAnsi(chunks, { maxLines = 2000 } = {}) {
     }
     styles[stream] = style;
   }
-  if (lines.length > 1 && !lines.at(-1).runs.length) lines.pop();
+  if (lines.length > 1 && !lines.at(-1).width) lines.pop();
   const cut = Math.max(0, lines.length - maxLines);
-  return { lines: lines.slice(cut).map(l => l.runs), cut };
+  return { lines: lines.slice(cut).map(pieces), cut };
 }
 
 // The words of output with its colours and cursor moves taken out, for a copy.
