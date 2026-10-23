@@ -597,10 +597,10 @@ const ABOVE = {
 const ABOVE_ORDER = ['r3', 'r2', 'r1', 'w1', 'p1', 'pk', 'a1', 'c1', 'c2', 'c3', 'a2', 'a3', 'b1', 'u1', 'u2'];
 const above = (...ids) => stayAbove(ABOVE, ABOVE_ORDER, ids);
 
-test('a nested session lands on the nested session above it, or on its parent when it is the first', () => {
+test('a nested session lands on the nested session above it, or the one below it when it is the first, and on its parent only when it was the only one', () => {
   assert.equal(above('c2'), 'c1');
   assert.equal(above('c3'), 'c2');
-  assert.equal(above('c1'), 'a1');
+  assert.equal(above('c1'), 'c2');
   assert.equal(above('pk'), 'p1');
 });
 
@@ -631,9 +631,9 @@ test('a routine with no run left lands on the routine above it, or below it when
   assert.equal(above('w1', 'r3', 'r2', 'r1'), null);
 });
 
-test('an earlier run lands on the earlier run above it, or on the routine\'s latest run when it is the first', () => {
+test('an earlier run lands on the earlier run above it, or the one below it when it is the first, and on the routine\'s latest run when none is left', () => {
   assert.equal(above('r1'), 'r2');
-  assert.equal(above('r2'), 'r3');
+  assert.equal(above('r2'), 'r1');
   assert.equal(above('r2', 'r1'), 'r3');
 });
 
@@ -641,7 +641,8 @@ test('several sessions land above the topmost of them, whatever order they are n
   assert.equal(above('a3', 'a2'), 'a1');
   assert.equal(above('a2', 'a3'), 'a1');
   assert.equal(above('c3', 'c2'), 'c1');
-  assert.equal(above('c3', 'c1'), 'a1');
+  assert.equal(above('c3', 'c1'), 'c2');
+  assert.equal(above('c1', 'c2'), 'c3');
   assert.equal(above('u2', 'a3', 'c2'), 'c1', 'the topmost is c2, whatever level the others are on');
   assert.equal(above('c1', 'c2', 'c3'), 'a1');
 });
@@ -655,7 +656,7 @@ test('several sessions with the first of a section topmost land on the first one
 
 test('a row the list no longer draws is passed over, as one archived a moment ago is, but a routine\'s next run counts while its runs are folded', () => {
   assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'a2'), ['a3']), 'a1');
-  assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'c1'), ['c2']), 'a1');
+  assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'c1'), ['c2']), 'c3');
   assert.equal(stayAbove(ABOVE, ABOVE_ORDER.filter(id => id !== 'r2' && id !== 'r1'), ['r3']), 'r2');
 });
 

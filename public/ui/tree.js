@@ -189,7 +189,7 @@ function levelOf(ix, row) {
 }
 
 // The row that takes the focus once `ids` leave the list, at the level of the tree of the topmost of them in `order`, the drawn rows in
-// screen order: the nearest row above it that stays, else the row it is nested under, else the nearest row below it. A routine's latest
+// screen order: the nearest row above it that stays, else the nearest row below it, else the row it is nested under. A routine's latest
 // run gives way to its next run, drawn or not, as that run takes its place. Any other row has to be drawn, so the focus never lands out
 // of sight. It returns null when that level has nothing left, and the caller then goes by `stayAfter`.
 export function stayAbove(ix, order, ids) {
@@ -204,7 +204,7 @@ export function stayAbove(ix, order, ids) {
   const { siblings, parent } = levelOf(ix, row);
   const at = siblings.findIndex(r => r.id === top);
   if (at < 0) return null;
-  const to = siblings.slice(0, at).findLast(stays) ?? (parent && stays(parent) ? parent : null) ?? siblings.slice(at + 1).find(stays);
+  const to = siblings.slice(0, at).findLast(stays) ?? siblings.slice(at + 1).find(stays) ?? (parent && stays(parent) ? parent : null);
   return to?.id ?? null;
 }
 

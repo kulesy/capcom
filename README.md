@@ -261,7 +261,7 @@ The reasons behind the design are in [docs/adr](docs/adr/README.md), one record 
   whose menu is open, or else the row the keyboard moved to, which shows the focus ring, or else the open
   chat. A row you clicked shows no ring, so it doesn't count. After an archive the focus stays at the
   same level of the tree. Archive a nested session and it goes to the session above it in the family, or
-  to the parent when it was the first. Archive a top level row and it goes to the row above it in its
+  the one below when it was the first, and to the parent only when no other is left. Archive a top level row and it goes to the row above it in its
   section, or the row below when it was the first. A routine's next run takes the place of its latest.
   Archive several together and the topmost of them decides where it goes. Only a section left empty sends
   it to the next row in the list. After the key archives a session the ring moves there too, so pressing the key
