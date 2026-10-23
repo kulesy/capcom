@@ -3,7 +3,7 @@ import { closeFile, openFile } from './file-view.js';
 import { duration, tokenCount } from './format.js';
 import { threadImages } from './gallery.js';
 import { html, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from './html.js';
-import { useClock, useFields, useStick, useStore } from './hooks.js';
+import { gapBelow, NEAR_END, useClock, useFields, usePin, useStick, useStore } from './hooks.js';
 import { isChip, Row, Thought } from './rows.js';
 import { Shell } from './shell.js';
 import { display, doingNow } from './thread.js';
@@ -13,7 +13,8 @@ import { DEFAULT_TEXT, hasRow, HOLD_MS, nextHold, ROTATE_MS, waitText } from './
 // Claude's thinking as it is written. It is open while it grows and folds once the block ends.
 function LiveThink({ think }) {
   const body = useRef(null);
-  useStick(body);
+  const pin = usePin(body);
+  useStick(body, pin);
   return html`<div class="live-think"><div class="think"><${Thought} text=${think.text} name=${think.done ? 'Thought' : 'Thinking'} open=${!think.done} bodyRef=${body} /></div></div>`;
 }
 
@@ -65,13 +66,13 @@ function WidgetWait({ ctrl, work }) {
 }
 
 // The thinking and the reply as they are written, the place held for a widget, and the line that says what Claude is doing.
-function Live({ ctrl, box, fileUrl }) {
+function Live({ ctrl, box, pin, fileUrl }) {
   const { live, think, work, turnStart, outside, outsideStart } = useFields(ctrl.store, 'live', 'think', 'work', 'turnStart', 'outside', 'outsideStart');
   const turn = useStore(ctrl.store, turnOf);
   const names = useStore(ctrl.store, s => s.session?.connectors);
   const other = turn === 'outside';
-  useStick(box);
-  return html`${think ? html`<${LiveThink} think=${think} />` : null}
+  useStick(box, pin);
+  return html`${think ? html`<${LiveThink} key=${think.id} think=${think} />` : null}
     <div class="msg claude live" id="live" hidden=${!live} dangerouslySetInnerHTML=${{ __html: live ? md(live, fileUrl) : '' }}></div>
     <${WidgetWait} ctrl=${ctrl} work=${work} />
     <${Working} work=${other ? outside : work} since=${other ? outsideStart : turnStart} on=${!!turn} outside=${other} names=${names} />`;
@@ -88,39 +89,32 @@ export function Transcript({ ctrl }) {
   const rows = useMemo(() => display(items), [items]);
   const turn = useStore(ctrl.store, turnOf);
   const [away, setAway] = useState(false);
-  useStick(box);
-  // A late picture or a docked card opens a gap below the view with no scroll event, so a resize of the viewport or the rows checks too,
-  // once a frame. A view that was at the end stays there until a scroll up lets go, as in shadcn's message scroller. A widget that
-  // grows before its scroll event opens a gap with no scroll up, so the gap alone must not let go.
+  const pin = usePin(box);
+  // A late picture or a docked card grows the box with no scroll event, so a resize pins a pinned box and checks the gap once a frame.
   useEffect(() => {
     const el = box.current;
-    const gap = () => el.scrollHeight - el.scrollTop - el.clientHeight;
-    const check = () => setAway(gap() > 8);
-    let end = true;
-    let last = el.scrollTop;
+    const check = () => setAway(gapBelow(el) > NEAR_END);
     let frame = 0;
-    const scrolled = () => {
-      if (gap() <= 8) end = true;
-      else if (el.scrollTop < last - 0.5) end = false;
-      last = el.scrollTop;
-      check();
-    };
     const resized = new ResizeObserver(() => {
-      if (end) el.scrollTop = el.scrollHeight;
+      if (pin.current) el.scrollTop = el.scrollHeight;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(check);
     });
-    el.addEventListener('scroll', scrolled, { passive: true });
+    el.addEventListener('scroll', check, { passive: true });
     resized.observe(el);
     resized.observe(el.querySelector('#items'));
     return () => {
-      el.removeEventListener('scroll', scrolled);
+      el.removeEventListener('scroll', check);
       resized.disconnect();
       cancelAnimationFrame(frame);
     };
   }, []);
   // Opening a session and sending a message both end at the bottom; loading earlier keeps what you were looking at.
-  useLayoutEffect(() => { if (loaded || jump) box.current.scrollTop = box.current.scrollHeight; }, [loaded, jump]);
+  useLayoutEffect(() => {
+    if (!loaded && !jump) return;
+    pin.current = true;
+    box.current.scrollTop = box.current.scrollHeight;
+  }, [loaded, jump]);
   useLayoutEffect(() => { if (earlierSeq) box.current.scrollTop = box.current.scrollHeight - fromBottom.current; }, [earlierSeq]);
 
   const loadEarlier = () => {
@@ -128,7 +122,10 @@ export function Transcript({ ctrl }) {
     ctrl.loadEarlier();
   };
 
-  const toEnd = () => box.current.scrollTo({ top: box.current.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  const toEnd = () => {
+    pin.current = true;
+    box.current.scrollTo({ top: box.current.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
 
   // The viewer steps through the pictures the thread holds when one is clicked, and back through those of the unloaded messages, which the server lists. It closes with the chat.
   const viewImage = useCallback((key, from) => {
@@ -162,7 +159,7 @@ export function Transcript({ ctrl }) {
         ${rows.map((i, n) => html`<${Row} key=${i.key} item=${i} chip=${isChip(i) ? chips.get(i.id) : undefined} cwd=${isChip(i) ? session?.cwd : undefined} onChip=${ctrl.chip} imageUrl=${ctrl.imageUrl} onImage=${viewImage} connectors=${session?.connectors} onPrompt=${ctrl.prompt} running=${live && n === rows.length - 1 && i.kind === 'group'} fileUrl=${fileUrl} />`)}
         ${sending.map((m, n) => html`<${Row} key=${`sending${n}`} item=${{ kind: 'user', text: m.text, images: m.images, sending: true }} onImage=${viewImage} />`)}
       </ol>
-      <${Live} ctrl=${ctrl} box=${box} fileUrl=${fileUrl} />
+      <${Live} ctrl=${ctrl} box=${box} pin=${pin} fileUrl=${fileUrl} />
     </div>
     <button class="btn scroll-end" data-variant="outline" data-size="icon-sm" data-active=${away} type="button" inert=${!away} aria-label="Scroll to end" data-tip="Scroll to end" onClick=${toEnd}><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4v11.5M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   </div>`;

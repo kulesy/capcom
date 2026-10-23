@@ -77,15 +77,71 @@ export function useClock(on, since) {
   }, [on, since]);
 }
 
-export const atBottom = el => el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+// How near the end of a scroll box counts as being at it.
+export const NEAR_END = 8;
+export const gapBelow = el => el.scrollHeight - el.scrollTop - el.clientHeight;
 
-// Keeps a scroll box pinned to its bottom when it was within 80px of it before this render changed the page.
-// The measure runs in the render body because the DOM still has its old size there.
-export function useStick(box) {
-  const was = useRef(false);
-  if (box.current) was.current = atBottom(box.current);
+const EDITABLE = 'input, textarea, select, [contenteditable]';
+const SCROLL_UP_KEYS = ['ArrowUp', 'PageUp', 'Home'];
+const TOUCH_SLOP = 8;
+
+// Whether a box between `target` and `box` can still scroll up, so a scroll up there is its own and not the outer box's.
+function innerScrolls(target, box) {
+  for (let el = target; el && el !== box; el = el.parentElement) {
+    if (el.scrollTop > 0 && /auto|scroll/.test(getComputedStyle(el).overflowY)) return true;
+  }
+  return false;
+}
+
+// Whether a scroll box should stay at its end. A scroll up lets go, and coming back to the end holds again. Wheel, key and touch are
+// read as well as scroll because a render can pin the box between the input and its scroll event.
+export function usePin(box) {
+  const pin = useRef(true);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    let gap = 0;
+    let finger = 0;
+    const release = target => { if (el.scrollTop > 0 && !innerScrolls(target, el)) pin.current = false; };
+    // The gap below the view, not scrollTop, because a pin and a scroll up in one frame add up to a move down that still leaves a gap.
+    // A box that shrinks or grows taller keeps its gap, and a bounce past the end counts as no gap.
+    const scrolled = () => {
+      const now = Math.max(0, gapBelow(el));
+      if (now > gap + 0.5) pin.current = false;
+      else if (now <= NEAR_END) pin.current = true;
+      gap = now;
+    };
+    const wheeled = e => { if (e.deltaY < 0 && !e.ctrlKey && Math.abs(e.deltaX) <= Math.abs(e.deltaY)) release(e.target); };
+    const keyed = e => {
+      const up = SCROLL_UP_KEYS.includes(e.key) || (e.key === ' ' && e.shiftKey && e.target === el);
+      if (up && !e.defaultPrevented && !e.target.closest?.(EDITABLE)) release(e.target);
+    };
+    const touched = e => { finger = e.touches[0].clientY; };
+    const dragged = e => {
+      const y = e.touches[0].clientY;
+      if (y - finger > TOUCH_SLOP) release(e.target);
+      finger = Math.min(finger, y);
+    };
+    el.addEventListener('scroll', scrolled, { passive: true });
+    el.addEventListener('wheel', wheeled, { passive: true });
+    el.addEventListener('keydown', keyed);
+    el.addEventListener('touchstart', touched, { passive: true });
+    el.addEventListener('touchmove', dragged, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', scrolled);
+      el.removeEventListener('wheel', wheeled);
+      el.removeEventListener('keydown', keyed);
+      el.removeEventListener('touchstart', touched);
+      el.removeEventListener('touchmove', dragged);
+    };
+  }, []);
+  return pin;
+}
+
+// Puts the box at its end after every render while `pin` holds.
+export function useStick(box, pin) {
   useLayoutEffect(() => {
-    if (was.current && box.current) box.current.scrollTop = box.current.scrollHeight;
+    if (pin.current && box.current) box.current.scrollTop = box.current.scrollHeight;
   });
 }
 

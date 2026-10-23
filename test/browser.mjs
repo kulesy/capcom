@@ -165,10 +165,19 @@ export async function launch(chromium) {
       await call('Input.dispatchKeyEvent', { type: 'keyUp', ...which });
     }
 
+    const centre = selector => evaluate(`(r => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 }))(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
+
     async function click(selector) {
       await settled();
-      const { x, y } = await evaluate(`(r => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 }))(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect())`);
+      const { x, y } = await centre(selector);
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await call('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+
+    // One turn of the wheel over the middle of `selector`, a negative deltaY scrolling up.
+    async function wheel(selector, deltaY) {
+      await settled();
+      const { x, y } = await centre(selector);
+      await call('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY });
     }
 
     return {
@@ -177,6 +186,7 @@ export async function launch(chromium) {
       until,
       press,
       click,
+      wheel,
       close: async () => {
         problemsOf.delete(sessionId);
         await send('Target.closeTarget', { targetId });
