@@ -45,7 +45,7 @@ GhostShell lists the sessions you start in Claude Desktop, the routine runs and 
   </tr>
   <tr>
     <td width="50%" valign="top"><b>A terminal beside the chat</b><br>Run commands in the session&#39;s folder, or run a code block from a reply with one click. <a href="docs/terminal.md">Terminal</a></td>
-    <td width="50%" valign="top"><b>Routines without Desktop</b><br>GhostShell runs Desktop&#39;s routines on their schedules, so Desktop can stay closed. <a href="docs/routines.md">Routines</a></td>
+    <td width="50%" valign="top"><b>Routines without Desktop</b><br>GhostShell runs Desktop&#39;s routines on their schedules, so Desktop can stay closed, and you add, edit and delete them on its Routines page. <a href="docs/routines.md">Routines</a></td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>Desktop-style tools</b><br>Chips, widgets and questions from GhostShell&#39;s own MCP server, a chat for each group, and Claude in Chrome. <a href="docs/tools.md">Tools</a></td>

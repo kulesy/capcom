@@ -19,7 +19,7 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-15 | [Rewrite the front end on vendored Preact with htm, with no build step](20261015-preact-htm-front-end.md) | Accepted. Shipped 2026-10-15. |
 | 2026-10-15 | [Capcom keeps its own session layout, seeded once from Desktop's](20261015-own-session-layout-seeded-from-desktop.md) | Accepted, amended 2026-10-16, 2026-10-18, 2026-10-21, 2026-10-22 and 2026-10-23 |
 | 2026-10-15 | [Send pasted images as content blocks and show transcript images through an endpoint](20261015-images-in-the-prompt-box.md) | Accepted, amended 2026-10-17 |
-| 2026-10-15 | [Capcom runs routines itself, from Desktop's prompt files](20261015-capcom-runs-routines-itself.md) | Accepted |
+| 2026-10-15 | [Capcom runs routines itself, from Desktop's prompt files](20261015-capcom-runs-routines-itself.md) | Accepted, amended 2026-10-16 and 2026-10-24 |
 | 2026-10-16 | [Run the server under a small Capcom app, so macOS permissions belong to Capcom](20261016-capcom-app-for-macos-permissions.md) | Accepted |
 | 2026-10-16 | [Show Claude's live work from the CLI's stream, and ask the CLI for thinking summaries](20261016-live-work-from-the-cli-stream.md) | Accepted, amended 2026-10-19, 2026-10-21 and 2026-10-22 |
 | 2026-10-16 | [Show the CLI's own user turns as compact notices, from a closed list of known tags](20261016-notices-for-cli-written-user-turns.md) | Accepted, amended 2026-10-16 and 2026-10-23 |
@@ -39,3 +39,4 @@ One file per decision, named by the day the decision was made. A record that a l
 | 2026-10-23 | [Attach any file by saving it and mentioning its path](20261023-attach-files-by-path.md) | Accepted |
 | 2026-10-23 | [Run terminal commands on pipes with no PTY, and run `!` commands in GhostShell](20261023-terminal-without-a-pty.md) | Accepted |
 | 2026-10-23 | [Quote selected text into the prompt box, and send each quote as a blockquote](20261023-quote-selected-text.md) | Accepted |
+| 2026-10-24 | [Manage routines from a page, and keep the prompts GhostShell writes in its own folder](20261024-manage-routines-from-a-page.md) | Accepted |

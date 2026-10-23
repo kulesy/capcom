@@ -285,4 +285,4 @@ In the projects sidebar the up and down arrows, Home and End move between the vi
 
 ## Routine rows
 
-Routines open their latest run with a click. The arrow at the end of a routine's row folds its earlier runs out underneath. Runs that GhostShell starts itself (see [routines](routines.md)) list there with the routine's title, beside Desktop's runs of the same routine.
+Routines open their latest run with a click. The arrow at the end of a routine's row folds its earlier runs out underneath. A routine's right-click and ... menus have Run now, Pause or Resume, Edit and Delete, and the calendar button on the Routines heading opens the [Routines page](routines.md#the-routines-page). Runs that GhostShell starts itself (see [routines](routines.md)) list there with the routine's title, beside Desktop's runs of the same routine.
