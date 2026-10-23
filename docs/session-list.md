@@ -28,6 +28,8 @@ A session's row is one line on a mouse, as in Claude Desktop: the title, and a m
 
 A row that needs nothing shows none. GhostShell reads Desktop's unread marks, read only, so a session you read only in GhostShell stays unread in Desktop. On a mouse a row's text is grey, and darkens on the open chat's row and under the pointer.
 
+A folded family's head shows the most urgent mark in its family when that is more urgent than its own, so an amber mark on a folded parent means a session under it needs you. The fold arrow's name and tip say so, as "4 nested sessions, 1 waiting on you".
+
 ### Running turns
 
 A row whose turn is running also shows how long that turn has run, left of the mark and of any fold arrow, for a chat GhostShell runs and for one Desktop or a terminal runs. The open chat's row keeps time with its status line. Other rows pick up a turn's start and end on the list's next load, up to 15 seconds later.
@@ -100,6 +102,14 @@ Nesting goes one level deep: a session that holds others takes them along when y
 A nested session shows in its parent's place, with the parent's group or pin, and counts in that section and project.
 
 The arrow on a parent's row folds its nested sessions. Every family starts open, and the browser remembers which are folded. In a list sorted by last turn a family sorts by its most recent session, so a busy nested session keeps its parent near the top.
+
+### Sub session status
+
+A chat with sessions under it has a Sub sessions tab in its side panel, ahead of Terminal and File. The panel opens on that tab by itself in a window with room for it beside the chat, until you open or close the panel yourself. On a phone or in a narrow window, the list button in the chat's header opens it. That button shows an amber mark while any session below the chat needs you.
+
+The tab lists the sessions under the chat at every depth, so a side chat of a side chat shows there although the list nests one level. The ones that need you come first, then the ones working and the recent ones, with idle ones in a fold. Each line has the session's mark, its title as a link to it, when it last moved, the first sentence of its latest reply and a roll-up of the sessions under it, such as "2 sub sessions, 1 waiting on you". A waiting line also says what it waits for. The arrow on a line opens its latest reply in full and the sessions under it, as lines of the same kind. A line at the top of the tab rolls up every level.
+
+GhostShell reads each line's latest reply from the session's transcript, for the lines on show alone, and keeps it until the transcript changes. No model is asked, so the tab costs no tokens. A chat's model can read the same status with two tools of its own ([Sub sessions](tools.md#sub-sessions)). [The decision record](adr/20261023-roll-sub-session-status-up.md) has the detail.
 
 ### Taking a session out
 

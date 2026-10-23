@@ -41,6 +41,8 @@ Capcom allows its own tools by exact name, with no approval card.
 
 **Amended 2026-10-23, group sessions.** A group's own chat gets three more tools, listed to that chat alone: `list_group_sessions`, `read_group_session` and `start_group_session`. They reach that group's sessions only. The two that read run with no card in that chat, and starting a session always asks, in Bypass and Auto too, with no Always allow, as do the CLI's `Bash`, `Monitor`, file edits and `SendMessage` in that chat. A tool call can now be answered later, as a start waits for the CLI to name the new session. See [Give each group a session of its own](20261023-a-session-for-each-group.md).
 
+**Amended 2026-10-23, sub sessions.** Every chat that is no group's own gets two more tools: `list_sub_sessions` and `read_sub_session`. They reach the sessions below that chat at any depth and no others, and both run with no card since they only read (see [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md)).
+
 ### Consequences
 
 - ✅ Chips, chapters and widgets work in Capcom. The owner can also start chips that Desktop sessions made.
@@ -71,3 +73,4 @@ Capcom allows its own tools by exact name, with no approval card.
 - [Claude in Chrome on by default](20261015-claude-in-chrome-on-by-default.md), a Desktop tool the CLI provides with a flag
 - [Capcom is the only client](20261015-capcom-is-the-only-client.md)
 - [Give each group a session of its own](20261023-a-session-for-each-group.md), amended this record 2026-10-23
+- [Roll a session's sub session status up to every parent](20261023-roll-sub-session-status-up.md), amended this record 2026-10-23
