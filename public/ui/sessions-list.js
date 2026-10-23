@@ -8,7 +8,7 @@ import { HOME } from './env.js';
 import { clean, NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
 import { GroupChatButton } from './group-button.js';
-import { supportsGroups } from './group-rules.js';
+import { deleteDetail, supportsGroupEdits, supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -668,6 +668,13 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     setBack(moved ? [beside && headOf(beside), '.add'].filter(Boolean) : [headOf(g.id)]);
   }
 
+  // A group moved up or down is drawn somewhere else by the new order, so the focus follows its header.
+  async function orderGroup(g, beside, side) {
+    const moved = await change('api/layout/group/order', { id: g.id, [side]: beside });
+    if (moved) say(`Moved “${g.name}” ${side === 'before' ? 'up' : 'down'}.`);
+    setBack([headOf(g.id)]);
+  }
+
   async function addProject(name, away) {
     const { problem, made } = await edit('api/layout/project/add', { name });
     if (!made) return problem || 'Could not add the project.';
@@ -702,6 +709,26 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     });
   }
 
+  // Asks before a group goes, and says what happens to its sessions and its chat. Cancel has the focus, so Enter does no harm. A deleted
+  // group's chat is left for the list, and the focus goes to the header beside it, or to the + button.
+  function deleteGroup(g) {
+    const beside = neighbour(groupsIn(ix, view).map(x => x.id), g.id);
+    ask({
+      action: 'Delete group',
+      title: g.name,
+      detail: deleteDetail(g),
+      back: () => box.current.querySelector(headOf(g.id)) ?? nav.current.querySelector('.add'),
+      run: async () => {
+        const onScreen = [`#/g/${encodeURIComponent(g.id)}`, g.session && `#/s/${encodeURIComponent(g.session.id)}`].includes(location.hash);
+        const gone = await change('api/layout/group/remove', { id: g.id });
+        if (!gone) return;
+        if (onScreen) location.hash = '#/';
+        say(`Deleted “${g.name}”${gone.stopped ? ' and stopped its chat' : ''}.`);
+        setBack([beside && headOf(beside), '.add'].filter(Boolean));
+      },
+    });
+  }
+
   const tree = {
     form,
     shown,
@@ -714,8 +741,20 @@ export function SessionList({ ix, projects, error, current, place, nest, edit, a
     newGroup: (p, back) => { projects.pick(p.id); setForm({ kind: 'group', project: p.id, back }); },
     sessionForm: r => html`<${NameForm} label="Rename session" value=${form.sent ?? r.title} was=${r.title} max=${TITLE_MAX} onCancel=${away => closeFormAway(away, rowOf(r.id))} onSubmit=${(text, away) => renameRow(r, text, away)} />`,
     groupMenu: g => {
-      const to = moveTargets(ix.projects, g);
-      return to.length ? { label: `Move ${g.name}`, items: to.map(t => ({ label: t.label, run: () => moveGroup(g, t.project) })) } : null;
+      const moves = moveTargets(ix.projects, g).map(t => ({ label: t.label, run: () => moveGroup(g, t.project) }));
+      if (!supportsGroupEdits(ix)) return moves.length ? { label: `Move ${g.name}`, items: moves } : null;
+      const ids = groupsIn(ix, view).map(x => x.id);
+      const at = ids.indexOf(g.id);
+      // Each part has its icons so the labels line up, and a part that is empty leaves no separator behind.
+      const parts = [
+        [
+          ...(at > 0 ? [{ label: 'Move up', icon: icons.arrowUp, run: () => orderGroup(g, ids[at - 1], 'before') }] : []),
+          ...(at >= 0 && at < ids.length - 1 ? [{ label: 'Move down', icon: icons.arrowDown, run: () => orderGroup(g, ids[at + 1], 'after') }] : []),
+        ],
+        moves.map(m => ({ ...m, icon: icons.folderInput })),
+        [{ label: 'Delete group', icon: icons.trash, danger: true, run: () => deleteGroup(g) }],
+      ].filter(part => part.length);
+      return { label: `Actions for ${g.name}`, items: parts.flatMap((part, n) => (n ? [{ separator: true }, ...part] : part)) };
     },
     projectMenu: p => ({
       label: `Actions for ${p.name}`,

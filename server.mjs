@@ -127,7 +127,9 @@ function buildIndex({ archived = false } = {}) {
     rows.set(r.id, { ...r, source: 'desktop', lastActivityAt: Math.max(Date.parse(r.lastActivityAt) || r.lastActivityAt || 0, t.mtime), sortAt: Math.max(r.sortKey, edgeOf(r.id)), state: stateOf(r.id, t.mtime) });
   }
   const cutoff = now - cfg.otherDays * 86400_000;
-  const groupSessionIds = new Set(own.groups.filter(g => g.session).map(g => g.session));
+  // A deleted group's chat is kept in `retired` and stays a group's session, so it is out of every list and keeps the group chat's protections.
+  const ownedChats = [...own.groups, ...own.retired].filter(g => g.session);
+  const groupSessionIds = new Set(ownedChats.map(g => g.session));
   for (const t of files.values()) {
     if (rows.has(t.id) || (t.mtime < cutoff && !started.has(t.id) && !groupSessionIds.has(t.id))) continue;
     const head = readHead(t, uploads.dir);
@@ -163,7 +165,7 @@ function buildIndex({ archived = false } = {}) {
   // A group's session belongs to its group alone, so its row leaves `rows` here and no list, family, count or search sees it. A session
   // with no transcript yet gets a row from the layout.
   const groupSessions = new Map();
-  for (const g of own.groups.filter(g => g.session)) {
+  for (const g of ownedChats) {
     const row = rows.get(g.session) ?? { lastActivityAt: 0, sortAt: 0, createdAt: 0, state: stateOf(g.session, 0) };
     rows.delete(g.session);
     groupSessions.set(g.session, { ...row, id: g.session, title: g.name, cwd: groupDir(cfg.stateDir, g.id), branch: row.branch ?? '', archived: false, routine: null, source: 'capcom', group: null, pinned: false, parent: null, via: null, groupSession: g.id });
@@ -658,6 +660,16 @@ function nest(id, parent) {
   return { parent: buildIndex().rows.get(id).parent };
 }
 
+// A group's own chat is retired with the group, and one Capcom runs is stopped as archiving it would stop it, after the layout is written.
+function removeGroup(id) {
+  const group = layout.removeGroup(id);
+  const chat = group.session ? getChat(group.session) : undefined;
+  const stopped = !!chat && chat.state !== 'idle';
+  if (stopped) chat.interrupt();
+  chat?.stop();
+  return { ...group, ...(stopped && { stopped: true }) };
+}
+
 // Projects and groups change by POST only, each with a JSON body, and a GET to these paths is a 404 that changes nothing.
 const STRUCTURE = new Map([
   ['/api/layout/project/add', b => layout.addProject(b.name)],
@@ -665,6 +677,8 @@ const STRUCTURE = new Map([
   ['/api/layout/project/remove', b => layout.removeProject(b.id)],
   ['/api/layout/group/add', b => layout.addGroup(b.name, b.project ?? null)],
   ['/api/layout/group/move', b => layout.moveGroup(b.id, b.project ?? null)],
+  ['/api/layout/group/order', b => layout.orderGroup(b.id, { before: b.before, after: b.after })],
+  ['/api/layout/group/remove', b => removeGroup(b.id)],
 ]);
 
 async function editStructure(req, res, change) {
@@ -827,8 +841,8 @@ async function api(req, res, u) {
       delete r.errorAt;
       delete r.sortKey;
     }
-    // Tells a page that it is talking to a server that knows group sessions, which an older one cannot say.
-    return send(res, 200, { ...index, features: { groupSessions: true } });
+    // Tells a page which of these a server knows, which an older one cannot say: group sessions, and deleting and ordering groups.
+    return send(res, 200, { ...index, features: { groupSessions: true, groupEdits: true } });
   }
   // Archived sessions are left out of the list and found through search, newest archived first. Desktop does not record when it
   // archived a session, but archiving rewrites its record, so the record's file time stands in. With ?group= only that group's.

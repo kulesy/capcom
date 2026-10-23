@@ -47,6 +47,9 @@ export function summaryOf(buckets, archived = buckets.archived.length) {
 // A server that can run group sessions says so on the list. An older one cannot, so the page shows nothing for them until it does.
 export const supportsGroups = ix => !!ix?.features?.groupSessions;
 
+// A server that can delete and order groups says so too. Against an older one the group menu keeps only its moves between projects.
+export const supportsGroupEdits = ix => !!ix?.features?.groupEdits;
+
 export const groupById = (ix, id) => ix?.groups.find(g => g.id === id) ?? null;
 
 // The group whose own session this is, or null. A link to that session opens the group.
@@ -61,6 +64,18 @@ export function paneOf(ix, id) {
 
 // The state that lights a group's button in the sidebar: its session at work or waiting for the owner, else none.
 export const litState = session => (session?.state === 'working' || session?.state === 'waiting' ? session.state : null);
+
+// What the question before a group is deleted says: where its sessions go, what happens to its chat, and that nothing is deleted. The
+// count is the one the group's header shows.
+export function deleteDetail(group) {
+  const count = membersOf(group).length;
+  const lit = litState(group.session);
+  return [
+    count ? `${count === 1 ? '1 session becomes' : `${count} sessions become`} ungrouped.` : 'It has no sessions.',
+    ...(group.session ? [lit ? `Its chat is ${lit === 'waiting' ? 'waiting for you' : 'working'}, so it stops, and is hidden with its transcript kept.` : 'Its chat is hidden, and its transcript is kept.'] : []),
+    ...(count || group.session ? ['No session is deleted.'] : []),
+  ].join(' ');
+}
 
 // A fold kept per group: a group is in the map only while it is not in its usual state, so the browser keeps no entry for the rest.
 export function flipped(all, id) {

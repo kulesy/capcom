@@ -49,8 +49,8 @@ const freePort = () => new Promise(resolve => {
 // Started on `late-no-fast-by-the-fake` it refuses that request too, but holds the refusal until it is sent anything after 'begin a session'.
 // Sent 'finish the turn with fast mode off' it ends the turn as 'finish the turn' does, with a result that reports fast mode off.
 // Sent 'begin a session', or a message that opens with a file mention (as text, or as the text block beside pictures or documents), it names its session, sent 'ask for approval' it asks to run a command, sent 'finish the turn' it ends the turn and stays open, and
-// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, and it exits when its input closes. A request for the
-// context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
+// sent 'fail the turn' it ends the turn with an error. It never answers an interrupt, but copies layout.json as it is then to layout-at-interrupt.json in
+// the home, and it exits when its input closes. A request for the context usage is answered from the `summary` or `full` entry of context-usage.json in the home, or with an error if there is none.
 // Started with --session-id it names that session, writes its transcript on the first message, and exits at once if there already is one, as the real
 // CLI does. Sent 'call <tool> <json>' it calls that tool of Capcom's own server, sent 'list the tools' it lists them, and sent 'ask to start a session'
 // or 'ask to list the group' it asks to use the tool of that name. The log has the folder it started in, and the reply to each such request as `mcp`.
@@ -155,6 +155,7 @@ function furnish(home, state, { sessions = [], groups = [], layout = {}, claude 
     "    const m = JSON.parse(line);",
     "    if (begun) held.splice(0).forEach(say);",
     "    if (m.type === 'control_request') note({ control: m.request.subtype, ...(m.request.subtype === 'get_context_usage' && { detail: m.request.detail }) });",
+    `    if (m.type === 'control_request' && m.request.subtype === 'interrupt') fs.copyFileSync(${JSON.stringify(path.join(state, 'layout.json'))}, ${JSON.stringify(path.join(home, 'layout-at-interrupt.json'))});`,
     `    if (m.type === 'control_request' && m.request.subtype === 'initialize') say({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: ${JSON.stringify(CLI_COMMANDS)}, models: ${JSON.stringify(CLI_MODELS)} } } });`,
     "    if (m.type === 'control_request' && m.request.subtype === 'get_context_usage') {",
     `      const usage = fs.existsSync(${JSON.stringify(usageFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(usageFile)}, 'utf8'))[m.request.detail] : null;`,

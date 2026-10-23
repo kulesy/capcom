@@ -290,3 +290,76 @@ test('a group deleted by hand while its chat runs takes its tools with it', asyn
   const reply = await callTool(s, token, WORK, 'list_group_sessions', {});
   assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
 });
+
+const removeGroup = (s, token, id) => post(s, token, '/api/layout/group/remove', { id });
+const stateOfWork = async (s, token) => (await get(s, token, '/api/sessions')).groups.find(g => g.id === 'cg-work').session.state;
+const touched = s => cliCalls(s).filter(c => c.response || c.control === 'interrupt' || c.closed);
+// The layout as the fake CLI found it when the interrupt reached it, which shows whether the server had written it by then.
+const layoutAtInterrupt = s => JSON.parse(fs.readFileSync(path.join(s.home, 'layout-at-interrupt.json'), 'utf8'));
+const RETIRED = [{ id: 'cg-work', name: 'Work', session: WORK }];
+
+test('deleting a group whose chat is mid-turn writes the layout, then interrupts and closes the chat, and the chat is retired, not archived', async () => {
+  const { s, token } = await booked();
+  await sendTo(s, token, WORK, 'keep going');
+  await until(() => cliCalls(s).some(c => c.user === 'keep going'));
+  assert.equal(await stateOfWork(s, token), 'working');
+
+  const res = await removeGroup(s, token, 'cg-work');
+  assert.deepEqual(res.body(), { id: 'cg-work', name: 'Work', session: WORK, stopped: true });
+  await until(() => cliCalls(s).some(c => c.closed));
+  assert.deepEqual(touched(s), [{ control: 'interrupt' }, { closed: true }]);
+  const atInterrupt = layoutAtInterrupt(s);
+  assert.deepEqual([atInterrupt.groups.map(g => g.id), atInterrupt.retired], [['cg-home'], RETIRED], 'the layout was already written when the interrupt arrived');
+  const layout = onDisk(s);
+  assert.deepEqual([layout.groups.map(g => g.id), layout.retired, layout.archived, layout.titles], [['cg-home'], RETIRED, {}, {}]);
+  assert.equal(JSON.stringify((await get(s, token, '/api/archived')).archived).includes(WORK), false, 'it is not in the archive');
+  assert.equal(fs.existsSync(path.join(s.state, 'groups', 'cg-work')), true, 'the group\'s folder is left');
+});
+
+test('deleting a group whose chat waits on an approval denies it first, and one whose chat is idle closes it and says it stopped nothing', async () => {
+  const waiting = await booked();
+  await sendTo(waiting.s, waiting.token, WORK, 'ask for approval');
+  await until(async () => (await stateOfWork(waiting.s, waiting.token)) === 'waiting');
+  assert.equal((await removeGroup(waiting.s, waiting.token, 'cg-work')).body().stopped, true);
+  await until(() => cliCalls(waiting.s).some(c => c.closed));
+  assert.deepEqual(touched(waiting.s), [{ response: 'deny', requestId: 'perm-1' }, { control: 'interrupt' }, { closed: true }]);
+  assert.deepEqual(layoutAtInterrupt(waiting.s).retired, RETIRED, 'the layout was written before the interrupt here too');
+
+  const calm = await booked();
+  await sendTo(calm.s, calm.token, WORK, 'finish the turn');
+  await until(async () => (await stateOfWork(calm.s, calm.token)) === 'idle' && cliCalls(calm.s).some(c => c.user === 'finish the turn'));
+  assert.deepEqual((await removeGroup(calm.s, calm.token, 'cg-work')).body(), { id: 'cg-work', name: 'Work', session: WORK });
+  await until(() => cliCalls(calm.s).some(c => c.closed));
+  assert.deepEqual(touched(calm.s), [{ closed: true }], 'no interrupt');
+});
+
+test('deleting a group that was booked but never talked to, or has no session, starts and stops nothing, and retires only a session there is', async () => {
+  const { s, token } = await booked();
+  assert.deepEqual((await removeGroup(s, token, 'cg-work')).body(), { id: 'cg-work', name: 'Work', session: WORK });
+  assert.deepEqual((await removeGroup(s, token, 'cg-home')).body(), { id: 'cg-home', name: 'Home' });
+  assert.deepEqual(cliCalls(s), []);
+  const layout = onDisk(s);
+  assert.deepEqual([layout.groups, layout.retired, layout.archived, layout.titles], [[], RETIRED, {}, {}]);
+});
+
+test('after its group is deleted, a chat that is sent a message after a restart still starts with the group chat\'s folder, settings sources and approvals, and its group tools refuse', async () => {
+  const first = await booked();
+  await sendTo(first.s, first.token, WORK, 'begin a session');
+  await until(() => startsOf(first.s).length === 1);
+  assert.equal((await removeGroup(first.s, first.token, 'cg-work')).status, 200);
+  await until(() => cliCalls(first.s).some(c => c.closed));
+
+  const s = await restart(first.s);
+  const { token } = await signIn(s);
+  const reply = await callTool(s, token, WORK, 'list_group_sessions', {});
+  assert.equal(startsOf(s).length, 2);
+  const { started, cwd } = startsOf(s)[1];
+  assert.equal(flagOf(started, '--resume'), WORK, 'its transcript is kept, so it resumes');
+  assert.equal(flagOf(started, '--setting-sources'), 'user', 'a settings file in its folder is still never loaded');
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')).permissions.ask.slice(-7), ['mcp__capcom__start_group_session', 'Bash', 'Monitor', 'Write', 'Edit', 'NotebookEdit', 'SendMessage']);
+  assert.match(flagOf(started, '--append-system-prompt'), /^You are the session for the group "Work" in GhostShell\./);
+  assert.equal(fs.realpathSync(cwd), fs.realpathSync(path.join(s.state, 'groups', 'cg-work')));
+  assert.deepEqual(reply.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
+  const bare = await post(s, token, '/api/chips/start', { sessionId: WORK, toolUseId: 'toolu_gone', title: 'Follow up', prompt: 'begin a session' });
+  assert.deepEqual([bare.status, bare.body().error], [400, 'This chip names no folder, and a group\'s session has none of its own. Ask it to suggest the task again with a folder.'], 'a chip from it never falls back to its folder');
+});

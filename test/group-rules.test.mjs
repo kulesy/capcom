@@ -1,7 +1,7 @@
 // Run with `npm test`. How a group's sessions fall into the parts of its panel and of the list tool, and the summary line over them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUCKETS, bucketOf, bucketsOf, flipped, groupById, groupOfSession, litState, membersOf, paneOf, RECENT_MS, summaryOf, supportsGroups } from '../public/ui/group-rules.js';
+import { BUCKETS, bucketOf, bucketsOf, deleteDetail, flipped, groupById, groupOfSession, litState, membersOf, paneOf, RECENT_MS, summaryOf, supportsGroupEdits, supportsGroups } from '../public/ui/group-rules.js';
 
 const NOW = Date.parse('2026-10-23T06:00:00.000Z');
 const row = (id, state, ago, extra) => ({ id, state, lastActivityAt: NOW - ago, ...extra });
@@ -47,6 +47,30 @@ test('a server says it can run group sessions on the list, and one that does not
   assert.equal(supportsGroups(ix({ groupSessions: true })), true);
   for (const features of [undefined, {}, { groupSessions: false }]) assert.equal(supportsGroups(ix(features)), false);
   assert.equal(supportsGroups(null), false);
+});
+
+test('a server says it can delete and order groups on the list, and one that does not say so cannot, whatever else it says', () => {
+  assert.equal(supportsGroupEdits(ix({ groupEdits: true })), true);
+  assert.equal(supportsGroupEdits(ix({ groupSessions: true, groupEdits: true })), true);
+  for (const features of [undefined, {}, { groupSessions: true }, { groupEdits: false }]) assert.equal(supportsGroupEdits(ix(features)), false);
+  assert.equal(supportsGroupEdits(null), false);
+});
+
+test('the question before a group is deleted counts the sessions its header counts, nested ones included, and says what becomes of its chat', () => {
+  const kid = row('k', 'idle', 1);
+  const members = (...rows) => ({ sessions: rows });
+  assert.equal(deleteDetail({ ...members(), session: null }), 'It has no sessions.');
+  assert.equal(deleteDetail({ ...members(row('a', 'idle', 1)), session: null }), '1 session becomes ungrouped. No session is deleted.');
+  assert.equal(deleteDetail({ ...members(row('a', 'idle', 1, { children: [kid, kid] }), row('b', 'idle', 2)), session: null }), '4 sessions become ungrouped. No session is deleted.');
+  assert.equal(deleteDetail({ ...members(row('a', 'idle', 1)), session: { id: 's', state: 'idle' } }), '1 session becomes ungrouped. Its chat is hidden, and its transcript is kept. No session is deleted.');
+  assert.equal(deleteDetail({ ...members(), session: { id: 's', state: 'active' } }), 'It has no sessions. Its chat is hidden, and its transcript is kept. No session is deleted.');
+});
+
+test('the question says a chat that works or waits stops, and says nothing of it for a chat that does not', () => {
+  const group = state => ({ sessions: [row('a', 'idle', 1), row('b', 'idle', 2)], session: { id: 's', state } });
+  assert.equal(deleteDetail(group('working')), '2 sessions become ungrouped. Its chat is working, so it stops, and is hidden with its transcript kept. No session is deleted.');
+  assert.equal(deleteDetail(group('waiting')), '2 sessions become ungrouped. Its chat is waiting for you, so it stops, and is hidden with its transcript kept. No session is deleted.');
+  for (const state of ['idle', 'active']) assert.doesNotMatch(deleteDetail(group(state)), /stops/);
 });
 
 test('a group is found by its id, and the group whose own session an id is by that session', () => {

@@ -3,8 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
 import { writePassword } from '../lib/auth.mjs';
-import { as, request, signIn, start } from './harness.mjs';
+import { as, request, restart, signIn, start } from './harness.mjs';
 
 const GROUPS = [{ id: 'cg-a', name: 'Reviewing' }, { id: 'cg-b', name: 'Backlog' }, { id: 'cg-c', name: 'Notes' }];
 const SESSIONS = [
@@ -134,6 +135,77 @@ test('deleting a project returns its groups to the top level and loses no group,
   assert.deepEqual(disk.groups.map(g => g.id), before.groups.map(g => g.id));
 });
 
+test('deleting a group puts its sessions back to ungrouped, archived ones and a family too, and deletes no session, pin, transcript or folder', async () => {
+  const { s, token } = await ready({ sessions: [...SESSIONS, { id: 's5', title: 'Archived in reviewing', group: 'cg-a', archived: true, ago: 5 }, { id: 's6', title: 'Child of one', parent: 's1', ago: 6 }] });
+  const folder = path.join(s.state, 'groups', 'cg-a');
+  fs.mkdirSync(folder, { recursive: true });
+  const before = await index(s, token);
+  assert.deepEqual(before.groups.map(g => [g.id, g.sessions.map(r => r.title), g.archived]), [['cg-a', ['In reviewing'], 1], ['cg-b', ['In backlog'], 0], ['cg-c', [], 0]]);
+
+  const removed = await post(s, token, 'group/remove', { id: 'cg-a' });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body(), { id: 'cg-a', name: 'Reviewing' });
+  const after = await index(s, token);
+  assert.deepEqual(after.groups.map(g => g.id), ['cg-b', 'cg-c']);
+  assert.deepEqual(kept(after), { 'cg-b': ['In backlog'], 'cg-c': [] });
+  assert.deepEqual(after.ungrouped.map(r => [r.title, (r.children ?? []).map(c => c.title)]), [['In reviewing', ['Child of one']], ['In no group', []]], 'the family stays together');
+  assert.deepEqual(after.pinned.map(r => r.title), ['Pinned']);
+  assert.deepEqual(onDisk(s).assignments, { s2: 'cg-b' });
+  const archived = (await request(s, 'GET', '/api/archived', { headers: as(token) })).body().archived;
+  assert.deepEqual(archived.map(r => r.title), ['Archived in reviewing'], 'an archived member stays archived');
+  assert.equal(fs.existsSync(folder), true);
+  for (const id of ['s1', 's2', 's3', 's4', 's5', 's6']) assert.equal(fs.existsSync(path.join(s.home, '.claude', 'projects', '-test-folder', `${id}.jsonl`)), true, id);
+  assert.equal((await post(s, token, 'group/remove', { id: 'cg-a' })).status, 404, 'a second delete finds nothing');
+});
+
+test('a group is ordered before or after another in its view, and the list follows the file', async () => {
+  const { s, token } = await ready();
+  const project = (await post(s, token, 'project/add', { name: 'A' })).body();
+  const [one, two] = [(await post(s, token, 'group/add', { name: 'One', project: project.id })).body(), (await post(s, token, 'group/add', { name: 'Two', project: project.id })).body()];
+  const order = async () => (await index(s, token)).groups.map(g => g.id);
+  assert.deepEqual(await order(), ['cg-a', 'cg-b', 'cg-c', one.id, two.id]);
+
+  const moved = await post(s, token, 'group/order', { id: 'cg-c', before: 'cg-a' });
+  assert.equal(moved.status, 200);
+  assert.deepEqual(moved.body(), { id: 'cg-c', name: 'Notes' });
+  assert.deepEqual(await order(), ['cg-c', 'cg-a', 'cg-b', one.id, two.id]);
+  assert.equal((await post(s, token, 'group/order', { id: 'cg-c', after: 'cg-b' })).status, 200);
+  assert.deepEqual(await order(), ['cg-a', 'cg-b', 'cg-c', one.id, two.id]);
+  assert.equal((await post(s, token, 'group/order', { id: two.id, before: one.id })).status, 200);
+  assert.deepEqual(await order(), ['cg-a', 'cg-b', 'cg-c', two.id, one.id], 'a project\'s groups are ordered among themselves');
+
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const across = await post(s, token, 'group/order', { id: 'cg-a', after: two.id });
+  assert.equal(across.status, 400);
+  assert.match(across.body().error, /different views/);
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+  assert.deepEqual(places(await index(s, token)), { 'cg-a': null, 'cg-b': null, 'cg-c': null, [one.id]: project.id, [two.id]: project.id });
+});
+
+test('a group copied from Desktop and then deleted does not come back when the server restarts, though Desktop still lists it', async () => {
+  const { s } = await ready();
+  const config = path.join(s.home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  const desktop = JSON.parse(fs.readFileSync(config, 'utf8'));
+  desktop.preferences.epitaxyPrefs['dframe-group-scopes'] = { scope: { groups: [{ id: 'dg-a', name: 'From Desktop' }, { id: 'dg-b', name: 'Also Desktop' }], assignments: { local_s1: 'dg-a' } } };
+  fs.writeFileSync(config, JSON.stringify(desktop));
+  const listed = fs.readFileSync(config, 'utf8');
+  fs.writeFileSync(s.layout, JSON.stringify({ seededAt: null, groups: [], pinned: ['s3'], assignments: {} }));
+
+  const first = await restart(s);
+  const { token } = await signIn(first);
+  assert.deepEqual((await index(first, token)).groups.map(g => g.id), ['dg-a', 'dg-b'], 'the first start copies Desktop\'s groups');
+  assert.deepEqual(kept(await index(first, token)), { 'dg-a': ['In reviewing'], 'dg-b': [] });
+  assert.equal((await post(first, token, 'group/remove', { id: 'dg-a' })).status, 200);
+
+  const second = await restart(first);
+  const again = await signIn(second);
+  const ix = await index(second, again.token);
+  assert.deepEqual(ix.groups.map(g => g.id), ['dg-b']);
+  assert.deepEqual(ix.ungrouped.map(r => r.title), ['In reviewing', 'In backlog', 'In no group'], 'its session is ungrouped and not put back in it');
+  assert.notEqual(onDisk(second).seededAt, null);
+  assert.equal(fs.readFileSync(config, 'utf8'), listed, 'Desktop\'s own file is as it was');
+});
+
 test('a refused edit says why and writes nothing', async () => {
   const { s, token } = await ready({ layout: { projects: [{ id: 'cp-x', name: 'Capcom' }] } });
   const before = fs.readFileSync(s.layout, 'utf8');
@@ -153,6 +225,14 @@ test('a refused edit says why and writes nothing', async () => {
     ['group/move', { id: 'cg-none', project: null }, 404, /Unknown group/],
     ['group/move', { id: 'cp-x' }, 404, /Unknown group/],
     ['group/move', { id: 'cg-a', project: 'cp-none' }, 404, /Unknown project/],
+    ['group/remove', {}, 404, /Unknown group/],
+    ['group/remove', { id: 'cp-x' }, 404, /Unknown group/],
+    ['group/remove', { id: 'cg-none' }, 404, /Unknown group/],
+    ['group/order', { id: 'cg-a' }, 400, /before or after one other/],
+    ['group/order', { id: 'cg-a', before: 'cg-b', after: 'cg-c' }, 400, /before or after one other/],
+    ['group/order', { id: 'cg-a', before: 'cg-a' }, 400, /another group/],
+    ['group/order', { id: 'cg-none', before: 'cg-a' }, 404, /Unknown group/],
+    ['group/order', { id: 'cg-a', after: 'cg-none' }, 404, /Unknown group/],
   ];
   for (const [url, body, status, message] of refusals) {
     const res = await post(s, token, url, body);
@@ -178,7 +258,7 @@ test('a layout file that cannot be read is reported, and no project is written o
 test('only a signed-in POST from this site changes anything, and a GET to these paths never does', async () => {
   const { s, token } = await ready({ layout: { projects: [{ id: 'cp-x', name: 'Capcom' }] } });
   const before = fs.readFileSync(s.layout, 'utf8');
-  const urls = ['project/add', 'project/rename', 'project/remove', 'group/add', 'group/move'];
+  const urls = ['project/add', 'project/rename', 'project/remove', 'group/add', 'group/move', 'group/order', 'group/remove'];
   const body = { id: 'cp-x', name: 'Changed', project: 'cp-x' };
   for (const url of urls) {
     assert.equal((await request(s, 'GET', `/api/layout/${url}?id=cp-x&name=Changed&project=cp-x`, { headers: as(token) })).status, 404, `GET ${url}`);

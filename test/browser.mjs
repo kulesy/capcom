@@ -120,7 +120,8 @@ export async function launch(chromium) {
     fs.rm(profile, { recursive: true, force: true, maxRetries: 3 }, () => {});
   }
 
-  async function open(url) {
+  // `phone` is a narrow screen touched by a finger: no hover, a coarse pointer and a mobile viewport.
+  async function open(url, { phone = false } = {}) {
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const problems = [];
@@ -130,7 +131,8 @@ export async function launch(chromium) {
     await call('Page.enable');
     // The page keeps the focus whichever tab the browser has in front, so the focus it hands out can be read back.
     await call('Emulation.setFocusEmulationEnabled', { enabled: true });
-    await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+    await call('Emulation.setDeviceMetricsOverride', phone ? { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } : { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+    if (phone) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
     const { errorText } = await call('Page.navigate', { url });
     if (errorText) throw new Error(`${url} did not load: ${errorText}`);
 

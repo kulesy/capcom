@@ -53,6 +53,8 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 
 **Amended 2026-10-23.** A group can hold `session`, the CLI session id of its own chat, booked the first time the owner opens that chat. A value that is not a UUID, or that an earlier group already holds, is dropped as the file is read and the group stays. That chat is in none of the lists, and the layout routes refuse to move, pin, rename, archive or nest it. See [Give each group a session of its own](20261023-a-session-for-each-group.md).
 
+**Amended 2026-10-23, deleted groups.** `layout.json` gains `retired`, a list of `{ id, name, session }`, one for each deleted group that had a chat. Deleting a group moves its chat there and writes nothing to `archived`, `unarchived` or `titles`. A chat in `retired` is a group's session of a group that is gone, so it stays in none of the lists and keeps the group chat's folder and tool protections, and its transcript is kept. An entry with no id or no session UUID is dropped as the file is read. See [Let groups sit under projects, and make every change from a menu](20261016-projects-above-groups.md) and [Give each group a session of its own](20261023-a-session-for-each-group.md).
+
 **Amended 2026-10-23.** Every group lists its sessions by title again, A to Z, whatever Desktop holds for it. It uses Desktop's title comparison, `localeCompare`, so 10 sorts before 2, and there is no emoji rule. A family goes by its head's title. The other lists still follow their Desktop sorts. See [Order each list and mark each row as Claude Desktop does](20261022-list-order-and-row-marks.md).
 
 ### Consequences
@@ -62,7 +64,7 @@ Chosen option: "Keep Capcom's own layout, seeded once from Desktop's", because i
 - ✅ The owner can archive any session from Capcom, on a phone too, and bring one back without sending it a message.
 - ✅ The owner can rename any session from Capcom, on a phone too, and a rename touches neither Desktop's files nor a transcript.
 - ❌ Desktop's later changes to its groups and pins do not reach Capcom, so the two layouts drift apart from the first start.
-- ❌ Capcom has no screen yet to rename, delete or reorder groups. Until it has, the owner edits `layout.json`. It creates groups and projects from menus (see the third amendment above).
+- ❌ Capcom has no screen yet to rename groups. Until it has, the owner edits `layout.json`. It creates, deletes and orders groups, and creates projects, from menus (see the third amendment above).
 - ❌ Ungrouped, Started here and Terminal and other still show their newest 60 sessions each, so a session moved out of a group that is older than those may not show, unless it was brought back from the archive.
 - ❌ Capcom's archive and Desktop's drift apart. A session archived in Capcom still shows in Desktop, and one Capcom brought back stays archived there.
 - ❌ Undo after Stop and archive brings the session back to the list, but the stopped turn does not resume.

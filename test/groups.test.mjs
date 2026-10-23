@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { everyRow } from '../public/ui/tree.js';
-import { as, listen, request, signIn, start, until } from './harness.mjs';
+import { as, listen, request, restart, signIn, start, until } from './harness.mjs';
 
 const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 const HOME = '7e49a2d1-5c36-4b80-a1f9-0d83c6e24b57';
@@ -40,10 +40,53 @@ test('a group\'s session is in no list, family, count, search or folder, even wh
   assert.equal(Object.hasOwn(ix, 'groupSessions'), false, 'the map the server keeps is not sent');
 });
 
-test('the index tells each group its session and how many of its members are archived, and tells the page this server knows group sessions', async () => {
+// The layout after its group was deleted: the chat is in `retired`, and the group is gone from `groups`.
+const RETIRED = { id: 'cg-work', name: 'Work', session: WORK };
+const afterDelete = mine => ready({ groups: [GROUPS[1]], layout: { retired: [RETIRED] }, ...mine });
+
+test('a deleted group\'s session is in no list, family, count, search, archive or folder, however old its transcript is, and is found by id, and a restart changes none of it', async () => {
+  const check = async ({ s, token }, ago) => {
+    const ix = await get(s, token, '/api/sessions?archived=1');
+    assert.deepEqual(everyRow(ix).map(r => r.id).sort(), ['a', 'b', 'kid', 'loose', 'old', 'away'].sort(), `${ago} minutes old`);
+    assert.equal(JSON.stringify(ix).includes(WORK), false, 'it is in no group, count or search');
+    assert.equal(JSON.stringify(await get(s, token, '/api/archived')).includes(WORK), false);
+    const folders = JSON.stringify(await get(s, token, '/api/folders'));
+    assert.deepEqual([folders.includes(WORK), folders.includes(path.join(s.state, 'groups'))], [false, false]);
+    const talk = await get(s, token, `/api/sessions/${WORK}/messages`);
+    assert.equal(talk.items.length, 1, 'its transcript is kept');
+    assert.deepEqual([talk.session.title, talk.session.cwd], ['Work', path.join(s.state, 'groups', 'cg-work')]);
+  };
+  for (const ago of [1, 40 * 24 * 60]) {
+    const first = await afterDelete({ sessions: SESSIONS.map(r => (r.id === WORK ? { ...r, ago } : r)) });
+    await check(first, ago);
+    const second = await restart(first.s);
+    await check({ s: second, ...(await signIn(second)) }, ago);
+  }
+});
+
+test('moving, pinning, renaming, archiving or nesting a deleted group\'s session, or nesting one under it, is refused and writes nothing', async () => {
+  const { s, token } = await afterDelete();
+  const before = fs.readFileSync(s.layout, 'utf8');
+  const STAYS = 'A group\'s session stays with its group.';
+  for (const [route, json, error] of [
+    ['move', { id: WORK, group: 'cg-home' }, STAYS],
+    ['pin', { id: WORK, pinned: true }, STAYS],
+    ['rename', { id: WORK, title: 'Mine' }, STAYS],
+    ['archive', { id: WORK, archived: true }, STAYS],
+    ['archive', { id: WORK, archived: false }, STAYS],
+    ['nest', { id: WORK, parent: 'loose' }, STAYS],
+    ['nest', { id: 'loose', parent: WORK }, 'A group\'s session cannot hold sessions.'],
+  ]) {
+    const res = await post(s, token, `/api/layout/${route}`, json);
+    assert.deepEqual([res.status, res.body()], [400, { error }], `${route} ${JSON.stringify(json)}`);
+  }
+  assert.equal(fs.readFileSync(s.layout, 'utf8'), before);
+});
+
+test('the index tells each group its session and how many of its members are archived, and tells the page this server knows group sessions and how to edit groups', async () => {
   const { s, token } = await ready();
   const ix = await get(s, token, '/api/sessions');
-  assert.deepEqual(ix.features, { groupSessions: true });
+  assert.deepEqual(ix.features, { groupSessions: true, groupEdits: true });
   assert.deepEqual(ix.groups.map(g => [g.id, g.session, g.archived]), [['cg-work', { id: WORK, state: 'active' }, 2], ['cg-home', null, 1]]);
   assert.deepEqual((await get(s, token, '/api/sessions?archived=1')).groups.map(g => g.archived), [2, 1], 'the count is the same with the archive listed');
 });
