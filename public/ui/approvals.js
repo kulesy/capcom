@@ -31,6 +31,7 @@ function cardParts(p, names) {
   if (p.tool === 'WebFetch') return { title: 'WebFetch wants to fetch a page', fields: [['URL', i.url], ['Asks', i.prompt]] };
   if (p.tool === 'WebSearch') return { title: 'WebSearch wants to search the web', fields: [['Query', i.query]] };
   if (p.tool === 'Agent' || p.tool === 'Task') return { title: 'Claude wants to start a subagent', fields: [['Task', i.description], ['Prompt', clip(i.prompt, 12)]] };
+  if (p.tool === 'mcp__capcom__start_group_session') return { title: 'Claude wants to start a session in this group', fields: [['Folder', i.cwd], ['Title', i.title], ['First message', clip(i.prompt, 12)]] };
   if (p.tool === 'SendMessage') return { title: 'Claude wants to message another session', fields: [['To', i.to], ['Message', clip(i.message, 12)]] };
   const chrome = chromeTool(p.tool);
   if (chrome !== null) return chromeCard(chrome, i);

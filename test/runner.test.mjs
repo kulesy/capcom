@@ -918,3 +918,194 @@ test('with no hook installed a turn runs the same', async t => {
   await until(() => chat.state === 'idle');
   assert.equal(chat.status().running, true);
 });
+
+// A CLI for a group's chat. It logs how it was started and every line it is sent. It starts its session when it is sent the first message
+// (named by --session-id or --resume), and a message of `call <tool> <json>` makes it ask Capcom's tool server, `ask <tool>` ask to use a tool.
+const groupCli = dir => {
+  const log = path.join(dir, 'group.log');
+  const cli = path.join(dir, 'group-claude.mjs');
+  fs.writeFileSync(cli, [
+    '#!/usr/bin/env node',
+    "import fs from 'node:fs';",
+    "import readline from 'node:readline';",
+    "const out = o => process.stdout.write(JSON.stringify(o) + '\\n');",
+    `const note = entry => fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(entry) + '\\n');`,
+    "const flag = name => process.argv[process.argv.indexOf(name) + 1];",
+    "note({ started: process.argv.slice(2), cwd: process.cwd() });",
+    "const rule = [{ type: 'addRules', rules: [{ toolName: 'x' }], behavior: 'allow', destination: 'localSettings' }];",
+    "readline.createInterface({ input: process.stdin }).on('line', line => {",
+    '  const m = JSON.parse(line);',
+    '  note(m);',
+    "  if (m.type === 'control_request') return out({ type: 'control_response', response: { subtype: 'success', request_id: m.request_id, response: { commands: [], models: [] } } });",
+    "  if (m.type !== 'user') return;",
+    "  out({ type: 'system', subtype: 'init', session_id: flag('--session-id') || flag('--resume') || 'sess-unnamed', model: 'stub' });",
+    "  const [verb, tool, ...rest] = m.message.content.split(' ');",
+    "  if (verb === 'ask') out({ type: 'control_request', request_id: `ask-${tool}`, request: { subtype: 'can_use_tool', tool_name: `mcp__capcom__${tool}`, input: {}, permission_suggestions: rule } });",
+    "  if (verb === 'call') out({ type: 'control_request', request_id: `call-${tool}`, request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: tool, arguments: JSON.parse(rest.join(' ') || '{}') } } } });",
+    "  if (verb === 'tools') out({ type: 'control_request', request_id: 'tools', request: { subtype: 'mcp_message', server_name: 'capcom', message: { jsonrpc: '2.0', id: 2, method: 'tools/list' } } });",
+    '});',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  const noted = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : []);
+  return {
+    cli,
+    starts: () => noted().filter(e => e.started),
+    answers: () => noted().filter(m => m.type === 'control_response').map(m => m.response).filter(r => r.request_id),
+  };
+};
+
+const GROUP_ID = '11111111-2222-4333-8444-555555555555';
+const groupChat = (t, { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-test-')), id = GROUP_ID, ...options } = {}) => {
+  const recorded = groupCli(dir);
+  const cwd = path.join(dir, 'groups', 'cg-1');
+  const chat = chatFor(id, { cwd, mode: 'manual', claude: recorded.cli, chrome: false, chips: null, ...options });
+  // A failed assertion must not leave the CLI running, or the test run never ends.
+  t.after(() => chat.stop());
+  return { chat, recorded, cwd, dir };
+};
+const flagOf = (argv, name) => argv[argv.indexOf(name) + 1];
+
+test('a group chat whose session has no transcript yet starts with --session-id, its instructions, the start tool asked about, and its own folder made 0700 and used as the working folder', async t => {
+  const { chat, recorded, cwd } = groupChat(t, { group: {}, instructions: 'Be the group of {{x}}', fresh: () => true, id: '11111111-2222-4333-8444-000000000001' });
+  assert.equal(fs.existsSync(cwd), false);
+  chat.send('hi', []);
+  await until(() => recorded.starts().length === 1);
+  const { started, cwd: ran } = recorded.starts()[0];
+  assert.equal(flagOf(started, '--session-id'), '11111111-2222-4333-8444-000000000001');
+  assert.equal(started.includes('--resume'), false);
+  assert.equal(flagOf(started, '--append-system-prompt'), 'Be the group of {{x}}');
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: ['mcp__capcom__start_group_session'] } });
+  assert.equal(started.includes('--chrome'), false);
+  assert.equal(fs.realpathSync(ran), fs.realpathSync(cwd));
+  assert.equal(fs.statSync(cwd).mode & 0o777, 0o700);
+});
+
+test('a group chat whose session has a transcript resumes it and gets its instructions again, read afresh at each spawn, and Chrome joins the start tool in one ask list', async t => {
+  let text = 'first guide';
+  const { chat, recorded, cwd } = groupChat(t, { group: {}, instructions: () => text, fresh: () => false, chrome: true, id: '11111111-2222-4333-8444-000000000002' });
+  fs.mkdirSync(cwd, { recursive: true });
+  chat.send('hi', []);
+  await until(() => recorded.starts().length === 1);
+  const [{ started }] = recorded.starts();
+  assert.equal(flagOf(started, '--resume'), '11111111-2222-4333-8444-000000000002');
+  assert.equal(started.includes('--session-id'), false);
+  assert.equal(flagOf(started, '--append-system-prompt'), 'first guide');
+  assert.deepEqual(JSON.parse(flagOf(started, '--settings')), { permissions: { ask: ['mcp__claude-in-chrome', 'mcp__capcom__start_group_session'] } });
+  assert.equal(started.includes('--chrome'), true);
+  chat.stop();
+  await until(() => !chat.status().running);
+  text = 'second guide';
+  fs.rmSync(cwd, { recursive: true });
+  chat.send('again', []);
+  await until(() => recorded.starts().length === 2);
+  assert.equal(flagOf(recorded.starts()[1].started, '--append-system-prompt'), 'second guide');
+  assert.equal(fs.existsSync(cwd), true, 'a folder that went is made again before the spawn, so the chat does not fall back to the home folder');
+  assert.equal(fs.realpathSync(recorded.starts()[1].cwd), fs.realpathSync(cwd));
+});
+
+test('whether the CLI has a transcript is asked at each spawn, so the first process names the session and a later one resumes it', async t => {
+  let fresh = true;
+  const { chat, recorded } = groupChat(t, { group: {}, instructions: 'guide', fresh: () => fresh, id: '11111111-2222-4333-8444-000000000003' });
+  chat.send('hi', []);
+  await until(() => recorded.starts().length === 1);
+  fresh = false;
+  chat.stop();
+  await until(() => !chat.status().running);
+  chat.send('again', []);
+  await until(() => recorded.starts().length === 2);
+  assert.deepEqual(recorded.starts().map(s => s.started.includes('--session-id')), [true, false]);
+  assert.deepEqual(recorded.starts().map(s => s.started.includes('--resume')), [false, true]);
+});
+
+test('an ordinary chat is started as before: --resume, no instructions, no ask rule unless Chrome is on, and Chrome\'s rule is exactly what it was', async t => {
+  const plain = groupChat(t, { id: '11111111-2222-4333-8444-000000000004' });
+  plain.chat.send('hi', []);
+  await until(() => plain.recorded.starts().length === 1);
+  const [{ started }] = plain.recorded.starts();
+  assert.equal(flagOf(started, '--resume'), '11111111-2222-4333-8444-000000000004');
+  for (const flag of ['--session-id', '--append-system-prompt', '--settings']) assert.equal(started.includes(flag), false, flag);
+  assert.equal(fs.existsSync(plain.cwd), false, 'only a group chat makes its folder');
+  const chrome = groupChat(t, { id: '11111111-2222-4333-8444-000000000005', chrome: true });
+  chrome.chat.send('hi', []);
+  await until(() => chrome.recorded.starts().length === 1);
+  assert.equal(flagOf(chrome.recorded.starts()[0].started, '--settings'), '{"permissions":{"ask":["mcp__claude-in-chrome"]}}');
+});
+
+test('the tools a group chat offers are the group\'s as well, and an ordinary chat offers none of them', async t => {
+  const names = async chat => {
+    chat.send('tools', []);
+    await until(() => chat.status().running);
+    return chat;
+  };
+  const withGroup = groupChat(t, { group: {}, id: '11111111-2222-4333-8444-000000000006' });
+  const without = groupChat(t, { id: '11111111-2222-4333-8444-000000000007' });
+  await names(withGroup.chat);
+  await names(without.chat);
+  await until(() => withGroup.recorded.answers().some(a => a.request_id === 'tools') && without.recorded.answers().some(a => a.request_id === 'tools'));
+  const listed = ({ recorded }) => recorded.answers().find(a => a.request_id === 'tools').response.mcp_response.result.tools.map(tool => tool.name);
+  assert.ok(['list_group_sessions', 'read_group_session', 'start_group_session'].every(n => listed(withGroup).includes(n)));
+  assert.equal(listed(without).some(n => n.endsWith('_group_session') || n === 'list_group_sessions'), false);
+});
+
+test('a tool call that waits is answered when it settles, not before, and an answer for a process that has gone is not written to the next one', async t => {
+  const finishers = [];
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-runner-state-'));
+  const group = { lookup: () => ({ name: 'Work', members: [] }), pending: () => [], stateDir, start: () => new Promise(done => finishers.push(done)) };
+  const { chat, recorded, dir } = groupChat(t, { group, id: '11111111-2222-4333-8444-000000000008' });
+  const repo = fs.mkdtempSync(path.join(dir, 'repo-'));
+  const call = text => ({ text: `call start_group_session ${JSON.stringify({ cwd: repo, prompt: text })}` });
+  chat.send(call('first').text, []);
+  await until(() => finishers.length === 1);
+  await wait(100);
+  assert.equal(recorded.answers().some(a => a.request_id === 'call-start_group_session'), false, 'nothing is written while the start is still going');
+  finishers[0]({ id: 'child-one', placed: true });
+  await until(() => recorded.answers().some(a => a.request_id === 'call-start_group_session'));
+  const answer = recorded.answers().find(a => a.request_id === 'call-start_group_session').response.mcp_response;
+  assert.equal(answer.id, 1);
+  assert.match(answer.result.content[0].text, /^Started session \[child-one\]/);
+
+  chat.send(call('second').text, []);
+  await until(() => finishers.length === 2);
+  chat.stop();
+  await until(() => !chat.status().running);
+  chat.send('hello', []);
+  await until(() => recorded.starts().length === 2);
+  const before = recorded.answers().length;
+  finishers[1]({ id: 'child-two', placed: true });
+  await wait(150);
+  assert.equal(recorded.answers().length, before, 'the process that asked is gone, so the new one is told nothing about its request');
+});
+
+test('in a group chat the read tools are allowed with no card, in any mode, and starting a session always shows a card that does not offer Always allow', async t => {
+  for (const mode of ['manual', 'bypassPermissions', 'auto']) {
+    const { chat, recorded } = groupChat(t, { group: {}, mode, id: `11111111-2222-4333-8444-00000000001${['manual', 'bypassPermissions', 'auto'].indexOf(mode)}` });
+    chat.send('ask list_group_sessions', []);
+    await until(() => recorded.answers().some(a => a.request_id === 'ask-list_group_sessions'));
+    chat.send('ask read_group_session', []);
+    await until(() => recorded.answers().some(a => a.request_id === 'ask-read_group_session'));
+    chat.send('ask start_group_session', []);
+    await until(() => chat.status().pending.length === 1);
+    assert.deepEqual(chat.status().pending.map(p => [p.tool, p.always]), [['mcp__capcom__start_group_session', false]], mode);
+    assert.deepEqual(recorded.answers().filter(a => a.request_id.startsWith('ask-')).map(a => [a.request_id, a.response.behavior]), [['ask-list_group_sessions', 'allow'], ['ask-read_group_session', 'allow']], mode);
+    chat.answer('ask-start_group_session', 'always');
+    await until(() => recorded.answers().some(a => a.request_id === 'ask-start_group_session'));
+    assert.equal(recorded.answers().find(a => a.request_id === 'ask-start_group_session').response.updatedPermissions, undefined, 'Always allow keeps no rule for it');
+  }
+});
+
+test('outside a group chat the group tools are no business of the runner\'s: they get a card like any tool, with no automatic allow', async t => {
+  const { chat, recorded } = groupChat(t, { mode: 'bypassPermissions', id: '11111111-2222-4333-8444-000000000020' });
+  chat.send('ask list_group_sessions', []);
+  await until(() => chat.status().pending.length === 1);
+  chat.send('ask read_group_session', []);
+  await until(() => chat.status().pending.length === 2);
+  assert.equal(recorded.answers().some(a => a.request_id.startsWith('ask-')), false);
+});
+
+test('a tool call from an ordinary chat is refused by the tool server as unknown, since there is no group behind it', async t => {
+  const { chat, recorded } = groupChat(t, { id: '11111111-2222-4333-8444-000000000021' });
+  chat.send('call list_group_sessions {}', []);
+  await until(() => recorded.answers().some(a => a.request_id === 'call-list_group_sessions'));
+  const { result, error } = recorded.answers().find(a => a.request_id === 'call-list_group_sessions').response.mcp_response;
+  assert.ok(error || result?.isError, JSON.stringify({ result, error }));
+});

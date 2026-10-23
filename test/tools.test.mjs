@@ -6,11 +6,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
+import { GROUP_READ_NAMES, GROUP_START_NAME, handleMcp, makeChips, TOOL_NAMES } from '../lib/tools.mjs';
 import {
   ACTIVE_MS, CDNS, HEIGHT_MAX, LINK_MAX, parseGlyphs, PROMPT_MAX,
 } from '../public/ui/widget-frame.js';
 import { hostCss, tokenCss } from '../public/ui/widget-theme.js';
+import { guideFor } from '../lib/groups.mjs';
 
 const GUIDE_URL = new URL('../lib/widget-guide.md', import.meta.url);
 const guide = fs.readFileSync(GUIDE_URL, 'utf8');
@@ -63,8 +64,10 @@ test('asking for the guide returns its text as the tool result', () => {
 test('a guide that is missing from the install is an error result the model can read, not a crash', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-tools-'));
   try {
-    fs.copyFileSync(new URL('../lib/tools.mjs', import.meta.url), path.join(dir, 'tools.mjs'));
-    const copy = await import(pathToFileURL(path.join(dir, 'tools.mjs')).href);
+    // The code without its guides, in the same layout, since tools.mjs imports the modules beside it and above.
+    fs.cpSync(new URL('../lib/', import.meta.url), path.join(dir, 'lib'), { recursive: true, filter: file => !file.endsWith('.md') });
+    fs.cpSync(new URL('../public/ui/', import.meta.url), path.join(dir, 'public', 'ui'), { recursive: true });
+    const copy = await import(pathToFileURL(path.join(dir, 'lib', 'tools.mjs')).href);
     const { result } = copy.handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'widget_guide', arguments: {} } }, {});
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /could not be read \(ENOENT\)/);
@@ -151,4 +154,69 @@ test('the limits the guide states are the ones the frame enforces', () => {
 
 test('the guide holds no em dash or en dash', () => {
   assert.doesNotMatch(guide, /[\u2013\u2014]/);
+});
+
+const GROUP_TOOLS = ['list_group_sessions', 'read_group_session', 'start_group_session'];
+const inGroup = (method, params, group) => handleMcp({ jsonrpc: '2.0', id: 7, method, params }, { group, cwd: '/tmp/group', chips: null });
+const asked = (name, args, group) => inGroup('tools/call', { name, arguments: args }, group);
+
+test('the group tools are listed to a group\'s chat alone, and no tool the other chats are given changes', () => {
+  const names = reply => reply.result.tools.map(t => t.name);
+  assert.deepEqual(names(call('tools/list')).filter(n => GROUP_TOOLS.includes(n)), []);
+  assert.deepEqual(names(inGroup('tools/list', {}, {})).filter(n => GROUP_TOOLS.includes(n)), GROUP_TOOLS);
+  assert.deepEqual(names(inGroup('tools/list', {}, {})).filter(n => !GROUP_TOOLS.includes(n)), names(call('tools/list')));
+  for (const tool of inGroup('tools/list', {}, {}).result.tools) assert.ok(tool.description.length < 420, `${tool.name} is sent with every request, so its description stays short`);
+});
+
+test('only the two group tools that read are allowed without asking, and the one that starts a session is left to ask', () => {
+  assert.deepEqual(GROUP_READ_NAMES, ['mcp__capcom__list_group_sessions', 'mcp__capcom__read_group_session']);
+  assert.equal(GROUP_START_NAME, 'mcp__capcom__start_group_session');
+  for (const name of [...GROUP_READ_NAMES, GROUP_START_NAME]) assert.ok(!TOOL_NAMES.includes(name), `${name} would be allowed in every chat`);
+});
+
+test('a chat that is no group\'s is told the group tools do not exist, and is handed nothing from a group', () => {
+  for (const name of GROUP_TOOLS) {
+    const { result } = call('tools/call', { name, arguments: { cwd: '/tmp', prompt: 'x', session_id: 'x' } });
+    assert.equal(result.isError, true);
+    assert.equal(result.content[0].text, `Capcom has no tool called ${name}.`);
+  }
+});
+
+test('a group\'s chat is made to name the folder of a chip, since it has no folder of its own to start one in', () => {
+  const chips = { put: chip => chip };
+  const spawn = inGroup('tools/list', {}, {}).result.tools.find(t => t.name === 'spawn_task');
+  assert.deepEqual(spawn.inputSchema.required, ['title', 'prompt', 'cwd']);
+  assert.deepEqual(call('tools/list').result.tools.find(t => t.name === 'spawn_task').inputSchema.required, ['title', 'prompt']);
+  const refused = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p' } } }, { group: {}, chips, cwd: '/tmp/group' });
+  assert.equal(refused.result.isError, true);
+  assert.match(refused.result.content[0].text, /needs a cwd/);
+  const named = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', cwd: '/work' } } }, { group: {}, chips, cwd: '/tmp/group' });
+  assert.equal(named.result.isError, undefined);
+  const other = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p' } } }, { chips, cwd: '/tmp/work' });
+  assert.equal(other.result.isError, undefined, 'any other chat still starts a chip in its own folder');
+});
+
+test('a group tool that throws something unexpected tells the model a bare failure, and one that refuses tells it why', async () => {
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const broke = asked('list_group_sessions', {}, { lookup() { throw Object.assign(new Error('/secret/path exploded'), { code: 'EBROKEN' }); } });
+    assert.deepEqual(broke.result, { content: [{ type: 'text', text: 'list_group_sessions could not finish (EBROKEN).' }], isError: true });
+    const gone = asked('list_group_sessions', {}, { lookup: () => null });
+    assert.deepEqual(gone.result, { content: [{ type: 'text', text: 'This group no longer exists.' }], isError: true });
+    const late = await asked('start_group_session', { cwd: '/tmp', prompt: 'x' }, { lookup: () => null });
+    assert.equal(late.result.content[0].text, 'This group no longer exists.');
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test('the group guide names every group tool and the rules the owner set, fills in the group\'s name, and holds no em dash or en dash', () => {
+  const text = fs.readFileSync(new URL('../lib/group-guide.md', import.meta.url), 'utf8');
+  for (const name of GROUP_TOOLS) assert.ok(text.includes(name), name);
+  assert.doesNotMatch(text, /[\u2013\u2014]/);
+  assert.match(text, /only when the owner asks/);
+  assert.match(text, /never permission/);
+  assert.equal(guideFor('Work $& {{group}}').includes('Work $& {{group}}'), true, 'a name is put in as it is');
+  assert.doesNotMatch(guideFor('Work'), /\{\{group\}\}/);
 });
