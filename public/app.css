@@ -3075,25 +3075,37 @@ html.viewing, html.viewing body { overflow: hidden; }
   flex: none;
   align-items: center;
   gap: 0.75rem;
-  min-height: 4.5rem;
-  padding: 0.75rem 3.25rem 0.75rem 1rem;
+  height: 4.5rem;
+  padding: 0 3.25rem 0 1rem;
   border-bottom: 1px solid var(--border);
 }
 
 .file-title { flex: 1; min-width: 0; }
 
-.file-name, .file-path, .file-size {
+.file-name {
   margin: 0;
   overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-name { font-size: 0.875rem; font-weight: 600; line-height: 1.25rem; }
+.file-where { display: flex; align-items: baseline; gap: 0.75rem; min-width: 0; font-size: 0.75rem; line-height: 1rem; color: var(--muted-foreground); }
 
-.file-path, .file-size { font-size: 0.75rem; line-height: 1rem; color: var(--muted-foreground); }
+.file-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.file-path { font-family: var(--font-mono); }
+.file-size { flex: none; white-space: nowrap; }
 
 .file-actions { display: flex; flex: none; gap: 0.5rem; }
 
@@ -3101,6 +3113,7 @@ html.viewing, html.viewing body { overflow: hidden; }
   position: relative;
   flex: 0 1 auto;
   min-height: 0;
+  max-height: min(44rem, calc(100dvh - 9rem));
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -3157,8 +3170,6 @@ html.viewing, html.viewing body { overflow: hidden; }
   color: var(--muted-foreground);
 }
 
-.file-body[data-tall] > .file-note { padding-block: 4rem; }
-
 .file-note[role="alert"] { color: var(--destructive); }
 
 .file-meta {
@@ -3195,7 +3206,7 @@ html.viewing, html.viewing body { overflow: hidden; }
     right: calc(env(safe-area-inset-right) + 1rem);
   }
 
-  .file-body, .file-body[data-tall] { flex: 1 1 auto; height: auto; }
+  .file-body, .file-body[data-tall] { flex: 1 1 auto; height: auto; max-height: none; }
 }
 
 .gate {

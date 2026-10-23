@@ -65,6 +65,71 @@ test('a target that is the root, a folder written with a slash, or has a . or ..
   assert.equal(fileTarget('/Users/eli/a\n.md'), null);
 });
 
+test('a path followed by a very long run of closing punctuation and then a letter is drawn in well under 100 ms, with and without the callback', () => {
+  // The quickest of three runs, so a busy machine does not fail it. Code that scans from every mark takes seconds.
+  const best = run => Math.min(...[1, 2, 3].map(() => { const started = performance.now(); run(); return performance.now() - started; }));
+  const took = [];
+  for (const mark of ["'", '"', '.', ',', ';', ':', '!', '?']) {
+    const src = `see /Users/eli/a.md${mark.repeat(100_000)}x`;
+    took.push(best(() => md(src, href)), best(() => md(src)), best(() => linkedFiles(src)));
+  }
+  assert.ok(Math.max(...took) < 100, `slowest was ${Math.max(...took).toFixed(1)} ms`);
+  assert.deepEqual(found("see /Users/eli/a.md'''. and (/tmp/b.txt)!?"), [
+    { file: '/Users/eli/a.md', line: null, text: '/Users/eli/a.md' },
+    { file: '/tmp/b.txt', line: null, text: '/tmp/b.txt' },
+  ]);
+});
+
+test('a link whose text is over 1000 characters or whose target is over 4096 is not drawn as a link, so a line of brackets cannot make each scan to its end', () => {
+  const target = n => `/${'a'.repeat(n - 1)}`;
+  assert.equal(found(`[${'t'.repeat(1000)}](/Users/eli/a.md)`).length, 1);
+  assert.deepEqual(found(`[${'t'.repeat(1001)}](/Users/eli/a.md)`), [{ file: '/Users/eli/a.md', line: null, text: '/Users/eli/a.md' }], 'its target is read as a path in prose');
+  assert.equal(found(`[a](${target(4096)})`).length, 1);
+  assert.deepEqual(found(`[a](${target(4097)})`), []);
+  assert.equal(found(`[a](<${target(4096)}>)`).length, 1);
+  assert.deepEqual(found(`[a](<${target(4097)}>)`), []);
+});
+
+test('an http link and a link drawn as code have the same bounds, so no link rule scans a line of brackets to its end on the server', () => {
+  const url = n => `http://${'a'.repeat(n)}`;
+  assert.match(md(`[a](${url(4096)})`), />a<\/a>/);
+  assert.doesNotMatch(md(`[a](${url(4097)})`), />a<\/a>/);
+  assert.match(md(`[${'t'.repeat(1000)}](http://x)`), /<a href="http:\/\/x"/);
+  assert.equal(md(`[${'t'.repeat(1001)}](http://x)`), `<p>[${'t'.repeat(1001)}](http://x)</p>`);
+  assert.equal(md(`[a](${'b'.repeat(4096)})`), `<p><code title="${'b'.repeat(4096)}">a</code></p>`);
+  assert.equal(md(`[a](${'b'.repeat(4097)})`), `<p>[a](${'b'.repeat(4097)})</p>`);
+  assert.equal(md(`[${'t'.repeat(1001)}](b)`), `<p>[${'t'.repeat(1001)}](b)</p>`);
+});
+
+test('a link target is read with its percent escapes decoded, in the plain and the angle form, and the page and the server get the decoded path', () => {
+  assert.deepEqual(found('[a](/Users/eli/my%20notes/a%20b.md)'), [{ file: '/Users/eli/my notes/a b.md', line: null, text: 'a' }]);
+  assert.deepEqual(found('[a](</Users/eli/my%20notes/a%20b.md>)'), [{ file: '/Users/eli/my notes/a b.md', line: null, text: 'a' }]);
+  assert.deepEqual(found('[a](~/caf%C3%A9.md)'), [{ file: '~/café.md', line: null, text: 'a' }]);
+  assert.deepEqual(found('[a](/Users/eli/a%20b.js:12:5)'), [{ file: '/Users/eli/a b.js', line: 12, text: 'a' }]);
+  assert.deepEqual(found('[a](/Users/eli/100%25.md)'), [{ file: '/Users/eli/100%.md', line: null, text: 'a' }]);
+  assert.deepEqual(found('[a](%2FUsers%2Feli%2Fa.md)'), [{ file: '/Users/eli/a.md', line: null, text: 'a' }], 'what the escapes decode to is what is checked');
+  assert.deepEqual([...linkedFiles('[a](/Users/eli/a%20b.md) [b](<~/c%20d.md:3>)')].sort(), ['/Users/eli/a b.md', '~/c d.md']);
+  assert.deepEqual(fileTarget('/Users/eli/a%20b.md', true), { path: '/Users/eli/a b.md', line: null });
+  assert.deepEqual(fileTarget('/Users/eli/a%20b.md'), { path: '/Users/eli/a%20b.md', line: null }, 'only a link target is read as encoded');
+  assert.equal(md('[a](/Users/eli/a%20b.md)', href).includes('href="/f?p=%2FUsers%2Feli%2Fa%20b.md"'), true);
+});
+
+test('a bare path or a code span is not decoded, so %20 in it stays three characters', () => {
+  assert.deepEqual(found('see /Users/eli/a%20b.md now').map(l => l.file), ['/Users/eli/a%20b.md']);
+  assert.deepEqual(found('`/Users/eli/a%20b.md`').map(l => l.file), ['/Users/eli/a%20b.md']);
+  assert.deepEqual([...linkedFiles('see /Users/eli/a%20b.md and `~/c%20d.md`')].sort(), ['/Users/eli/a%20b.md', '~/c%20d.md']);
+});
+
+test('a link target with an escape that does not decode, or that decodes to something refused, is drawn as it is today', () => {
+  for (const target of ['/Users/eli/%zz', '/Users/eli/%', '/Users/eli/%E0%A4%A', '/Users/eli/a%00b', '/Users/eli/%2e%2e/b', '/Users/eli/%2E', '/Users/eli/a%0Ab', '/Users/eli/a%2F%2Fb', '/Users/eli/a%3A12', '/Users/eli/a%3A12%3A5']) {
+    assert.deepEqual(found(`[a](${target})`), [], target);
+    assert.deepEqual(found(`[a](<${target}>)`), [], target);
+    assert.equal(md(`[a](${target})`, href), md(`[a](${target})`), target);
+  }
+  assert.equal(fileTarget('/Users/eli/a%3A12', true), null);
+  assert.equal(fileTarget('/Users/eli/a%zz', true), null);
+});
+
 test('a path inside a code block is text', () => {
   assert.deepEqual(found('```\n/Users/eli/a.md\n[a](/Users/eli/a.md)\n```'), []);
 });

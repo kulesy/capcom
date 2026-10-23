@@ -4,11 +4,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { linksOf, MAX_FILE_BYTES, MAX_TEXT_BYTES } from '../lib/files.mjs';
-import { as, request, signIn, start } from './harness.mjs';
+import { once } from 'node:events';
+import { Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { linksOf, MAX_FILE_BYTES, MAX_TEXT_BYTES, previewFile, serveFile } from '../lib/files.mjs';
+import { as, request, ROOT, signIn, start } from './harness.mjs';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 const TEXT_TYPE = 'text/plain; charset=utf-8';
@@ -19,6 +23,23 @@ const said = text => entry('assistant', [{ type: 'text', text }]);
 const thought = thinking => entry('assistant', [{ type: 'thinking', thinking }]);
 const asked = text => entry('user', text);
 const lines = entries => entries.map(e => `${JSON.stringify(e)}\n`).join('');
+
+// How many characters of a thought the page is sent, which config.json sets and config.local.json can change.
+const CUT = ['config.json', 'config.local.json'].reduce((n, name) => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, name), 'utf8')).outputChars ?? n; } catch { return n; }
+}, undefined);
+
+// What a response must carry so a browser does not read the JSON about a file as anything else.
+const guarded = res => assert.deepEqual([res.headers['x-content-type-options'], res.headers['cross-origin-resource-policy']], ['nosniff', 'same-origin']);
+
+// Every file handle opened through fs/promises while this runs, to see which are closed again.
+async function watchOpens(run) {
+  const handles = [];
+  const open = fsp.open;
+  fsp.open = async (...args) => { const handle = await open.apply(fsp, args); handles.push(handle); return handle; };
+  try { await run(handles); } finally { fsp.open = open; }
+  return handles;
+}
 
 // The server's bytes, which the test harness's own request would decode as text.
 function bytes(s, token, url) {
@@ -57,6 +78,11 @@ function setup() {
     write('fenced.txt', 'only a code block names this\n');
     write('naïve café.txt', 'a name with letters outside ASCII\n');
     write('locked.txt', 'cannot be read\n');
+    write('pct file.txt', 'linked with the space written as %20\n');
+    write('before-cut.txt', 'linked early in a thought\n');
+    write('past-cut.txt', 'linked after the page stops reading a thought\n');
+    write('across-cut.txt', 'linked across the end of what a thought is cut to\n');
+    write('reply-past-cut.txt', 'linked late in a reply, which is not cut\n');
     fs.chmodSync(at('locked.txt'), 0o000);
     fs.mkdirSync(at('folder'));
     fs.symlinkSync(at('target.txt'), at('link.txt'));
@@ -79,7 +105,11 @@ function setup() {
       asked(`Look at [theirs](<${at('user-only.txt')}>)`),
       said(['Here they are:', ...['note.txt', 'doc.md', 'pic.png', 'doc.pdf', 'blob.bin', 'page.html', 'pic.svg', 'with space.txt', 'long.txt', 'empty.txt', 'naïve café.txt', 'locked.txt', 'folder', 'link.txt', 'dangling.txt', 'to-folder', 'loop-a', 'pipe', 'big.bin', 'missing.txt'].map(name => `- ${link(name, name)}`)].join('\n')),
       said(`And [the home one](~/notes/n.md) and [line two](<${at('note.txt')}:2>)\n\n\`\`\`\n${at('fenced.txt')}\n\`\`\``),
+      said(`And [an escaped one](${at('pct file.txt').replaceAll(' ', '%20')})`),
       thought(`I should look at ${link('my thought', 'target.txt')}`),
+      thought(`${link('early', 'before-cut.txt')} ${'x'.repeat(CUT)} ${link('late', 'past-cut.txt')}`),
+      thought(`${'x'.repeat(CUT - 10)}${link('straddling', 'across-cut.txt')}`),
+      said(`${'x'.repeat(CUT)} ${link('late in a reply', 'reply-past-cut.txt')} and [the null device](</dev/null>)`),
       entry('user', [{ type: 'tool_result', tool_use_id: 'toolu_1', content: `[a result](<${at('in-tool.txt')}>)` }]),
     ]));
     const { token } = await signIn(s);
@@ -116,6 +146,8 @@ test('a path nothing in the chat links to is refused for both routes, however it
     const served = await fileOf(file);
     assert.equal(preview.status, 403, what);
     assert.equal(served.status, 403, what);
+    guarded(preview);
+    guarded(served);
     assert.equal(served.body.toString().includes('never linked'), false, what);
   }
   assert.match(errorOf(await previewOf(at('secret.txt'))), /does not link to that file/);
@@ -137,12 +169,16 @@ test('a path that is not a plain path to a file is refused before anything is re
     for (const what2 of ['preview', 'file']) {
       const res = await request(s, 'GET', `/api/sessions/sess-1/${what2}?path=${encodeURIComponent(file)}`, { headers: as(token) });
       assert.equal(res.status, 400, `${what} ${what2}`);
+      guarded(res);
     }
   }
   const none = await request(s, 'GET', '/api/sessions/sess-1/preview', { headers: as(token) });
   assert.equal(none.status, 400);
   assert.equal(errorOf(none), 'Which file?');
-  assert.equal((await request(s, 'GET', '/api/sessions/no-such-chat/preview?path=%2Fx', { headers: as(token) })).status, 404);
+  guarded(none);
+  const nobody = await request(s, 'GET', '/api/sessions/no-such-chat/preview?path=%2Fx', { headers: as(token) });
+  assert.equal(nobody.status, 404);
+  guarded(nobody);
 });
 
 test('a linked text file is read as text, and the preview names it, sizes it and says what kind it is', async () => {
@@ -150,6 +186,7 @@ test('a linked text file is read as text, and the preview names it, sizes it and
   const res = await previewOf(at('note.txt'));
   assert.equal(res.status, 200);
   assert.equal(res.headers['cache-control'], 'no-store');
+  guarded(res);
   const preview = res.body();
   assert.deepEqual({ ...preview, real: undefined }, { name: 'note.txt', path: at('note.txt'), real: undefined, size: 29, kind: 'text', type: TEXT_TYPE, text: 'line one\nline two\nline three\n' });
   assert.equal(preview.real, fs.realpathSync(at('note.txt')));
@@ -162,6 +199,15 @@ test('a link with a line on it opens the file by its path, a thought can link a 
   assert.equal((await previewOf(at('target.txt'))).body().text, 'the target of a link\n', 'linked only by a thought');
   assert.equal((await previewOf(at('with space.txt'))).body().text, 'spaced\n');
   assert.equal((await previewOf(at('naïve café.txt'))).body().text, 'a name with letters outside ASCII\n');
+});
+
+test('a link written with %20 for a space opens the file by its decoded path, which is the path the page asks for', async () => {
+  const { at } = await setup();
+  const res = await previewOf(at('pct file.txt'));
+  assert.equal(res.status, 200);
+  assert.deepEqual([res.body().name, res.body().path, res.body().text], ['pct file.txt', at('pct file.txt'), 'linked with the space written as %20\n']);
+  assert.equal((await fileOf(at('pct file.txt'))).status, 200);
+  assert.equal((await previewOf(at('pct file.txt').replaceAll(' ', '%20'))).status, 403, 'the escaped spelling is not a path the chat links to');
 });
 
 test('each kind of file is told apart by its bytes and its name', async () => {
@@ -205,10 +251,12 @@ test('a file over the limit is described and never sent, a folder, a pipe and a 
   const served = await fileOf(at('big.bin'));
   assert.equal(served.status, 413);
   assert.match(JSON.parse(served.body).error, /20 MB/);
+  guarded(served);
 
   const folder = await previewOf(at('folder'));
   assert.equal(folder.status, 415);
   assert.equal(errorOf(folder), 'That is a folder, not a file.');
+  guarded(folder);
   assert.equal((await fileOf(at('folder'))).status, 415);
   assert.equal((await previewOf(at('to-folder'))).status, 415, 'a link to a folder is a folder');
 
@@ -223,6 +271,7 @@ test('a file over the limit is described and never sent, a folder, a pipe and a 
   const missing = await previewOf(at('missing.txt'));
   assert.equal(missing.status, 404);
   assert.equal(errorOf(missing), 'There is no file at that path.');
+  guarded(missing);
   assert.equal((await previewOf(at('dangling.txt'))).status, 404, 'a link to nothing');
   assert.equal((await previewOf(at('loop-a'))).status, 404, 'links that lead round to themselves');
 });
@@ -308,7 +357,101 @@ test('a link a reply gains after the first read opens, so the scan follows the t
 });
 
 test('the reply a chat is writing now can be opened before it is saved, and a chat with nothing saved opens nothing else', () => {
-  const linked = linksOf(null, 'Here is [one](</tmp/live one.txt:4>) and /tmp/two.txt, but not `ls /tmp/three.txt`.');
+  const linked = linksOf(null, 'Here is [one](</tmp/live one.txt:4>) and /tmp/two.txt, but not `ls /tmp/three.txt`.', CUT);
   assert.deepEqual(['/tmp/live one.txt', '/tmp/two.txt', '/tmp/three.txt', '/tmp/live one.txt:4'].map(linked), [true, true, false, false]);
-  assert.equal(linksOf(null)('/tmp/two.txt'), false);
+  assert.equal(linksOf(null, '', CUT)('/tmp/two.txt'), false);
+});
+
+test('a thought is read cut where the page is sent it cut, so a file linked past that point is refused, and a reply is not cut', async () => {
+  const { at } = await setup();
+  assert.equal((await previewOf(at('before-cut.txt'))).status, 200, 'linked early in a thought');
+  for (const name of ['past-cut.txt', 'across-cut.txt']) {
+    assert.equal((await previewOf(at(name))).status, 403, `${name} is in text the page never receives`);
+    assert.equal((await fileOf(at(name))).status, 403, name);
+  }
+  assert.equal((await previewOf(at('reply-past-cut.txt'))).status, 200, 'a reply is sent whole');
+});
+
+test('linksOf reads a thought cut at the limit it is given, a reply whole, and keeps a scan for each limit', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-links-')), 't.jsonl');
+  fs.writeFileSync(file, lines([thought('see /tmp/abc/def.txt now'), said(`then ${'x'.repeat(50)} /tmp/reply/after.txt`)]));
+  const t = { file };
+  const paths = ['/tmp/abc', '/tmp/abc/def.txt', '/tmp/reply/after.txt'];
+  const cut = linksOf(t, '', 12);
+  assert.deepEqual(paths.map(cut), [true, false, true], 'the thought ends at "see /tmp/abc"');
+  assert.deepEqual(paths.map(linksOf(t, '', 1000)), [false, true, true], 'a limit past the thought reads all of it');
+  assert.deepEqual(paths.map(linksOf(t, '', 12)), [true, false, true], 'and the first limit is as it was');
+  assert.deepEqual(paths.map(linksOf(t)), [false, true, true], 'no limit reads it all');
+  fs.appendFileSync(file, lines([thought('and /tmp/more/later.txt')]));
+  assert.deepEqual(['/tmp/more/later.txt', '/tmp/more'].map(linksOf(t, '', 1000)), [true, false], 'a scan follows the file as it grows');
+  assert.deepEqual(['/tmp/more/later.txt', '/tmp/more'].map(linksOf(t, '', 12)), [false, false], 'the thought is cut before the path, so it is still not linked');
+});
+
+test('a device is refused as not a plain file without being opened, since opening a serial port can reset the board on it', async () => {
+  const opened = await watchOpens(async () => {
+    for (const device of ['/dev/null', '/dev/zero']) {
+      await assert.rejects(previewFile(device, () => true), { status: 415, message: 'Capcom opens plain files only.' }, device);
+      await assert.rejects(serveFile(device, () => true, false), { status: 415, message: 'Capcom opens plain files only.' }, device);
+    }
+  });
+  assert.equal(opened.length, 0);
+  const { at } = await setup();
+  await watchOpens(async () => assert.equal((await previewFile(at('note.txt'), () => true)).kind, 'text'));
+  const res = await previewOf('/dev/null');
+  assert.equal(res.status, 415, 'and over HTTP, for a chat that links to it');
+  assert.equal(errorOf(res), 'Capcom opens plain files only.');
+  assert.equal((await fileOf('/dev/null')).status, 415);
+});
+
+test('every file opened is closed again, whether it was previewed, refused, empty, sent whole, cut short or dropped before a read', async () => {
+  const { at } = await setup();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-closed-'));
+  const make = (name, size) => { const file = path.join(dir, name); fs.writeFileSync(file, Buffer.alloc(size, 0x61)); return file; };
+  const whole = make('whole.txt', 200 * 1024);
+  const empty = make('empty.txt', 0);
+  const huge = path.join(dir, 'huge.bin');
+  fs.closeSync(fs.openSync(huge, 'w'));
+  fs.truncateSync(huge, MAX_FILE_BYTES + 1);
+  const all = () => true;
+  const drain = async stream => { for await (const chunk of stream) void chunk; };
+
+  const handles = await watchOpens(async () => {
+    await previewFile(at('note.txt'), all);
+    await previewFile(at('pic.png'), all);
+    await previewFile(huge, all);
+    await assert.rejects(serveFile(huge, all, false), { status: 413 });
+    assert.equal((await serveFile(empty, all, false)).stream, null);
+    await drain((await serveFile(whole, all, false)).stream);
+    const dropped = (await serveFile(whole, all, false)).stream;
+    dropped.destroy();
+    await once(dropped, 'close');
+    const halfway = (await serveFile(whole, all, false)).stream;
+    await halfway[Symbol.asyncIterator]().next();
+    halfway.destroy();
+    await once(halfway, 'close');
+  });
+  assert.equal(handles.length, 8);
+  assert.deepEqual(handles.map(h => h.fd), Array(8).fill(-1));
+});
+
+test('a file that shrinks while it is sent fails the stream, so the response is cut short and the browser does not wait on a length it will never get', async () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'capcom-shrinks-')), 'shrinks.bin');
+  fs.writeFileSync(file, Buffer.alloc(300 * 1024, 0x62));
+  let got = 0;
+  let handle = null;
+  await watchOpens(async handles => {
+    const { headers, stream } = await serveFile(file, () => true, false);
+    handle = handles[0];
+    assert.equal(headers['content-length'], 300 * 1024);
+    const sink = new Writable({
+      write(chunk, encoding, done) {
+        if (!got) fs.truncateSync(file, 10);
+        got += chunk.length;
+        done();
+      },
+    });
+    await assert.rejects(pipeline(stream, sink), /got shorter/);
+  });
+  assert.ok(got < 300 * 1024, 'it stopped short of the length it promised');
+  assert.equal(handle.fd, -1, 'and the file was closed');
 });

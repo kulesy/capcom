@@ -818,21 +818,23 @@ async function api(req, res, u) {
     // Clear-Site-Data deletes the copy in Chrome and Firefox, but Safari 27 ignores it, and no browser acts on it at a plain http address.
     return send(res, 200, image.bytes, image.type, { 'cache-control': 'private, max-age=31536000, immutable', vary: 'Cookie', 'x-content-type-options': 'nosniff' });
   }
-  // A file a reply or a thought in the chat links to, as its text or its bytes. lib/files.mjs holds the gate.
+  // A file a reply or a thought in the chat links to, as its text or its bytes. lib/files.mjs holds the gate, and `about` keeps a
+  // browser from reading the JSON about a file as anything else.
   if (req.method === 'GET' && (action === 'preview' || action === 'file') && !parts[4]) {
+    const about = { 'x-content-type-options': 'nosniff', 'cross-origin-resource-policy': 'same-origin' };
     const t = transcriptFor(id) || (indexTranscripts(cfg.projectsDir, 0), transcriptFor(id));
     const chat = getChat(id);
-    if (!t && !chat) return send(res, 404, { error: NO_SESSION });
-    const linked = linksOf(t, chat?.live);
+    if (!t && !chat) return send(res, 404, { error: NO_SESSION }, 'application/json', about);
+    const linked = linksOf(t, chat?.live, cfg.outputChars);
     const wanted = u.searchParams.get('path');
     try {
-      if (action === 'preview') return send(res, 200, previewFile(wanted, linked));
-      const file = serveFile(wanted, linked, u.searchParams.get('download') === '1');
+      if (action === 'preview') return send(res, 200, await previewFile(wanted, linked), 'application/json', about);
+      const file = await serveFile(wanted, linked, u.searchParams.get('download') === '1');
       res.writeHead(200, file.headers);
       if (!file.stream) return res.end();
       return pipeline(file.stream, res, () => {});
     } catch (e) {
-      return send(res, e.status || 500, { error: e.message });
+      return send(res, e.status || 500, { error: e.message }, 'application/json', about);
     }
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });

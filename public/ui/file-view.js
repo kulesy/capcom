@@ -74,7 +74,8 @@ function FileView({ open, chat, path, line, from, preview, error }) {
   const kind = preview?.kind;
   const url = route(chat, 'file', path);
   const text = kind === 'text' || kind === 'markdown';
-  const tall = !error && (!preview || kind === 'pdf' || (text && !preview.tooLarge));
+  const framed = kind === 'pdf' && !preview.tooLarge;
+  const reads = !error && (!preview || (text && !preview.tooLarge));
   const openable = !!preview && !preview.tooLarge && kind !== 'binary' && kind !== 'image';
   const lines = preview?.truncated ? linesOf(preview.text).length : 0;
 
@@ -105,8 +106,7 @@ function FileView({ open, chat, path, line, from, preview, error }) {
     <div class="file-head">
       <div class="file-title">
         <h2 id="file-title" class="file-name">${name}</h2>
-        <p class="file-path">${path}</p>
-        ${preview ? html`<p class="file-size">${fileSize(preview.size)}</p>` : null}
+        <div class="file-where"><span class="file-path" title=${path}><bdi>${path}</bdi></span>${preview ? html`<span class="file-size">${fileSize(preview.size)}</span>` : null}</div>
       </div>
       ${openable ? html`<div class="file-actions">
         ${kind === 'markdown' ? html`<button class="btn" data-variant="outline" data-size="icon-sm" type="button" aria-label=${source ? 'Show rendered' : 'Show source'} data-tip=${source ? 'Show rendered' : 'Show source'} onClick=${() => setSource(s => !s)}>${source ? html`<${Page} />` : html`<${Code} />`}</button>` : null}
@@ -114,7 +114,7 @@ function FileView({ open, chat, path, line, from, preview, error }) {
         <a class="btn" data-variant="outline" data-size="icon-sm" href=${`${url}&download=1`} download=${name} aria-label="Download" data-tip="Download"><${Download} /></a>
       </div>` : null}
     </div>
-    <div class="file-body" ref=${body} data-tall=${tall ? '' : undefined} data-kind=${kind} tabindex=${tall && kind !== 'pdf' ? 0 : -1} role=${tall && kind !== 'pdf' ? 'region' : undefined} aria-label=${tall && kind !== 'pdf' ? `Contents of ${name}` : undefined}>${content}</div>
+    <div class="file-body" ref=${body} data-tall=${framed ? '' : undefined} data-kind=${kind} tabindex=${reads ? 0 : -1} role=${reads ? 'region' : undefined} aria-label=${reads ? `Contents of ${name}` : undefined}>${content}</div>
   <//>`;
 }
 

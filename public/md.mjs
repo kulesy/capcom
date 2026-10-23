@@ -7,16 +7,21 @@ const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '
 const plain = path => /^(?:~\/|\/)/.test(path) && !/[\u0000-\u001f\u007f]/.test(path)
   && path.replace(/^(?:~\/|\/)/, '').split('/').every(seg => seg && seg !== '.' && seg !== '..');
 
+const LINE = /^(.*?):([1-9]\d{0,6})(?::\d{1,7})?$/;
+
 // Where a link or a path in the text points, as { path, line }, or null when it is not a plain path. A `:12` or `:12:3` on the end sets
-// the line and is not part of the path, and a file URL becomes the absolute path it names.
-export function fileTarget(raw) {
+// the line and is not part of the path, and a file URL becomes the absolute path it names. `encoded` says the path is written as a link
+// target is, with %20 for a space; a file URL is always read so. A decoded path that ends in :12 is refused, or it would read as a line.
+export function fileTarget(raw, encoded = false) {
   if (typeof raw !== 'string') return null;
-  const at = /^(.*?):([1-9]\d{0,6})(?::\d{1,7})?$/.exec(raw);
+  const at = LINE.exec(raw);
   let path = at ? at[1] : raw;
-  if (path.startsWith('file://')) {
-    path = path.slice(7).replace(/^localhost(?=\/)/, '');
+  const url = path.startsWith('file://');
+  if (url) path = path.slice(7).replace(/^localhost(?=\/)/, '');
+  if (url || encoded) {
     try { path = decodeURIComponent(path); } catch { return null; }
-    if (!path.startsWith('/')) return null;
+    if (url && !path.startsWith('/')) return null;
+    if (LINE.test(path)) return null;
   }
   return plain(path) ? { path, line: at ? Number(at[2]) : null } : null;
 }
@@ -25,6 +30,14 @@ export function fileTarget(raw) {
 const ROOTED = /(?:~\/|file:\/\/|\/(?:Users|private|tmp|var|opt|etc|Volumes|Applications|Library|System|usr|home)\/)[^\s<>()*`\u0000]+/.source;
 const BARE = new RegExp(`(^|[\\s(*])(${ROOTED})`, 'g');
 const WHOLE = new RegExp(`^${ROOTED}$`);
+const TRAILING = '.,;:!?\'"';
+
+// A link's text and its target are cut at these lengths, so a line of unclosed brackets cannot make each one scan to the end of the line.
+const MAX_TEXT = 1000;
+const MAX_PATH = 4096;
+const HTTP_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\((https?:\\/\\/[^\\s)]{1,${MAX_PATH}})\\)`, 'g');
+const FILE_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\((?:<([^>\\n]{1,${MAX_PATH}})>|([^\\s)]{1,${MAX_PATH}}))\\)`, 'g');
+const OTHER_LINK = new RegExp(`\\[([^\\]\\n]{1,${MAX_TEXT}})\\]\\(([^\\s)]{1,${MAX_PATH}})\\)`, 'g');
 
 // Code spans and links are set aside before emphasis runs, so an underscore in a URL stays a URL. `file(path, line)`, if given,
 // returns the address that opens a file, or null; a path it returns null for is drawn as if there were no `file`.
@@ -33,22 +46,24 @@ function inline(src, file) {
   const spans = new Map();
   const keep = html => `\u0000${kept.push(html) - 1}\u0000`;
   const link = (text, url) => keep(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`);
-  const opener = run => {
-    const target = file && fileTarget(run);
+  const opener = (run, encoded) => {
+    const target = file && fileTarget(run, encoded);
     const href = target && file(target.path, target.line);
     return href ? `<a class="file-link" href="${esc(href)}" target="_blank" rel="noopener" data-file="${esc(target.path)}"${target.line === null ? '' : ` data-line="${target.line}"`}>` : null;
   };
   const s = esc(src
     .replace(/`([^`\n]+)`/g, (_, c) => { spans.set(kept.length, c); return keep(`<code>${esc(c)}</code>`); })
-    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, t, u) => link(t, u))
-    .replace(/\[([^\]\n]+)\]\((?:<([^>\n]+)>|([^\s)]+))\)/g, (m, t, angled, bare) => {
-      const open = opener(angled ?? bare);
+    .replace(HTTP_LINK, (_, t, u) => link(t, u))
+    .replace(FILE_LINK, (m, t, angled, bare) => {
+      const open = opener(angled ?? bare, true);
       return open ? keep(`${open}${esc(t).replace(/\u0000(\d+)\u0000/g, (_, i) => kept[i])}</a>`) : m;
     })
-    .replace(/\[([^\]\n]+)\]\(([^\s)]+)\)/g, (_, t, u) => keep(`<code title="${esc(u)}">${esc(t)}</code>`))
+    .replace(OTHER_LINK, (_, t, u) => keep(`<code title="${esc(u)}">${esc(t)}</code>`))
     .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?'"])/g, (_, pre, u) => pre + link(u, u))
     .replace(BARE, (m, pre, run) => {
-      const shown = run.replace(/[.,;:!?'"]+$/, '');
+      let end = run.length;
+      while (end > 0 && TRAILING.includes(run[end - 1])) end--;
+      const shown = run.slice(0, end);
       const open = opener(shown);
       return open ? pre + keep(`${open}${esc(shown)}</a>`) + run.slice(shown.length) : m;
     }))
