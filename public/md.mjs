@@ -1,7 +1,7 @@
 // A small Markdown renderer for Claude's replies. Everything is escaped first, so a reply can never
 // inject markup; only http and https links survive, and paths to files on this Mac when the caller can open them.
 
-import { runnableBlock } from './ui/terminal-rules.js';
+import { commandLines, runnableBlock } from './ui/terminal-rules.js';
 
 const esc = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -113,6 +113,22 @@ function list(lines, i, file) {
   return { html: `<${tag}${start}>${items.map(([t, ...rest]) => `<li>${inline(t, file)}${rest.join('')}</li>`).join('')}</${tag}>`, i };
 }
 
+// A console block's code with each command, and the lines a backslash joins to it, in a span. The spans only mark text, so the block's
+// textContent is its text as written, which Copy and Run read.
+function consoleCode(lang, text) {
+  const ranges = commandLines(lang, text);
+  if (!ranges.length) return esc(text);
+  const lines = text.split('\n');
+  let html = '';
+  let at = 0;
+  for (const { from, to } of ranges) {
+    if (from > at) html += `${esc(lines.slice(at, from).join('\n'))}\n`;
+    html += `<span class="cmd">${esc(lines.slice(from, to + 1).join('\n'))}</span>${to < lines.length - 1 ? '\n' : ''}`;
+    at = to + 1;
+  }
+  return at < lines.length ? html + esc(lines.slice(at).join('\n')) : html;
+}
+
 // Copy always, and Run when the block is a command. Both only draw: the page decides whether Run shows, and reads the command again
 // from the block's own text when it is clicked.
 function codeBlock(lang, text) {
@@ -123,7 +139,7 @@ function codeBlock(lang, text) {
     : tool('run', 'Run in terminal', 'Run in terminal');
   const label = lang ? `<span class="code-lang">${esc(lang)}</span>` : '';
   return `<div class="code-block"><div class="code-head">${label}<span class="code-tools">${tool('copy', 'Copy code', 'Copy')}${run}</span></div>`
-    + `<pre class="code"${lang ? ` data-lang="${esc(lang)}"` : ''}><code>${esc(text)}</code></pre></div>`;
+    + `<pre class="code"${lang ? ` data-lang="${esc(lang)}"` : ''}><code>${consoleCode(lang, text)}</code></pre></div>`;
 }
 
 export function md(src, file) {

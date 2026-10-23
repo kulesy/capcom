@@ -6,26 +6,30 @@ const SHELL_BLOCKS = new Set(['bash', 'sh', 'zsh', 'shell']);
 // The server refuses a longer command, so a block that long gets no Run button.
 export const MAX_COMMAND = 100_000;
 
-// What the owner cannot see in a block: controls other than tab and newline, format and line-separator characters, and the rest a browser
-// draws as nothing. A command holding any of them is not the command the block shows, so Run refuses it.
-const HIDDEN = /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/u;
+// What the owner cannot see in a block: controls other than tab and newline, format and line-separator characters, spaces other than a plain
+// one, and the rest a browser draws as nothing. A command holding any of them is not the command the block shows, so Run refuses it.
+const HIDDEN = /(?![\t\n ])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Zs}\p{Default_Ignorable_Code_Point}\u2800]/u;
 
 export const hasHiddenCharacters = text => HIDDEN.test(text);
 
 const isPrompt = line => line.trimStart().startsWith('$ ');
 
-// The commands of a block written the way a terminal shows them: each line after "$ ", a line ending in a backslash taking the
-// next as its own, and every other line being output.
+// The commands of a block written the way a terminal shows them, each { from, to } in lines with its text: each line after "$ ", a line
+// ending in a backslash taking the next as its own, and every other line being output.
 function promptCommands(lines) {
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     if (!isPrompt(lines[i])) continue;
+    const from = i;
     let command = lines[i].trimStart().slice(2);
     while (command.endsWith('\\') && i + 1 < lines.length) command += `\n${lines[++i]}`;
-    out.push(command);
+    out.push({ from, to: i, command });
   }
   return out;
 }
+
+// Run reads a console block, and a block of shell lines that all start with "$ ", as a terminal shows it, running only its commands.
+const readsAsConsole = (kind, filled) => kind === 'console' || (SHELL_BLOCKS.has(kind) && filled.every(isPrompt)) || (kind === '' && filled.length === 1 && isPrompt(filled[0]));
 
 // What Run would run for a fenced block, or null when the block is not a command. `lang` is the fence's word. A bash, sh, zsh or shell
 // block runs as written, a console block runs only its "$ " lines, and a block with no word runs when it is a single line.
@@ -38,13 +42,21 @@ export function runnableBlock(lang, text) {
   const filled = lines.filter(line => line.trim());
   if (!filled.length) return null;
   let command;
-  if (kind === 'console') command = promptCommands(lines).join('\n');
-  else if (SHELL_BLOCKS.has(kind)) command = filled.every(isPrompt) ? promptCommands(lines).join('\n') : text;
-  else if (kind === '') command = filled.length === 1 ? (isPrompt(filled[0]) ? promptCommands(filled)[0] : filled[0]) : '';
+  if (readsAsConsole(kind, filled)) command = promptCommands(lines).map(c => c.command).join('\n');
+  else if (SHELL_BLOCKS.has(kind)) command = text;
+  else if (kind === '') command = filled.length === 1 ? filled[0] : '';
   else return null;
   command = command.trim();
   if (!command || command.length > MAX_COMMAND) return null;
   return { command, hidden: hasHiddenCharacters(text) };
+}
+
+// The lines of a console block that are commands, as { from, to } line numbers with the last included, and none for a block that runs as
+// written. The page draws them apart from the output, so the wrapped tail of a long command is seen to be part of it.
+export function commandLines(lang, text) {
+  const lines = String(text).split('\n');
+  const kind = String(lang || '').toLowerCase();
+  return readsAsConsole(kind, lines.filter(line => line.trim())) ? promptCommands(lines).map(({ from, to }) => ({ from, to })) : [];
 }
 
 const startsBang = text => text.startsWith('!');

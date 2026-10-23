@@ -470,8 +470,9 @@ and an exported variable does not. A full-screen program such as `vim`, `top` or
   runs 8 commands at once and GhostShell 32.
 - **Code blocks.** Every code block has Copy. A block of shell commands in one of Claude's replies also has Run,
   which runs the block's text in the panel when you click it, and wraps its long lines so the whole command is
-  in view. A block holding a character you cannot see, such as a zero-width character, a soft hyphen or a line
-  separator, cannot be run. A file open in the panel has Copy only. Nothing runs without a click.
+  in view. In a console block the commands are tinted, wrapped lines included, so output is told from them.
+  A block holding a character you cannot see, such as a zero-width character, a soft hyphen, a line separator
+  or a space that is not a plain one, cannot be run. A file open in the panel has Copy only. Nothing runs without a click.
 - **`!` in the prompt box.** Text that starts with `!` runs as a command instead of being sent. GhostShell runs
   it, because the headless CLI GhostShell drives takes `!echo hi` as a prompt and has no shell mode. When the
   command ends, GhostShell sends Claude the command and its output in the CLI's own form (colour codes

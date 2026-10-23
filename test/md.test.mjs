@@ -246,3 +246,38 @@ test('a language word shows in the label, and a block inside a quote has its but
   assert.equal(blocks(md('```a+b\nx\n```'))[0].lang, 'a+b');
   assert.deepEqual(blocks(md('> ```bash\n> ls\n> ```')).map(b => b.tools), [['copy', 'run']]);
 });
+
+// The text a browser would read from a block's code: its markup without tags, with the entities undone.
+const textOfCode = markup => markup.replace(/<[^>]*>/g, '').replace(/&(lt|gt|quot|#39|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', '#39': "'", amp: '&' })[e]);
+const commands = markup => [...markup.matchAll(/<span class="cmd">(.*?)<\/span>/gs)].map(m => textOfCode(m[1]));
+
+test('a console block marks its commands and keeps its text exactly as written', () => {
+  const sources = [
+    '$ ls\nREADME.md\n$ echo "<b>" && cat a.txt\ndone',
+    '$ docker run \\\n  -it app\nstarted\n$ pwd',
+    '\nbefore\n\n  $ indented\n\nafter\n',
+    '$ only\n',
+    'output only',
+    '$ a\n$ b\n$ c',
+  ];
+  for (const text of sources) {
+    const [block] = blocks(md(`\`\`\`console\n${text}\n\`\`\``));
+    assert.equal(textOfCode(block.code), text, JSON.stringify(text));
+  }
+  assert.deepEqual(commands(md('```console\n$ ls\nREADME.md\n$ echo "<b>" && cat a.txt\ndone\n```')), ['$ ls', '$ echo "<b>" && cat a.txt']);
+  assert.deepEqual(commands(md('```console\n$ docker run \\\n  -it app\nstarted\n$ pwd\n```')), ['$ docker run \\\n  -it app', '$ pwd']);
+  assert.deepEqual(commands(md('```console\noutput only\n```')), []);
+});
+
+test('a block that is read as a console without saying so marks its commands too, and one that runs as written marks none', () => {
+  assert.deepEqual(commands(md('```bash\n$ npm test\n$ npm run build\n```')), ['$ npm test', '$ npm run build']);
+  assert.deepEqual(commands(md('```\n$ pwd\n```')), ['$ pwd']);
+  assert.deepEqual(commands(md('```bash\n$HOME/bin/x\necho "$ x"\n```')), []);
+  assert.deepEqual(commands(md('```js\n$ not a command\n```')), []);
+  assert.deepEqual(commands(md('```\none\n$ two\n```')), []);
+});
+
+test('marking a console block\'s commands adds nothing for the server to link, and what the span holds is escaped', () => {
+  assert.deepEqual([...linkedFiles('```console\n$ cat /Users/eli/a.md\n[x](/Users/eli/b.md)\n```')], []);
+  assert.equal(md('```console\n$ echo "</span><img src=x onerror=alert(1)>"\n```').includes('<img'), false);
+});

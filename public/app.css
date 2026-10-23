@@ -1919,6 +1919,13 @@ button.thumb {
 
 .session[data-terminal] .msg.claude:not(.live, .file-doc) .code-block:has([data-code="run"]) pre.code { white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.session[data-terminal] .msg.claude:not(.live, .file-doc) .code-block:has([data-code="run"]) .cmd {
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+  border-radius: var(--radius-sm);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .live .code-tools { display: none; }
 
 .code-block pre.code { margin: 0; padding-top: 0.25rem; border-radius: 0; background: none; }
