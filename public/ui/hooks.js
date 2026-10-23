@@ -2,6 +2,7 @@ import { tickIn } from './format.js';
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from './html.js';
 import { modifier, onAppChange } from './shortcuts.js';
 import { local } from './storage.js';
+import { INSTALLED, windowTitle } from './title-rules.js';
 
 // Re-renders when the selected slice of the store changes. A selector must return an existing value, not a new object.
 export function useStore(store, select) {
@@ -55,7 +56,13 @@ export function useWide() {
 }
 
 export function useDocumentTitle(title) {
-  useEffect(() => { document.title = title; }, [title]);
+  useEffect(() => {
+    const installed = matchMedia(INSTALLED);
+    const sync = () => { document.title = windowTitle(title, installed.matches); };
+    installed.addEventListener('change', sync);
+    sync();
+    return () => installed.removeEventListener('change', sync);
+  }, [title]);
 }
 
 // Draws the component again every second while `on`, so a timer on screen keeps counting between events. Given the time it counts
