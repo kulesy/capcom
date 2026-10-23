@@ -372,10 +372,17 @@ initialize request and answered over the session's stdio (`lib/tools.mjs`).
   GhostShell session with the chip's prompt, in the folder printed on the card. Chips that Desktop
   sessions created can be started too.
 - **Chapters** (`mark_chapter`) show as titled dividers.
-- **Group sessions.** Each group's header has a button that opens the group's own chat. It works in a
+- **Group sessions.** Each group's header has a button that opens the group's own chat at `#/g/<group id>`,
+  and it lights with the chat's mark while that chat works or waits for you. The chat works in a
   private folder under Capcom's state folder, shows the group's live status above the transcript, and gets
   three tools that reach that group alone: `list_group_sessions`, `read_group_session` and
   `start_group_session`. Starting a session always asks first, in every permission mode.
+  The status is drawn from the list the page already loads, so it costs no tokens. It folds to one line,
+  such as "2 need you · 3 working · 12 recent · 140 more", and opens to the sessions that need you, the
+  ones working and the recent ones, each a link to its chat. Idle and archived sessions sit in a fold of
+  their own, and the archived ones are read from the server only when it is opened. Both folds are kept
+  for each group in the browser. A server that started before groups had sessions has no button, and the
+  group's page says to restart GhostShell.
   [The decision record](docs/adr/20261023-a-session-for-each-group.md) says what it can and cannot do.
 - **Widgets** (`show_widget`) draw in an iframe sandboxed to `allow-scripts`, with a content policy
   that limits requests to cdnjs, esm.sh, jsDelivr, unpkg and Google Fonts, so model-written HTML

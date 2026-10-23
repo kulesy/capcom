@@ -18,7 +18,7 @@ export const groupsIn = (ix, view) => ix.groups.filter(g => groupView(ix, g) ===
 // The view whose list has this session: Home, a project, EVERY_VIEW for a pinned one, or NO_VIEW when the list does not have it.
 export function holder(ix, id) {
   if (withKids(ix.pinned).some(r => r.id === id)) return EVERY_VIEW;
-  const group = ix.groups.find(g => withKids(g.sessions).some(r => r.id === id));
+  const group = ix.groups.find(g => (id && g.session?.id === id) || withKids(g.sessions).some(r => r.id === id));
   if (group) return groupView(ix, group);
   const runs = ix.routines.flatMap(g => [g.latest, ...g.earlier]);
   return withKids([...runs, ...ix.started, ...ix.ungrouped, ...ix.other]).some(r => r.id === id) ? HOME_VIEW : NO_VIEW;
@@ -29,9 +29,12 @@ const rowsIn = (ix, view) => withKids(view === HOME_VIEW
   ? [...ix.routines.flatMap(g => [g.latest, ...g.earlier]), ...groupsIn(ix, HOME_VIEW).flatMap(g => g.sessions), ...ix.started, ...ix.ungrouped, ...ix.other]
   : groupsIn(ix, view).flatMap(g => g.sessions));
 
+// A group's own session is in no list, so its state is added here: the lamp lights when it works or waits.
+const groupStates = (ix, view) => groupsIn(ix, view).flatMap(g => (g.session ? [g.session.state] : []));
+
 // 'waiting' if a chat in the view needs you, else 'working' if one is running, else null.
 export function lampOf(ix, view) {
-  const states = rowsIn(ix, view).map(r => r.state);
+  const states = [...rowsIn(ix, view).map(r => r.state), ...groupStates(ix, view)];
   return states.includes('waiting') ? 'waiting' : states.includes('working') ? 'working' : null;
 }
 

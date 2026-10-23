@@ -43,3 +43,27 @@ export function summaryOf(buckets, archived = buckets.archived.length) {
   ].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'No sessions yet';
 }
+
+// A server that can run group sessions says so on the list. An older one cannot, so the page shows nothing for them until it does.
+export const supportsGroups = ix => !!ix?.features?.groupSessions;
+
+export const groupById = (ix, id) => ix?.groups.find(g => g.id === id) ?? null;
+
+// The group whose own session this is, or null. A link to that session opens the group.
+export const groupOfSession = (ix, id) => (id ? ix?.groups.find(g => g.session?.id === id) ?? null : null);
+
+// What a group's pane shows: its chat when the list has the group, and else why not.
+export function paneOf(ix, id) {
+  if (!ix) return 'unloaded';
+  if (!supportsGroups(ix)) return 'unsupported';
+  return groupById(ix, id) ? 'ready' : 'missing';
+}
+
+// The state that lights a group's button in the sidebar: its session at work or waiting for the owner, else none.
+export const litState = session => (session?.state === 'working' || session?.state === 'waiting' ? session.state : null);
+
+// A fold kept per group: a group is in the map only while it is not in its usual state, so the browser keeps no entry for the rest.
+export function flipped(all, id) {
+  const { [id]: was, ...rest } = all;
+  return was ? rest : { ...rest, [id]: true };
+}

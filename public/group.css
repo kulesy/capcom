@@ -1,0 +1,167 @@
+.has-chat .group-head .count { margin-right: 1.75rem; }
+
+.has-chat.has-menu .group-head .count { margin-right: 3.25rem; }
+
+.bar.has-menu > .chat-open { right: 3rem; }
+
+.chat-open { text-decoration: none; }
+
+.chat-open:is([data-state], [aria-current="page"]) { opacity: 1; }
+
+.chat-open[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+
+.chat-open .lamp {
+  position: absolute;
+  top: 0;
+  right: 0;
+  translate: 25% -25%;
+}
+
+@media (pointer: coarse) {
+  .has-chat.has-menu .group-head .count { margin-right: 4.25rem; }
+
+  .bar.has-menu > .chat-open { right: 4.5rem; }
+}
+
+.group-status {
+  --status-gutter: max(0.5rem, calc((100% - var(--chat-column)) / 2));
+  container-type: inline-size;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 40dvh;
+  border-bottom: 1px solid var(--sidebar-border);
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+}
+
+.status-fold {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 500 0.8125rem/1.25rem var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.status-fold:focus-visible { box-shadow: inset 0 0 0 2px var(--sidebar-ring); }
+
+.status-fold .chevron { margin-left: auto; }
+
+.status-fold[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+
+.status-sum {
+  flex: none;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.25rem calc(var(--status-gutter) + 0.5rem);
+}
+
+.status-sum > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.status-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--status-gutter) 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-border) transparent;
+}
+
+.status-part + .status-part { margin-top: 0.25rem; }
+
+.status-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  font: 600 0.75rem/1rem var(--font-sans);
+}
+
+.status-heading .count, .status-fold .count { color: var(--muted-foreground); font-weight: 500; }
+
+.status-rest {
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-md);
+  font: 600 0.75rem/1rem var(--font-sans);
+}
+
+.status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.status-row {
+  display: grid;
+  grid-template-columns: 0.75rem minmax(0, 1fr) auto;
+  grid-template-areas: "dot title time" ". meta meta";
+  align-items: center;
+  column-gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-md);
+  color: inherit;
+  font-size: 0.875rem;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.status-row:focus-visible { box-shadow: inset 0 0 0 2px var(--sidebar-ring); }
+
+.status-dot { grid-area: dot; display: flex; align-items: center; justify-content: center; }
+
+.status-dot .row-dot {
+  position: static;
+  translate: none;
+  flex: none;
+}
+
+.status-title { grid-area: title; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.status-meta, .status-time { color: var(--muted-foreground); font-size: 0.75rem; }
+
+.status-meta { grid-area: meta; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.status-time { grid-area: time; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.status-note { margin: 0; padding: 0.5rem; color: var(--muted-foreground); font-size: 0.8125rem; line-height: 1.25rem; }
+
+.status-more { margin: 0.25rem 0 0 0.5rem; }
+
+@media (hover: hover) {
+  .status-fold:hover, .status-row:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+
+  .status-fold:hover .count, .status-row:hover :is(.status-meta, .status-time) { color: inherit; }
+}
+
+@media (max-width: 40rem) {
+  .group-status { max-height: 30dvh; }
+}
+
+@media (pointer: coarse) {
+  .status-sum { min-height: 2.75rem; }
+
+  .status-rest { min-height: 2.75rem; }
+}
+
+@container (min-width: 36rem) {
+  .status-row {
+    grid-template-columns: 0.75rem minmax(0, 1fr) minmax(0, 18rem) 3.5rem;
+    grid-template-areas: "dot title meta time";
+    padding-block: 0.25rem;
+  }
+
+  .status-meta { text-align: right; }
+
+  .status-time { text-align: right; }
+}

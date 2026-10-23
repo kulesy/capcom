@@ -9,16 +9,20 @@ import { html, memo, useLayoutEffect, useRef } from './html.js';
 import { createChat } from './session.js';
 import { Transcript } from './transcript.js';
 
-function ChatHead({ ctrl }) {
+export const Back = () => html`<a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Sessions</a>`;
+
+// `kind` names the chat in place of its folder and branch, as a group's session does.
+function ChatHead({ ctrl, kind }) {
   const { session, status, outside } = useFields(ctrl.store, 'session', 'status', 'outside');
   const draft = !!ctrl.draft;
   const state = status?.state || 'idle';
   useDocumentTitle(draft ? 'New session · GhostShell' : session?.title ? `${session.title} · GhostShell` : 'GhostShell');
+  const place = kind ? [kind] : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : ''] : [];
   const meta = draft
     ? 'Starts Claude Code in the folder you pick'
-    : session ? [folderName(session.cwd, HOME), session.branch, session.routine ? `${session.routine} routine` : '', settingsLine(status)].filter(Boolean).join('  ') : '';
+    : session ? [...place, settingsLine(status)].filter(Boolean).join('  ') : '';
   return html`<header class="chat-head">
-    <a class="btn back" data-variant="ghost" data-size="sm" href="#/" aria-label="Back to sessions"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Sessions</a>
+    <${Back} />
     <div class="chat-title">
       <h2 id="title">${draft ? 'New session' : session?.title || 'Session'}</h2>
       <p class="chat-meta" id="meta">${meta}</p>
@@ -36,7 +40,9 @@ function Notice({ ctrl }) {
 // fresh copy of the list never redraws the chat. Only `title`, which is passed apart, is followed, so a rename in the list reaches
 // the header and the page title. The list's title wins over the chat's own, including one from a first page of messages that left
 // the server before the rename.
-export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex }) {
+// `meta` stands in the header for the folder and branch, and `aside` is drawn between the header and the transcript. `aside` must be
+// one element that follows a store of its own, because a new element on each render would redraw the whole chat.
+export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex, meta, aside }) {
   const held = useRef(null);
   if (!held.current) held.current = createChat({ id, draft: id === null, row, refreshIndex });
   const ctrl = held.current;
@@ -50,7 +56,8 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex })
     if (title && session && session.title !== title) ctrl.store.set({ session: { ...session, title } });
   }, [ctrl, title, named]);
   return html`<section class="session" id="session">
-    <${ChatHead} ctrl=${ctrl} />
+    <${ChatHead} ctrl=${ctrl} kind=${meta} />
+    ${aside}
     <${Transcript} ctrl=${ctrl} />
     <div class="dock">
       <${Approvals} ctrl=${ctrl} />
@@ -60,4 +67,4 @@ export const ChatPane = memo(function ChatPane({ id, row, title, refreshIndex })
       <${Composer} ctrl=${ctrl} />
     </div>
   </section>`;
-}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex);
+}, (a, b) => a.id === b.id && a.title === b.title && a.refreshIndex === b.refreshIndex && a.meta === b.meta && a.aside === b.aside);

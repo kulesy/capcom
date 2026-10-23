@@ -7,6 +7,8 @@ import { dragRows, pointIn } from './drag.js';
 import { HOME, STATION } from './env.js';
 import { NameForm } from './forms.js';
 import { DOT_LABEL, duration, folderName, STATE_LABEL, when } from './format.js';
+import { GroupChatButton } from './group-button.js';
+import { supportsGroups } from './group-rules.js';
 import { useClock, useLocal, useModifier } from './hooks.js';
 import { Fragment, html, useEffect, useLayoutEffect, useRef, useState } from './html.js';
 import { draw, icons, layerId, Menu, opener } from './menu.js';
@@ -70,21 +72,23 @@ const Empty = ({ paths, title, action, children }) => html`<div data-slot="empty
 </div>`;
 
 // The header of a group. `menu` is { label, items } for the button at its end, or null for a header with no actions.
-// The same menu opens on a right click, at the pointer, or the menu key, under the button.
-function Head({ id, name, count, open, toggle, menu, tree }) {
+// The same menu opens on a right click, at the pointer, or the menu key, under the button. `chat` is the group, when its header has the
+// button that opens the group's own session.
+function Head({ id, name, count, open, toggle, menu, chat, current, tree }) {
   const pop = (button, point, entry) => tree.pop(id, menu, button, { point, entry });
   const trigger = opener((button, entry) => pop(button, null, entry));
   const shown = tree.shown?.key === id;
-  return html`<div class=${menu ? 'bar has-menu' : 'bar'} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
+  return html`<div class=${['bar', menu && 'has-menu', chat && 'has-chat'].filter(Boolean).join(' ')} onContextMenu=${menu && (e => { e.preventDefault(); pop(e.currentTarget.querySelector('.more'), pointIn(e.currentTarget, e)); })}>
     <button class="group-head" type="button" data-key=${id} aria-expanded=${open} onClick=${() => toggle(id, open)}><span class="name">${name}</span> <span class="badge count">${count}</span>${chevron()}</button>
     ${menu ? html`<button class="more" type="button" aria-label=${menu.label} data-tip=${menu.label} aria-haspopup="menu" aria-expanded=${shown} aria-controls=${shown ? layerId(tree.shown.id) : null} data-state=${shown ? 'open' : 'closed'} ...${trigger}>${dots()}</button>` : null}
+    ${chat ? html`<${GroupChatButton} group=${chat} current=${current === chat.session?.id} />` : null}
   </div>`;
 }
 
-function Section({ id, name, count, collapsed, toggle, drop, over, menu, tree, children }) {
+function Section({ id, name, count, collapsed, toggle, drop, over, menu, chat, current, tree, children }) {
   const open = !collapsed[id];
   return html`<section class="group" data-drop=${drop ? id : null} data-over=${over || null}>
-    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} tree=${tree} />
+    <${Head} id=${id} name=${name} count=${count} open=${open} toggle=${toggle} menu=${menu} chat=${chat} current=${current} tree=${tree} />
     ${open && children ? html`<ul class="rows">${children}</ul>` : null}</section>`;
 }
 
@@ -134,12 +138,12 @@ function Sections({ ix, view, current, collapsed, toggle, folded, toggleFold, op
   const rows = list => list.map(r => (r.children
     ? html`<${Family} key=${r.id} r=${r} rowProps=${rowProps} holds=${carried?.parent === r.id} open=${!folded[r.id]} onToggle=${toggleFold} tree=${tree} />`
     : html`<${Row} key=${r.id} r=${r} ...${rowProps(r)} tree=${tree} />`));
-  const section = (id, name, list, body, { drop = true, always = false, menu = null } = {}) => {
+  const section = (id, name, list, body, { drop = true, always = false, menu = null, chat = null } = {}) => {
     if (!list.length && !always && !(drag && drop)) return null;
-    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
+    return html`<${Section} key=${id} id=${id} name=${name} count=${withKids(list).length} collapsed=${collapsed} toggle=${toggle} drop=${drop} over=${lands === id} menu=${menu} chat=${chat} current=${current} tree=${tree}>${list.length ? body : drag ? html`<li class="drop-hint">Drop here</li>` : null}<//>`;
   };
   const home = view === HOME_VIEW;
-  const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g) });
+  const group = g => section(g.id, g.name, g.sessions, rows(g.sessions), { always: true, menu: tree.groupMenu(g), chat: supportsGroups(ix) ? g : null });
   const project = ix.projects.find(p => p.id === view);
   const groups = groupsIn(ix, view);
   const adding = !!project && tree.form?.kind === 'group' && tree.form.project === project.id;

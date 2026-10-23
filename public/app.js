@@ -2,6 +2,8 @@ import { api } from './ui/api.js';
 import { AskHost } from './ui/ask.js';
 import { ChatPane } from './ui/chat.js';
 import { FileViewHost } from './ui/file-view.js';
+import { groupById, groupOfSession } from './ui/group-rules.js';
+import { GroupPane } from './ui/group.js';
 import { useModifier } from './ui/hooks.js';
 import { Fragment, html, render, useCallback, useEffect, useMemo, useRef, useState } from './ui/html.js';
 import { PasskeyOffer, PasskeysPane, usePasskeyOffer } from './ui/passkeys.js';
@@ -16,10 +18,12 @@ import { installTooltips } from './ui/tooltip.js';
 import { findRow, nestRow, placeRow, stampTurns, unnestRow, withoutRow } from './ui/tree.js';
 import { ViewerHost } from './ui/viewer.js';
 
-// #/ is the list, #/s/<id> a session, #/new an empty chat for a session not started yet and #/passkeys the passkeys.
+// #/ is the list, #/s/<id> a session, #/g/<id> a group's own session, #/new an empty chat for a session not started yet and
+// #/passkeys the passkeys.
 function parseRoute(hash) {
   try {
     if (hash.startsWith('#/s/')) return { name: 'session', id: decodeURIComponent(hash.slice(4)) };
+    if (hash.startsWith('#/g/')) return { name: 'group', id: decodeURIComponent(hash.slice(4)) };
   } catch {}
   return { name: hash === '#/new' ? 'new' : hash === '#/passkeys' ? 'passkeys' : 'list' };
 }
@@ -213,12 +217,18 @@ function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const route = useMemo(() => parseRoute(hash), [hash]);
+  const parsed = useMemo(() => parseRoute(hash), [hash]);
+  // A group's session has a route of its own, so a link to it by its id opens the group, and the address is changed to match.
+  const owner = parsed.name === 'session' ? groupOfSession(ix, parsed.id) : null;
+  useEffect(() => { if (owner) location.replace(`#/g/${encodeURIComponent(owner.id)}`); }, [owner?.id]);
+  const route = useMemo(() => (owner ? { name: 'group', id: owner.id } : parsed), [parsed, owner?.id]);
   // A new session needs no list, so it opens at once.
   const view = route.name !== 'list' && (route.name === 'new' || ready || ix) ? 'chat' : 'list';
   const id = route.name === 'session' ? route.id : null;
   const row = findRow(ix, id);
-  const current = view === 'chat' ? id : null;
+  // A group's session is not a row, but the list and the projects still follow it as the chat on screen.
+  const groupSession = route.name === 'group' ? groupById(ix, route.id)?.session?.id ?? null : null;
+  const current = view === 'chat' ? id ?? groupSession : null;
   // A view picked where a chat has the screen puts the list there. The route is set in state at once, so the list is on screen when
   // the focus moves to it.
   const toList = () => {
@@ -252,7 +262,8 @@ function App() {
         <p>Pick a session, press <kbd>${keyHint(mod, 'K')}</kbd> to find one, or <kbd>${keyHint(mod, 'N')}</kbd> to start a new one.</p>
       </section>
       ${view === 'chat' && route.name === 'passkeys' ? html`<${PasskeysPane} />` : null}
-      ${view === 'chat' && route.name !== 'passkeys' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' && route.name === 'group' ? html`<${GroupPane} key=${route.id} id=${route.id} ix=${ix} refreshIndex=${loadIndex} />` : null}
+      ${view === 'chat' && route.name !== 'passkeys' && route.name !== 'group' ? html`<${ChatPane} key=${id ?? 'new'} id=${id} row=${row} title=${row?.title} refreshIndex=${loadIndex} />` : null}
     </main>
   </div>
   <${Spotlight} open=${finding} ix=${ix} archive=${archive} onShow=${showView} onClose=${() => setFinding(false)} />
