@@ -344,3 +344,26 @@ test('a chip that carries an effort level keeps it when the posted body names an
   const args = starts(s)[0].started;
   assert.ok(args.some((arg, i) => arg === '--effort' && args[i + 1] === 'high'));
 });
+
+test('a chip that carries a model starts its session on it and saves it as the pick, one the server never stored takes the posted model, the stored one wins, and a bad model is refused before any CLI starts', async () => {
+  const s = await start({ claude: true, sessions: [{ id: 'maker', title: 'Maker', ago: 5 }], chips: [{ sessionId: 'maker', toolUseId: 'toolu_stored', prompt: 'begin a session', model: 'claude-sonnet-5-5' }, { sessionId: 'maker', toolUseId: 'toolu_both', prompt: 'begin a session', model: 'claude-haiku-5-5' }] });
+  const { token } = await signIn(s);
+  const chip = json => post(s, token, '/api/chips/start', { sessionId: 'maker', title: 'Follow up', prompt: 'begin a session', cwd: s.home, ...json });
+  for (const [n, model] of ['bad model!', ['claude-sonnet-5-5'], 5].entries()) {
+    const bad = await chip({ toolUseId: `toolu_bad${n}`, model });
+    assert.deepEqual([bad.status, bad.body()], [400, { error: 'Unknown model.' }], JSON.stringify(model));
+  }
+  assert.deepEqual(cliCalls(s), []);
+
+  const stored = await chip({ toolUseId: 'toolu_stored' });
+  assert.equal(stored.status, 200, stored.text);
+  const posted = await chip({ toolUseId: 'toolu_posted', model: 'claude-opus-5-5' });
+  assert.equal(posted.status, 200, posted.text);
+  assert.equal(posted.body().chip.model, 'claude-opus-5-5');
+  const both = await chip({ toolUseId: 'toolu_both', model: 'claude-sonnet-5-5' });
+  assert.equal(both.status, 200, both.text);
+  assert.equal(both.body().chip.model, 'claude-haiku-5-5');
+  assert.deepEqual(picks(s), { [stored.body().id]: { model: 'claude-sonnet-5-5' }, [posted.body().id]: { model: 'claude-opus-5-5' }, [both.body().id]: { model: 'claude-haiku-5-5' } });
+  const [first, second, third] = starts(s).map(c => c.started);
+  for (const [args, model] of [[first, 'claude-sonnet-5-5'], [second, 'claude-opus-5-5'], [third, 'claude-haiku-5-5']]) assert.ok(args.some((arg, i) => arg === '--model' && args[i + 1] === model), model);
+});

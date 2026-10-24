@@ -8,7 +8,7 @@ How sessions start, what they inherit from Desktop and how hand-off works are in
 
 ## Chips
 
-The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry an effort level, which the card shows after the folder. The session it starts runs at that level, and you can change it from the effort menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip).
+The `spawn_task` and `dismiss_task` tools make chips. A chip shows as a card with Start and Dismiss. Start opens a new GhostShell session with the chip's prompt, in the folder printed on the card. A chip can carry a model and an effort level, which the card shows after the folder. The session it starts runs on them, and you can change either from the model menu afterwards. Chips that Desktop sessions created can be started too. A session started from a chip [nests under the session that made it](session-list.md#sessions-started-from-a-chip).
 
 ## Chapters
 

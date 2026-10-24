@@ -28,7 +28,7 @@ import { listCommands, listModels } from './lib/commands.mjs';
 import { makeAuth, overHttps, sessionCookie } from './lib/auth.mjs';
 import { makePasskeys, PasskeyError } from './lib/passkeys.mjs';
 import { handOffText, makeTerminal } from './lib/terminal.mjs';
-import { EFFORTS, makeChips } from './lib/tools.mjs';
+import { EFFORTS, MODEL, makeChips } from './lib/tools.mjs';
 import { JITTER_PROBLEM, makeRoutines, makeScheduler, makeZoneFollower, upcoming, validJitter } from './lib/routines.mjs';
 import { esc } from './public/md.mjs';
 import { comparator, DEFAULT_SORT, sortFamily, sortRows, UNTITLED } from './public/ui/order.js';
@@ -45,8 +45,6 @@ const summaries = makeSummaries({ transcriptFor });
 // A mention of a file in front of /name stops the CLI reading the message as a command.
 const SLASH_WITH_FILES = 'Send a slash command on its own, without files.';
 const MODES = ['manual', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
-// Models are checked for shape only, because the CLI knows the current names.
-const MODEL = /^[a-z][\w.-]*(\[1m\])?$/i;
 const startedFile = path.join(cfg.stateDir, 'started.json');
 const readStarted = () => { try { return JSON.parse(fs.readFileSync(startedFile, 'utf8')); } catch { return []; } };
 // The model, effort and fast mode picked in Capcom for each session, kept here because Desktop's own records are read only.
@@ -1058,12 +1056,14 @@ async function api(req, res, u) {
   if (req.method === 'POST' && u.pathname === '/api/layout/archive') return editLayout(req, res, (id, body) => setArchived(id, body.archived, body.stop));
   if (req.method === 'POST' && STRUCTURE.has(u.pathname)) return editStructure(req, res, STRUCTURE.get(u.pathname));
   if (req.method === 'POST' && (u.pathname === '/api/chips/start' || u.pathname === '/api/chips/dismiss')) {
-    const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
+    const { sessionId, toolUseId, title, tldr, prompt, cwd, confirmCwd, model: postedModel, effort: postedEffort } = JSON.parse(await readBody(req) || '{}');
     if (!sessionId || !toolUseId) return send(res, 400, { error: 'Which chip?' });
     const known = chips.get(toolUseId);
     if (known && known.status !== 'open') return send(res, 409, { error: `That chip was already ${known.status}.`, chip: known });
     if (u.pathname.endsWith('/dismiss')) return send(res, 200, { chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title, status: 'dismissed' }) });
     const text = known?.prompt || prompt;
+    const model = known?.model || postedModel;
+    if (model && (typeof model !== 'string' || !MODEL.test(model))) return send(res, 400, { error: 'Unknown model.' });
     const effort = known?.effort || postedEffort;
     if (effort && !EFFORTS.includes(effort)) return send(res, 400, { error: 'Unknown effort level.' });
     // The folder comes from transcript text, so anywhere other than the session's own folder needs the one the card showed.
@@ -1084,10 +1084,10 @@ async function api(req, res, u) {
       }
     }
     if ((groupId || folder !== home) && confirmCwd !== folder) return send(res, 400, { error: `This chip starts in ${folder}. Check the folder on the card, then press Start again.` });
-    const id = await newSession({ cwd: start, text, title: known?.title || title, effort });
+    const id = await newSession({ cwd: start, text, title: known?.title || title, model, effort });
     // A group's session is out of every list, so a session its chip starts would show at the top level. It goes into the group instead.
     if (groupId) placeInGroup(id, groupId);
-    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(effort && { effort }), status: 'started', startedId: id }) });
+    return send(res, 200, { id, chip: chips.put({ ...known, toolUseId, sessionId: known?.sessionId || sessionId, title: known?.title || title, tldr: known?.tldr || tldr, ...(model && { model }), ...(effort && { effort }), status: 'started', startedId: id }) });
   }
   const booking = /^\/api\/groups\/([\w-]+)\/session$/.exec(u.pathname);
   if (req.method === 'POST' && booking) {

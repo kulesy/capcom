@@ -259,6 +259,32 @@ test('a chip keeps the effort level it names, and one with none is stored withou
   assert.equal(made.length, 2, 'an unknown level makes no chip');
 });
 
+test('spawn_task offers an optional model in the ordinary and the group schema, free of an enum', () => {
+  const ordinary = call('tools/list').result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  const group = handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, { group: { stateDir: '/tmp/state' } }).result.tools.find(t => t.name === 'spawn_task').inputSchema;
+  for (const schema of [ordinary, group]) {
+    assert.equal(schema.properties.model.type, 'string');
+    assert.equal(Object.hasOwn(schema.properties.model, 'enum'), false);
+    assert.equal(schema.required.includes('model'), false);
+  }
+});
+
+test('a chip keeps the model it names, one with none is stored without the key, and a model that is not a model id makes no chip', () => {
+  const made = [];
+  const chips = { put: chip => { made.push(chip); return chip; } };
+  const spawn = args => handleMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'spawn_task', arguments: { title: 't', prompt: 'p', ...args } } }, { chips, cwd: '/tmp/work' }).result;
+  assert.equal(spawn({ model: 'claude-sonnet-5-5' }).isError, undefined);
+  assert.equal(made[0].model, 'claude-sonnet-5-5');
+  assert.equal(spawn({}).isError, undefined);
+  assert.equal(Object.hasOwn(made[1], 'model'), false);
+  for (const model of ['bad model!', ['sonnet'], { id: 'sonnet' }, 5]) {
+    const refused = spawn({ model });
+    assert.equal(refused.isError, true, JSON.stringify(model));
+    assert.match(refused.content[0].text, /claude-sonnet-5-5/);
+  }
+  assert.equal(made.length, 2, 'a bad model makes no chip');
+});
+
 test('a group tool that throws something unexpected tells the model a bare failure, and one that refuses tells it why', async () => {
   const quiet = console.error;
   console.error = () => {};

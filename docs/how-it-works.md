@@ -35,7 +35,7 @@ A session Desktop knows continues with the permission mode, model and effort Des
 
 - Desktop's mode for that folder, falling back to `permissions.defaultMode` in `~/.claude/settings.json`.
 - Desktop's effort level, unless the session starts from a [chip](tools.md#chips) that names one.
-- The model from `~/.claude/settings.json`.
+- The model from `~/.claude/settings.json`, unless the session starts from a [chip](tools.md#chips) that names one.
 
 You can change the mode, model, effort and fast mode per chat from the [prompt box](chat.md#the-prompt-box).
 

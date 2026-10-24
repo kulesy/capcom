@@ -8,7 +8,7 @@ import { fromTool, imageKey, overflow, TILES, tileLabel, toolShots } from './gal
 import { Fragment, html, memo, useLayoutEffect, useReducer, useRef, useState } from './html.js';
 import { useClock } from './hooks.js';
 import { draw, icons } from './menu.js';
-import { effortName } from './model-rules.js';
+import { effortName, modelName } from './model-rules.js';
 import { splitQuotes } from './quote-rules.js';
 import { groupStart, step, summarize } from './thread.js';
 import { Widget } from './widget.js';
@@ -98,6 +98,7 @@ function ChipCard({ t, chip, cwd, onChip }) {
   const i = t.input || {};
   const status = chip?.status || 'open';
   const folder = chip?.cwd || i.cwd || cwd || '';
+  const model = chip?.model || i.model;
   const effort = chip?.effort || i.effort;
   const act = async action => {
     setBusy(action);
@@ -109,12 +110,12 @@ function ChipCard({ t, chip, cwd, onChip }) {
       ? html`<span class="quiet">Dismissed</span>`
       : html`<button class="btn" type="button" data-chip="start" data-tool=${t.id} data-folder=${folder} disabled=${busy === 'start'} onClick=${() => act('start')}>Start session</button>
          <button class="btn" data-variant="ghost" type="button" data-chip="dismiss" data-tool=${t.id} disabled=${busy === 'dismiss'} onClick=${() => act('dismiss')}>Dismiss</button>`;
-  return html`<li class="chip-card" data-status=${status} data-effort=${effort || undefined}>
+  return html`<li class="chip-card" data-status=${status} data-model=${model || undefined} data-effort=${effort || undefined}>
     <p class="chip-kind">Suggested task${t.name.startsWith('mcp__capcom__') ? '' : ' from Desktop'}</p>
     <h4>${i.title || 'Untitled task'}</h4>
     ${i.tldr ? html`<p>${i.tldr}</p>` : null}
     <pre class="tool-io chip-prompt">${pre(clip(i.prompt || '', 8))}</pre>
-    <p class="chip-folder">Starts in ${tilde(folder, HOME) || 'the session folder'}${effort ? ` at ${effortName(effort)} effort` : ''}</p>
+    <p class="chip-folder">Starts in ${tilde(folder, HOME) || 'the session folder'}${model ? ` on ${modelName(model)}` : ''}${effort ? ` at ${effortName(effort)} effort` : ''}</p>
     <div class="chip-actions">${actions}</div></li>`;
 }
 
