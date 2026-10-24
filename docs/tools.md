@@ -28,9 +28,9 @@ Each group's header has a button that opens the group's own chat at `#/g/<group 
 
 The page draws the status from the list it already loads, so it costs no tokens. It is the chat's Sub sessions tab, laid out as [a session's](session-list.md#sub-session-status): each line is one of the group's sessions with its whole family under it, placed by the most urgent session in the family, and the line at the top rolls up the whole group, as "5 sessions, 1 waiting on you, 1 working". The panel opens by itself on a wide screen, and the button in the chat's header opens it on a phone.
 
-Idle and archived sessions sit in a fold of their own, and the page asks the server for the archived ones only when you open that fold. The browser remembers the fold for each group.
+Idle sessions show last, under their own heading. Archived sessions stay out of the tab, as they stay out of the list.
 
-A server that started before sub session status draws the group's status above the transcript instead, folded to one line such as "2 need you · 3 working · 12 recent · 140 more". A server that started before groups had sessions has no button, and the group's page says to restart GhostShell.
+A server that started before sub session status draws the group's status above the transcript instead, folded to one line such as "2 need you · 3 working · 12 recent · 140 more", with the idle and archived sessions in a fold of their own. A server that started before groups had sessions has no button, and the group's page says to restart GhostShell.
 
 ## Widgets
 

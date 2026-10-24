@@ -16,6 +16,9 @@ const WORK = '3b1f6c0e-8a2d-4f57-9c14-d27e50a6b8c1';
 //   lead
 //     mover (moves while the tests run)
 //   loner
+//   shelf
+//     dozer (idle for days)
+//     stowed (archived)
 const SESSIONS = [
   { id: 'top', title: 'Top', ago: 5 },
   { id: 'kid', title: 'Kid', parent: 'top', ago: 4, verdict: 'need_input' },
@@ -23,7 +26,11 @@ const SESSIONS = [
   { id: 'loner', title: 'Loner', ago: 9 },
   { id: 'lead', title: 'Lead', ago: 91 },
   { id: 'mover', title: 'Mover', parent: 'lead', ago: 90 },
+  { id: 'shelf', title: 'Shelf', ago: 8 },
+  { id: 'dozer', title: 'Dozer', parent: 'shelf', ago: 5000 },
+  { id: 'stowed', title: 'Stowed', parent: 'shelf', archived: true, ago: 2 },
   { id: 'member', title: 'Member', group: 'cg-work', ago: 6 },
+  { id: 'shelved', title: 'Shelved', group: 'cg-work', archived: true, ago: 2 },
   { id: WORK, title: 'Talk about the work', source: 'cli', ago: 1, group: 'cg-work' },
 ];
 const GROUPS = [{ id: 'cg-work', name: 'Work', session: WORK }];
@@ -219,6 +226,15 @@ test('a phone is shown the tab when the button is pressed and not before', { ski
   assert.deepEqual(page.problems, []);
 });
 
+test('an idle sub session shows with the rest, with no fold, and an archived one does not show at all', { skip, timeout }, async t => {
+  const page = await appPage(t, '#/s/shelf');
+  await page.until(`!!document.querySelector('#panel .sub-card')`);
+  assert.deepEqual(await all(page, '.subs .status-heading', 'el.textContent.trim()'), ['Idle (1)']);
+  assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href")'), ['#/s/dozer']);
+  assert.equal(await page.evaluate(`document.querySelectorAll('.subs .status-rest').length`), 0);
+  assert.deepEqual(page.problems, []);
+});
+
 test('a group\'s chat has its sessions in the Sub sessions tab, in place of the status over its transcript, and its button opens it on a phone', { skip, timeout }, async t => {
   const page = await appPage(t, '#/g/cg-work');
   await page.until(`!!document.querySelector('#panel .subs')`);
@@ -227,6 +243,8 @@ test('a group\'s chat has its sessions in the Sub sessions tab, in place of the 
   assert.equal(await page.evaluate(`document.querySelector('#subsButton').getAttribute('aria-label')`), 'Sub sessions: 1');
   assert.deepEqual(await all(page, '#panel .sub-title', 'el.getAttribute("href")'), ['#/s/member']);
   assert.equal(await text(page, '.subs-sum'), '1 session');
+  assert.equal(await page.evaluate(`document.querySelectorAll('.subs .status-rest').length`), 0, 'no fold for the archived');
+  assert.equal(await page.evaluate(`performance.getEntriesByType('resource').filter(e => e.name.includes('api/archived')).length`), 0);
   const phone = await appPage(t, '#/g/cg-work', { phone: true });
   await phone.until(`!!document.querySelector('#subsButton')`);
   assert.equal(await phone.evaluate(`!!document.querySelector('#panel')`), false);

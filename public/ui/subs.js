@@ -5,8 +5,8 @@ import { md } from '../md.mjs';
 import { api } from './api.js';
 import { DOT_LABEL, STATE_LABEL, when } from './format.js';
 import { flipped, groupOfSession } from './group-rules.js';
-import { chevron, EMPTY, enc, LIVE, Rest } from './group-status.js';
-import { useLocal, useStore } from './hooks.js';
+import { chevron, EMPTY, enc, LIVE } from './group-status.js';
+import { useStore } from './hooks.js';
 import { html, useEffect, useMemo, useReducer, useRef, useState } from './html.js';
 import { UNTITLED } from './order.js';
 import { createStore } from './store.js';
@@ -149,31 +149,27 @@ function Section({ label, nodes, shared }) {
   </section>`;
 }
 
+// Every session at the level, idle ones too. Archived sessions are not in the page's list, so the tab never shows them.
+const PARTS = [...LIVE, ['idle', 'Idle']];
+
 // `active` is whether the tab is on show, since the panel keeps its tabs mounted and a tab out of sight asks the server for nothing.
 export function SubsTab({ ctrl, active }) {
   const id = ctrl.id;
   const ix = useStore(sessionIndex, s => s.ix);
   const group = groupOfSession(ix, id);
-  const [more, setMore] = useLocal(group ? 'groupMore' : 'subsMore', {});
   const [opened, setOpened] = useState({});
   const lines = useMemo(() => (ix ? linesOf(ix, id) : []), [ix, id]);
   const rows = useMemo(() => (ix ? everyRow(ix) : []), [ix]);
   const parts = useMemo(() => partsOf(lines), [lines]);
-  const foldId = group?.id ?? id;
-  const idleOpen = !!more[foldId];
-  const shown = [...LIVE.flatMap(([key]) => parts[key]), ...(idleOpen ? parts.idle : [])];
+  const shown = PARTS.flatMap(([key]) => parts[key]);
   const failed = useSummaries(active ? drawnRows(shown, opened) : [], ix);
   if (!ix) return null;
   const shared = { rows, opened, active, flip: key => setOpened(all => flipped(all, key)) };
-  const rest = group ?? { id: foldId, archived: 0 };
   const summary = summaryLine(ix, id);
   return html`<div class="subs">
     ${summary ? html`<p class="subs-sum"><${Words} text=${summary} /></p>` : null}
-    ${LIVE.map(([key, label]) => (parts[key].length ? html`<${Section} key=${key} label=${label} nodes=${parts[key]} shared=${shared} />` : null))}
-    ${parts.idle.length || rest.archived ? html`<${Rest} group=${rest} label=${group ? undefined : 'Idle'} count=${parts.idle.length} open=${idleOpen} onFlip=${() => setMore(all => flipped(all, foldId))}>
-      ${parts.idle.length ? (group ? html`<${Section} label="Idle" nodes=${parts.idle} shared=${shared} />` : html`<${Lines} nodes=${parts.idle} shared=${shared} label="Idle sub sessions" />`) : null}
-    <//>` : null}
-    ${group && !lines.length && !group.archived ? html`<p class="status-note">${EMPTY}</p>` : null}
+    ${PARTS.map(([key, label]) => (parts[key].length ? html`<${Section} key=${key} label=${label} nodes=${parts[key]} shared=${shared} />` : null))}
+    ${group && !lines.length ? html`<p class="status-note">${EMPTY}</p>` : null}
     ${failed ? html`<p class="status-note" role="status">Could not read what these sessions last said.</p>` : null}
   </div>`;
 }

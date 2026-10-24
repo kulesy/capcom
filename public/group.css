@@ -197,10 +197,6 @@
 
 .subs .status-heading { padding: 0 0 0.5rem; font: 500 0.875rem/1.25rem var(--font-sans); }
 
-.subs .status-rest { padding: 0; border-radius: var(--radius-sm); font: 500 0.875rem/1.25rem var(--font-sans); }
-
-.subs .status-fold:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-
 .sub-lines {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
@@ -319,8 +315,6 @@
 
 @media (hover: hover) {
   .sub-title:hover { text-decoration: underline; text-underline-offset: 0.2em; }
-
-  .subs .status-fold:hover { background: var(--accent); color: var(--accent-foreground); }
 }
 
 @media (pointer: coarse) {
